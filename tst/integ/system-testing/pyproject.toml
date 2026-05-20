@@ -1,0 +1,26 @@
+[project]
+name = "algo-system-testing"
+version = "0.1.0"
+description = "Docker-based infrastructure and integration tests for algo-trader"
+requires-python = ">=3.13"
+dependencies = [
+    "trading-platform",
+    "testcontainers[postgres,redis]>=4.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "anyio[trio]>=4.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["system-testing"]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+trading-platform = { path = "../../..", editable = true }

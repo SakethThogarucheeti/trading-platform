@@ -1,0 +1,90 @@
+[project]
+name = "trading-platform"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "anyio>=4.12.1",
+    "apscheduler>=3.10",
+    "dishka>=1.0",
+    "httpx>=0.27",
+    "kiteconnect>=5.0.1",
+    "numpy>=2.2.6",
+    "polars>=1.38.1",
+    "pyarrow>=23.0.1",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "pyright>=1.1.408",
+    "python-dotenv>=1.2.1",
+    "pytz>=2025.2",
+    "redis[hiredis]>=5.0",
+    "tenacity>=9.1.4",
+    "tzdata>=2026.1",
+    # DB — required at runtime (ORM + async driver + migrations)
+    "sqlalchemy[asyncio]>=2.0",
+    "alembic>=1.13",
+    "asyncpg>=0.29",
+    "psycopg2-binary>=2.9",   # Alembic sync migration runner
+    # Dashboard
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    # Indicators library
+    "quantindicators[scipy]",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.1",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "anyio[trio]>=4.0",
+    "aiosqlite>=0.20",
+    "fakeredis>=2.0",
+    "pre-commit>=4.0",
+    "pytest-cov>=7.1.0",
+    "testcontainers[postgres]>=4.0",
+    "scipy>=1.13",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tst/unit"]
+
+[project.scripts]
+build = "trading.build:main"
+start = "trading.start:main"
+fetch-data = "trading.scripts.fetch_data:main"
+import-candles = "trading.scripts.import_candles:main"
+report = "trading.scripts.report:main"
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+quantindicators = { path = "../quantindicators", editable = true }
+
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+fix = true
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "I",   # import sorting
+  "UP",  # pyupgrade
+  "B",   # bugbear
+]
+
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+# _teardown is an intentional opt-in no-op hook in an ABC — not missing @abstractmethod
+"src/trading/engine/component.py" = ["B027"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

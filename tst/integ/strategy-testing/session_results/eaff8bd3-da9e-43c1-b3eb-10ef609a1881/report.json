@@ -1,0 +1,31 @@
+{
+  "session_id": "eaff8bd3-da9e-43c1-b3eb-10ef609a1881",
+  "session_type": "backtest",
+  "started_at": "2026-04-18T12:18:21.014715+00:00",
+  "finished_at": "2026-04-18T12:18:23.383927+00:00",
+  "algo_name": "demo",
+  "start": "2024-01-02T09:15:00+00:00",
+  "end": "2024-01-02T17:35:00+00:00",
+  "initial_equity": 100000.0,
+  "final_equity": 99952.04416591201,
+  "sharpe_ratio": 0.0,
+  "max_drawdown": 0.0004795583408798848,
+  "max_drawdown_duration_secs": 0.0,
+  "win_rate": 0.0,
+  "profit_factor": 0.0,
+  "cagr": 0.0,
+  "calmar_ratio": 0.0,
+  "total_trades": 1,
+  "trades": [
+    {
+      "symbol": "INFY",
+      "side": "SELL",
+      "qty": 64,
+      "entry_price": 1498.61981525,
+      "exit_price": 1499.369125157625,
+      "pnl": -47.95583408798848,
+      "entry_time": "2026-04-18T12:18:21.446467+00:00",
+      "exit_time": "2026-04-18T12:18:21.510869+00:00"
+    }
+  ]
+}

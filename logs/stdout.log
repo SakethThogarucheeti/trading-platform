@@ -1,0 +1,338 @@
+2026-05-04 11:20:17 INFO     __main__ — Running Alembic migrations…
+2026-05-04 11:20:18 INFO     __main__ — Migrations complete.
+2026-05-04 11:20:18 INFO     trading.di.providers.broker — BrokerProvider: paper trading mode enabled
+2026-05-04 11:20:18 INFO     trading.di.providers.components — ComponentProvider: algo='default' strategy='ema_crossover' risk='default' exec='paper' instruments=1 equity=10000
+2026-05-04 11:20:18 INFO     apscheduler.scheduler — Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-04 11:20:18 INFO     apscheduler.scheduler — Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-04 11:20:18 INFO     apscheduler.scheduler — Added job "Market Open — start runtime" to job store "default"
+2026-05-04 11:20:18 INFO     apscheduler.scheduler — Added job "Market Close — stop runtime" to job store "default"
+2026-05-04 11:20:18 INFO     apscheduler.scheduler — Scheduler started
+2026-05-04 11:20:18 INFO     trading.engine.scheduler — Scheduler: started
+2026-05-04 11:20:18 INFO     __main__ — Scheduler started.
+2026-05-04 11:20:18 INFO     __main__ — Market is currently open — starting runtime immediately.
+2026-05-04 11:20:18 INFO     trading.engine.runtime — Runtime: starting 7 components
+2026-05-04 11:20:18 INFO     trading.registry.tick — TickRegistry: WebSocket connected — circuit closed
+2026-05-04 11:20:18 INFO     trading.engine.kite_ingestor — KiteIngestor: connected and subscribed to 1 tokens
+2026-05-04 11:20:18 INFO     trading.engine.runtime — Runtime: kite_ingestor is RUNNING
+2026-05-04 11:20:19 INFO     trading.registry.candle — CandleRegistry: warmup produced 26 candles
+2026-05-04 11:20:19 INFO     trading.engine.candle_aggregator — CandleAggregator: replaying 26 warmup candles through 1 algo registry(s)
+2026-05-04 11:20:19 INFO     trading.engine.candle_aggregator — CandleAggregator: warm-up complete
+2026-05-04 11:20:19 INFO     trading.engine.runtime — Runtime: candle_aggregator is RUNNING
+2026-05-04 11:20:19 INFO     trading.engine.algo_runner — AlgoRunner[default]: ready with 1 instruments
+2026-05-04 11:20:19 INFO     trading.engine.runtime — Runtime: algo_runner[default] is RUNNING
+2026-05-04 11:20:19 INFO     trading.risk.base — RiskController: ready (rc_id=default)
+2026-05-04 11:20:19 INFO     trading.engine.runtime — Runtime: risk_controller is RUNNING
+2026-05-04 11:20:19 INFO     trading.execution.executor — OrderExecutor: ready (exec_id=paper)
+2026-05-04 11:20:19 INFO     trading.engine.runtime — Runtime: order_executor[paper] is RUNNING
+2026-05-04 11:20:19 INFO     trading.engine.heartbeat — HeartbeatMonitor: registered 1 components
+2026-05-04 11:20:19 INFO     trading.engine.runtime — Runtime: heartbeat_monitor is RUNNING
+2026-05-04 11:20:19 INFO     trading.monitoring.dashboard.component — DashboardServer: ready on http://127.0.0.1:8081
+2026-05-04 11:20:19 INFO     trading.engine.runtime — Runtime: dashboard is RUNNING
+2026-05-04 20:17:41 WARNING  apscheduler.executors.default — Run time of job "Market Close — stop runtime (trigger: cron[day_of_week='mon-fri', hour='15', minute='30'], next run at: 2026-05-05 15:30:00 IST)" was missed by 4:47:41.503030
+2026-05-04 20:17:43 WARNING  trading.engine.heartbeat — HeartbeatMonitor: heartbeat_monitor is stale
+2026-05-05 08:25:16 WARNING  trading.engine.heartbeat — HeartbeatMonitor: heartbeat_monitor is stale
+2026-05-05 09:15:00 INFO     apscheduler.executors.default — Running job "Market Open — start runtime (trigger: cron[day_of_week='mon-fri', hour='9', minute='15'], next run at: 2026-05-06 09:15:00 IST)" (scheduled at 2026-05-05 09:15:00+05:30)
+2026-05-05 09:15:00 INFO     trading.engine.runtime — Runtime: starting 7 components
+2026-05-05 09:15:01 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:15:01 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:15:01 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:15:01 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:15:03 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:15:03 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:15:03 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:15:03 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:15:10 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:15:10 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:15:10 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:15:10 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:15:27 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:15:27 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:15:27 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:15:27 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:15:30 INFO     trading.engine.runtime — Runtime: all components stopped
+2026-05-05 09:15:30 ERROR    apscheduler.executors.default — Job "Market Open — start runtime (trigger: cron[day_of_week='mon-fri', hour='9', minute='15'], next run at: 2026-05-06 09:15:00 IST)" raised an exception
+  + Exception Group Traceback (most recent call last):
+  |   File "C:\Users\saket\workspace\algo-trader\trading-platform\.venv\Lib\site-packages\apscheduler\executors\base.py", line 181, in run_coroutine_job
+  |     retval = await job.func(*job.args, **job.kwargs)
+  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "C:\Users\saket\workspace\algo-trader\trading-platform\src\trading\engine\runtime.py", line 70, in start
+  |     async with create_task_group() as tg:
+  |                ~~~~~~~~~~~~~~~~~^^
+  |   File "C:\Users\saket\workspace\algo-trader\trading-platform\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 783, in __aexit__
+  |     raise BaseExceptionGroup(
+  |         "unhandled errors in a TaskGroup", self._exceptions
+  |     ) from None
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "C:\Users\saket\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none\Lib\asyncio\tasks.py", line 507, in wait_for
+    |     return await fut
+    |            ^^^^^^^^^
+    |   File "C:\Users\saket\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none\Lib\asyncio\locks.py", line 213, in wait
+    |     await fut
+    | asyncio.exceptions.CancelledError
+    | 
+    | The above exception was the direct cause of the following exception:
+    | 
+    | Traceback (most recent call last):
+    |   File "C:\Users\saket\workspace\algo-trader\trading-platform\src\trading\engine\kite_ingestor.py", line 69, in _setup
+    |     await asyncio.wait_for(self._connected.wait(), timeout=self._connect_timeout_secs)
+    |   File "C:\Users\saket\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none\Lib\asyncio\tasks.py", line 506, in wait_for
+    |     async with timeouts.timeout(timeout):
+    |                ~~~~~~~~~~~~~~~~^^^^^^^^^
+    |   File "C:\Users\saket\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none\Lib\asyncio\timeouts.py", line 116, in __aexit__
+    |     raise TimeoutError from exc_val
+    | TimeoutError
+    | 
+    | The above exception was the direct cause of the following exception:
+    | 
+    | Traceback (most recent call last):
+    |   File "C:\Users\saket\workspace\algo-trader\trading-platform\src\trading\engine\runtime.py", line 72, in start
+    |     await tg.start(component.start)
+    |   File "C:\Users\saket\workspace\algo-trader\trading-platform\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 917, in start
+    |     return await future
+    |            ^^^^^^^^^^^^
+    |   File "C:\Users\saket\workspace\algo-trader\trading-platform\src\trading\engine\component.py", line 56, in start
+    |     await self._setup()
+    |   File "C:\Users\saket\workspace\algo-trader\trading-platform\src\trading\engine\kite_ingestor.py", line 71, in _setup
+    |     raise RuntimeError(
+    |         f"KiteIngestor: WebSocket did not connect within {self._connect_timeout_secs}s"
+    |     ) from err
+    | RuntimeError: KiteIngestor: WebSocket did not connect within 30.0s
+    +------------------------------------
+2026-05-05 09:15:31 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:16:22 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:16:22 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:16:22 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:16:22 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:16:52 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:17:29 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:17:29 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:17:29 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:17:29 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:17:59 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:18:25 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:18:25 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:18:25 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:18:25 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:18:55 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:19:27 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:19:27 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:19:27 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:19:27 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:19:57 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:20:42 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:20:42 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:20:42 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:20:42 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:21:12 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:21:31 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:21:31 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:21:31 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:21:31 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:22:01 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:22:34 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:22:34 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:22:34 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:22:34 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:23:04 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:23:42 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:23:42 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:23:42 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:23:42 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:24:12 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:24:45 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:24:45 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:24:45 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:24:45 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:25:15 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:25:52 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:25:52 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:25:52 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:25:52 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:26:22 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:26:51 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:26:51 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:26:51 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:26:51 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:27:21 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:28:03 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:28:03 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:28:03 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:28:03 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:28:33 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:28:59 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:28:59 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:28:59 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:28:59 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:29:29 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:30:03 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:30:03 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:30:03 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:30:03 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:30:33 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:31:08 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:31:08 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:31:08 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:31:08 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:31:38 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:32:18 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:32:18 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:32:18 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:32:18 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:32:48 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:33:16 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:33:16 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:33:16 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:33:16 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:33:46 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:34:16 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:34:16 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:34:16 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:34:16 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:34:46 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:35:22 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:35:22 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:35:22 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:35:22 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:35:52 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:36:26 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:36:26 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:36:26 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:36:26 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:36:56 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:37:24 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:37:24 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:37:24 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:37:24 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:37:54 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:38:19 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:38:19 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:38:19 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:38:19 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:38:49 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:39:18 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:39:18 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:39:18 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:39:18 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:39:48 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:40:26 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:40:26 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:40:26 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:40:26 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:40:56 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:41:22 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:41:22 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:41:22 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:41:22 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:41:52 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:42:20 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:42:20 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:42:20 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:42:20 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:42:50 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:43:22 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:43:22 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:43:22 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:43:22 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:43:52 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:44:28 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:44:28 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:44:28 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:44:28 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:44:58 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:45:30 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:45:30 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:45:30 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:45:30 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:46:00 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:46:33 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:46:33 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:46:33 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:46:33 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:47:03 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:47:40 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:47:40 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:47:40 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:47:40 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:48:10 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:48:31 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:48:31 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:48:31 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:48:31 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:49:01 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:49:16 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:49:16 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:49:16 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:49:16 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:49:46 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:50:21 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:50:21 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:50:21 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:50:21 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:50:51 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:51:23 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:51:23 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:51:23 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:51:23 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:51:53 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:52:25 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:52:25 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:52:25 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:52:25 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:52:55 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:53:14 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:53:14 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:53:14 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:53:14 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:53:44 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:54:15 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:54:15 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:54:15 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:54:15 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:54:45 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:55:19 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:55:19 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:55:19 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:55:19 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:55:49 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:56:16 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:56:16 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:56:16 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:56:16 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:56:46 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:57:09 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:57:09 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:57:09 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:57:09 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:57:39 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:58:17 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:58:17 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:58:17 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:58:17 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:58:47 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 09:59:12 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:59:12 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 09:59:12 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 09:59:12 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 09:59:42 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 10:00:10 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 10:00:10 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 10:00:10 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 10:00:10 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 10:00:40 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 10:01:12 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 10:01:12 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 10:01:12 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 10:01:12 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 10:01:42 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 10:02:08 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 10:02:08 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 10:02:08 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 10:02:08 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 10:02:38 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-05 10:02:57 ERROR    kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 10:02:57 ERROR    kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-05 10:02:57 WARNING  trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-05 10:02:57 WARNING  trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-05 10:03:27 ERROR    trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect

@@ -1,0 +1,24 @@
+2026-05-20 09:54:15 INFO     [--------] __main__ — Running Alembic migrations…
+2026-05-20 09:54:22 INFO     [--------] __main__ — Migrations complete.
+2026-05-20 09:54:22 INFO     [--------] trading.di.providers.broker — BrokerProvider: paper trading mode enabled
+2026-05-20 09:54:24 INFO     [--------] trading.di.providers.components — ComponentProvider: algo='default' strategy='ema_crossover' risk='default' exec='paper' instruments=1 equity=10000
+2026-05-20 09:54:24 INFO     [--------] apscheduler.scheduler — Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-20 09:54:24 INFO     [--------] apscheduler.scheduler — Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-20 09:54:24 INFO     [--------] apscheduler.scheduler — Added job "Market Open — start runtime" to job store "default"
+2026-05-20 09:54:24 INFO     [--------] apscheduler.scheduler — Added job "Market Close — stop runtime" to job store "default"
+2026-05-20 09:54:24 INFO     [--------] apscheduler.scheduler — Scheduler started
+2026-05-20 09:54:24 INFO     [--------] trading.engine.scheduler — Scheduler: started
+2026-05-20 09:54:24 INFO     [--------] __main__ — Scheduler started.
+2026-05-20 09:54:24 INFO     [--------] __main__ — Dashboard starting on http://127.0.0.1:8081
+2026-05-20 09:54:24 INFO     [--------] __main__ — Market is currently open — starting runtime immediately.
+2026-05-20 09:54:26 INFO     [--------] trading.api.dashboard.component — DashboardServer: ready on http://127.0.0.1:8081
+2026-05-20 09:54:26 INFO     [--------] trading.engine.runtime — Runtime: starting 3 components
+2026-05-20 09:54:26 INFO     [--------] trading.engine.kite_ingestor — KiteIngestor: WebSocket connected — circuit closed
+2026-05-20 09:54:26 INFO     [--------] trading.engine.kite_ingestor — KiteIngestor: connected and subscribed to 1 tokens
+2026-05-20 09:54:26 INFO     [--------] trading.engine.runtime — Runtime: kite_ingestor is RUNNING
+2026-05-20 09:54:27 INFO     [--------] trading.engine.candle_aggregator — CandleAggregator: warmup produced 30 candles
+2026-05-20 09:54:27 INFO     [--------] trading.engine.candle_aggregator — CandleAggregatorComponent: replaying 30 warmup candles through 1 algo registry(s)
+2026-05-20 09:54:43 INFO     [--------] trading.engine.candle_aggregator — CandleAggregatorComponent: warm-up complete
+2026-05-20 09:54:43 INFO     [--------] trading.engine.runtime — Runtime: candle_aggregator is RUNNING
+2026-05-20 09:54:44 INFO     [--------] trading.engine.heartbeat — HeartbeatMonitor: registered 1 components
+2026-05-20 09:54:44 INFO     [--------] trading.engine.runtime — Runtime: heartbeat_monitor is RUNNING

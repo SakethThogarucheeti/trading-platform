@@ -1,0 +1,72 @@
+{
+  "_comment": "Strategy and feature-engine parameters. Loaded by AlgoSettings and the backtest engine.",
+
+  "strategy": {
+    "id": "ema_crossover",
+    "params": {
+      "fast": 12,
+      "slow": 26,
+      "atr_period": 14,
+      "atr_multiplier": 2.0
+    }
+  },
+
+  "feature_engine": {
+    "id": "technical",
+    "params": {
+      "ema_spans": [12, 26],
+      "atr_period": 14
+    }
+  },
+
+  "strategies": {
+    "ema_crossover": {
+      "params": { "fast": 12, "slow": 26, "atr_period": 14, "atr_multiplier": 2.0 },
+      "feature_engine_params": { "ema_spans": [12, 26], "atr_period": 14 }
+    },
+    "rsi_mean_reversion": {
+      "params": { "rsi_period": 14, "oversold": 30, "overbought": 70, "atr_period": 14, "atr_multiplier": 1.5 },
+      "feature_engine_params": { "ema_spans": [9, 21], "atr_period": 14 }
+    },
+    "vwap_reversion": {
+      "params": { "vwap_band": 1.0, "atr_period": 14, "atr_multiplier": 1.0 },
+      "feature_engine_params": { "ema_spans": [9, 21], "atr_period": 14 }
+    },
+    "opening_range_breakout": {
+      "params": { "orb_bars": 4, "atr_period": 14, "atr_multiplier": 1.5, "interval_minutes": 15 },
+      "feature_engine_params": { "ema_spans": [9, 21], "atr_period": 14 }
+    }
+  },
+
+  "hyperparam_search": {
+    "_comment": "Active strategy for the grid search. Switch strategy_id to run a different strategy.",
+    "strategy_id": "ema_crossover",
+
+    "symbols": ["INFY", "TCS", "RELIANCE", "HDFCBANK", "ICICIBANK"],
+    "interval": "15min",
+    "equity": 10000.0,
+    "months": 1,
+    "end_date": "2026-04-17",
+
+    "grids": {
+      "ema_crossover": {
+        "fast_periods": [5, 9, 12],
+        "slow_periods": [13, 21, 26],
+        "atr_multipliers": [1.0, 1.5, 2.0]
+      },
+      "rsi_mean_reversion": {
+        "oversold_levels": [25, 30, 35],
+        "overbought_levels": [65, 70, 75],
+        "atr_multipliers": [1.0, 1.5, 2.0]
+      },
+      "vwap_reversion": {
+        "vwap_bands": [0.5, 1.0, 1.5, 2.0],
+        "atr_multipliers": [0.5, 1.0, 1.5]
+      },
+      "opening_range_breakout": {
+        "orb_bars": [2, 4, 8],
+        "atr_multipliers": [1.0, 1.5, 2.0]
+      }
+    }
+  }
+}

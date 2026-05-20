@@ -1,0 +1,34 @@
+[project]
+name = "algo-strategy-testing"
+version = "0.1.0"
+description = "Backtesting, Monte Carlo, walk-forward and harness framework for algo-trader"
+requires-python = ">=3.13"
+dependencies = [
+    "trading-platform",
+    "plotly>=5.20",
+    "scipy>=1.13",
+    "scikit-learn>=1.5",
+    "pyyaml>=6.0",
+    "testcontainers[postgres,redis]>=4.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "anyio[trio]>=4.0",
+    "fakeredis>=2.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["strategy-testing"]
+
+[tool.setuptools.packages.find]
+include = ["testing*"]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+trading-platform = { path = "../../..", editable = true }

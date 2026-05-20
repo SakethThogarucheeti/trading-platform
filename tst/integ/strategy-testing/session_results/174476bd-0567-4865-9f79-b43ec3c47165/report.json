@@ -1,0 +1,20 @@
+{
+  "session_id": "174476bd-0567-4865-9f79-b43ec3c47165",
+  "session_type": "backtest",
+  "started_at": "2026-04-18T11:58:40.774709+00:00",
+  "finished_at": "2026-04-18T11:58:42.662277+00:00",
+  "algo_name": "demo",
+  "start": "2024-01-02T09:15:00+00:00",
+  "end": "2024-01-02T18:00:00+00:00",
+  "initial_equity": 100000.0,
+  "final_equity": 100000.0,
+  "sharpe_ratio": 0.0,
+  "max_drawdown": 0.0,
+  "max_drawdown_duration_secs": 0.0,
+  "win_rate": 0.0,
+  "profit_factor": 0.0,
+  "cagr": 0.0,
+  "calmar_ratio": 0.0,
+  "total_trades": 0,
+  "trades": []
+}

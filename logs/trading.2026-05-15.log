@@ -1,0 +1,608 @@
+2026-05-15 09:01:56 INFO     [--------] __main__ — Running Alembic migrations…
+2026-05-15 09:01:57 INFO     [--------] __main__ — Migrations complete.
+2026-05-15 09:01:57 INFO     [--------] trading.di.providers.broker — BrokerProvider: paper trading mode enabled
+2026-05-15 09:01:57 INFO     [--------] trading.di.providers.components — ComponentProvider: algo='default' strategy='ema_crossover' risk='default' exec='paper' instruments=1 equity=10000
+2026-05-15 09:01:57 INFO     [--------] apscheduler.scheduler — Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-15 09:01:57 INFO     [--------] apscheduler.scheduler — Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-15 09:01:57 INFO     [--------] apscheduler.scheduler — Added job "Market Open — start runtime" to job store "default"
+2026-05-15 09:01:57 INFO     [--------] apscheduler.scheduler — Added job "Market Close — stop runtime" to job store "default"
+2026-05-15 09:01:57 INFO     [--------] apscheduler.scheduler — Scheduler started
+2026-05-15 09:01:57 INFO     [--------] trading.engine.scheduler — Scheduler: started
+2026-05-15 09:01:57 INFO     [--------] __main__ — Scheduler started.
+2026-05-15 09:01:57 INFO     [--------] __main__ — Dashboard starting on http://127.0.0.1:8081
+2026-05-15 09:01:57 INFO     [--------] __main__ — Outside market hours — waiting for next 09:15 IST trigger.
+2026-05-15 09:01:57 INFO     [--------] trading.monitoring.dashboard.component — DashboardServer: ready on http://127.0.0.1:8081
+2026-05-15 09:27:16 INFO     [--------] __main__ — Running Alembic migrations…
+2026-05-15 09:27:17 INFO     [--------] __main__ — Migrations complete.
+2026-05-15 09:28:12 INFO     [--------] __main__ — Running Alembic migrations…
+2026-05-15 09:28:13 INFO     [--------] __main__ — Migrations complete.
+2026-05-15 09:28:13 INFO     [--------] trading.di.providers.broker — BrokerProvider: paper trading mode enabled
+2026-05-15 09:28:13 INFO     [--------] trading.di.providers.components — ComponentProvider: algo='default' strategy='ema_crossover' risk='default' exec='paper' instruments=1 equity=10000
+2026-05-15 09:28:13 INFO     [--------] apscheduler.scheduler — Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-15 09:28:13 INFO     [--------] apscheduler.scheduler — Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-15 09:28:13 INFO     [--------] apscheduler.scheduler — Added job "Market Open — start runtime" to job store "default"
+2026-05-15 09:28:13 INFO     [--------] apscheduler.scheduler — Added job "Market Close — stop runtime" to job store "default"
+2026-05-15 09:28:13 INFO     [--------] apscheduler.scheduler — Scheduler started
+2026-05-15 09:28:13 INFO     [--------] trading.engine.scheduler — Scheduler: started
+2026-05-15 09:28:13 INFO     [--------] __main__ — Scheduler started.
+2026-05-15 09:28:13 INFO     [--------] __main__ — Dashboard starting on http://127.0.0.1:8081
+2026-05-15 09:28:13 INFO     [--------] __main__ — Market is currently open — starting runtime immediately.
+2026-05-15 09:28:13 INFO     [--------] trading.monitoring.dashboard.component — DashboardServer: ready on http://127.0.0.1:8081
+2026-05-15 09:28:13 INFO     [--------] trading.engine.runtime — Runtime: starting 6 components
+2026-05-15 09:28:14 INFO     [--------] trading.registry.tick — TickRegistry: WebSocket connected — circuit closed
+2026-05-15 09:28:14 INFO     [--------] trading.engine.kite_ingestor — KiteIngestor: connected and subscribed to 1 tokens
+2026-05-15 09:28:14 INFO     [--------] trading.engine.runtime — Runtime: kite_ingestor is RUNNING
+2026-05-15 09:28:15 INFO     [--------] trading.registry.candle — CandleRegistry: warmup produced 30 candles
+2026-05-15 09:28:15 INFO     [--------] trading.engine.candle_aggregator — CandleAggregator: replaying 30 warmup candles through 1 algo registry(s)
+2026-05-15 09:28:15 INFO     [--------] trading.strategy.ema_crossover — EmaCrossover[INFY]: BUY  fast=1095.4815→1097.9240 slow=1096.1482→1097.1793 stop=6.0129
+2026-05-15 09:28:15 INFO     [--------] trading.registry.algo — AlgoRegistry[default]: signal bb8cfece-adaf-4427-9394-b0c75ed5c057 BUY INFY
+2026-05-15 09:28:15 INFO     [--------] trading.engine.candle_aggregator — CandleAggregator: warm-up complete
+2026-05-15 09:28:15 INFO     [--------] trading.engine.runtime — Runtime: candle_aggregator is RUNNING
+2026-05-15 09:28:15 INFO     [--------] trading.engine.algo_runner — AlgoRunner[default]: ready with 1 instruments
+2026-05-15 09:28:15 INFO     [--------] trading.engine.runtime — Runtime: algo_runner[default] is RUNNING
+2026-05-15 09:28:15 INFO     [--------] trading.risk.base — RiskController: ready (rc_id=default)
+2026-05-15 09:28:15 INFO     [--------] trading.engine.runtime — Runtime: risk_controller is RUNNING
+2026-05-15 09:28:15 INFO     [--------] trading.execution.executor — OrderExecutor: ready (exec_id=paper)
+2026-05-15 09:28:15 INFO     [--------] trading.engine.runtime — Runtime: order_executor[paper] is RUNNING
+2026-05-15 09:28:15 INFO     [--------] trading.engine.heartbeat — HeartbeatMonitor: registered 1 components
+2026-05-15 09:28:15 INFO     [--------] trading.engine.runtime — Runtime: heartbeat_monitor is RUNNING
+2026-05-15 10:30:00 ERROR    [bd8658c0] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2179706501 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 5, 0, tzinfo=datetime.timezone.utc), Decimal('1124.4'), Decimal('1124.8'), Decimal('1123.4'), Decimal('1123.6'), 2179706501)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 10:35:00 ERROR    [a84a37e8] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2391118607 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 5, 5, tzinfo=datetime.timezone.utc), Decimal('1123.4'), Decimal('1123.4'), Decimal('1119.5'), Decimal('1120.0'), 2391118607)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 10:50:00 ERROR    [0fc9fcd9] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2455629845 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 5, 20, tzinfo=datetime.timezone.utc), Decimal('1122.5'), Decimal('1126.0'), Decimal('1122.2'), Decimal('1125.3'), 2455629845)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 10:55:00 ERROR    [0c8c14e0] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2330438047 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 5, 25, tzinfo=datetime.timezone.utc), Decimal('1125.4'), Decimal('1127.0'), Decimal('1125.1'), Decimal('1126.5'), 2330438047)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 11:00:00 ERROR    [2381ef96] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2351950388 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 5, 30, tzinfo=datetime.timezone.utc), Decimal('1126.5'), Decimal('1127.0'), Decimal('1124.6'), Decimal('1124.8'), 2351950388)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 11:05:00 ERROR    [1f9b0c36] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2383010572 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 5, 35, tzinfo=datetime.timezone.utc), Decimal('1124.8'), Decimal('1124.9'), Decimal('1121.9'), Decimal('1122.0'), 2383010572)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 11:10:00 ERROR    [735f5895] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2312302953 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 5, 40, tzinfo=datetime.timezone.utc), Decimal('1122.0'), Decimal('1122.3'), Decimal('1118.9'), Decimal('1119.7'), 2312302953)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 11:15:00 ERROR    [c050aa1b] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2876595269 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 5, 45, tzinfo=datetime.timezone.utc), Decimal('1120.1'), Decimal('1121.4'), Decimal('1118.6'), Decimal('1119.9'), 2876595269)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 11:20:00 ERROR    [882b7b58] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2871649372 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 5, 50, tzinfo=datetime.timezone.utc), Decimal('1119.9'), Decimal('1121.2'), Decimal('1119.1'), Decimal('1121.0'), 2871649372)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 11:25:00 ERROR    [5cce7861] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2699346012 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 5, 55, tzinfo=datetime.timezone.utc), Decimal('1120.7'), Decimal('1121.7'), Decimal('1119.5'), Decimal('1120.4'), 2699346012)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 11:30:00 ERROR    [2d598fbc] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2594597207 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 6, 0, tzinfo=datetime.timezone.utc), Decimal('1120.8'), Decimal('1121.0'), Decimal('1119.6'), Decimal('1120.2'), 2594597207)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 11:35:00 ERROR    [5ac11e64] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2543560764 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 6, 5, tzinfo=datetime.timezone.utc), Decimal('1120.2'), Decimal('1120.2'), Decimal('1118.4'), Decimal('1119.8'), 2543560764)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 11:40:00 ERROR    [e65dc424] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2548651892 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 6, 10, tzinfo=datetime.timezone.utc), Decimal('1119.8'), Decimal('1121.4'), Decimal('1119.7'), Decimal('1120.6'), 2548651892)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 11:45:00 ERROR    [38f2bbab] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2529185450 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 6, 15, tzinfo=datetime.timezone.utc), Decimal('1120.6'), Decimal('1122.0'), Decimal('1119.5'), Decimal('1120.7'), 2529185450)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 11:50:00 ERROR    [e5c098a3] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2661821600 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 6, 20, tzinfo=datetime.timezone.utc), Decimal('1120.7'), Decimal('1122.5'), Decimal('1120.4'), Decimal('1121.1'), 2661821600)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 11:55:00 ERROR    [f3cb29cb] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2783165110 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 6, 25, tzinfo=datetime.timezone.utc), Decimal('1121.1'), Decimal('1121.8'), Decimal('1120.1'), Decimal('1121.5'), 2783165110)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 12:00:01 ERROR    [59016619] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2905301007 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 6, 30, tzinfo=datetime.timezone.utc), Decimal('1121.5'), Decimal('1121.6'), Decimal('1120.0'), Decimal('1121.0'), 2905301007)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 12:05:00 ERROR    [ebbf60d8] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3150220978 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 6, 35, tzinfo=datetime.timezone.utc), Decimal('1121.0'), Decimal('1124.3'), Decimal('1120.6'), Decimal('1123.7'), 3150220978)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 12:10:00 ERROR    [21f3a107] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2842425308 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 6, 40, tzinfo=datetime.timezone.utc), Decimal('1123.7'), Decimal('1124.0'), Decimal('1121.7'), Decimal('1122.0'), 2842425308)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 12:15:00 ERROR    [d4f68fb0] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2220316813 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 6, 45, tzinfo=datetime.timezone.utc), Decimal('1122.0'), Decimal('1122.5'), Decimal('1121.3'), Decimal('1122.0'), 2220316813)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 12:20:00 ERROR    [a447378b] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3245577130 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 6, 50, tzinfo=datetime.timezone.utc), Decimal('1122.0'), Decimal('1122.6'), Decimal('1120.2'), Decimal('1120.6'), 3245577130)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 12:25:00 ERROR    [c38ddb35] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2567795280 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 6, 55, tzinfo=datetime.timezone.utc), Decimal('1120.6'), Decimal('1121.3'), Decimal('1120.2'), Decimal('1120.7'), 2567795280)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 12:30:00 ERROR    [7ff830c7] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3242159072 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 7, 0, tzinfo=datetime.timezone.utc), Decimal('1120.7'), Decimal('1121.4'), Decimal('1119.9'), Decimal('1120.5'), 3242159072)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 12:35:00 ERROR    [77225f34] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2918254867 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 7, 5, tzinfo=datetime.timezone.utc), Decimal('1120.5'), Decimal('1122.8'), Decimal('1120.3'), Decimal('1121.8'), 2918254867)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 12:40:00 ERROR    [f33a5f2f] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 2476067864 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 7, 10, tzinfo=datetime.timezone.utc), Decimal('1121.8'), Decimal('1122.5'), Decimal('1121.1'), Decimal('1122.1'), 2476067864)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 12:45:00 ERROR    [ea0e171e] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3383632096 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 7, 15, tzinfo=datetime.timezone.utc), Decimal('1122.0'), Decimal('1125.0'), Decimal('1121.9'), Decimal('1123.4'), 3383632096)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 12:50:00 ERROR    [4e936fef] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3718736520 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 7, 20, tzinfo=datetime.timezone.utc), Decimal('1123.4'), Decimal('1124.1'), Decimal('1122.0'), Decimal('1123.2'), 3718736520)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 12:55:00 ERROR    [dae0e3f7] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3722249360 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 7, 25, tzinfo=datetime.timezone.utc), Decimal('1123.6'), Decimal('1124.4'), Decimal('1122.8'), Decimal('1123.8'), 3722249360)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 13:00:00 ERROR    [1750b631] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3870387714 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 7, 30, tzinfo=datetime.timezone.utc), Decimal('1123.8'), Decimal('1124.6'), Decimal('1122.6'), Decimal('1123.9'), 3870387714)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 13:05:00 ERROR    [d73dd755] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3984113833 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 7, 35, tzinfo=datetime.timezone.utc), Decimal('1124.0'), Decimal('1124.6'), Decimal('1122.4'), Decimal('1123.0'), 3984113833)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 13:10:00 ERROR    [26164798] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3767399941 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 7, 40, tzinfo=datetime.timezone.utc), Decimal('1123.0'), Decimal('1124.6'), Decimal('1123.0'), Decimal('1124.2'), 3767399941)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 13:15:00 ERROR    [301351a4] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 4208538241 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 7, 45, tzinfo=datetime.timezone.utc), Decimal('1124.4'), Decimal('1126.8'), Decimal('1124.1'), Decimal('1126.6'), 4208538241)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 13:20:01 ERROR    [62ed40b2] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3949943694 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 7, 50, tzinfo=datetime.timezone.utc), Decimal('1126.8'), Decimal('1127.4'), Decimal('1126.2'), Decimal('1126.7'), 3949943694)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 13:25:00 ERROR    [4e935720] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 4021525259 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 7, 55, tzinfo=datetime.timezone.utc), Decimal('1126.5'), Decimal('1126.7'), Decimal('1124.1'), Decimal('1125.4'), 4021525259)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 13:30:00 ERROR    [fbfe67b7] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3894413726 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 8, 0, tzinfo=datetime.timezone.utc), Decimal('1125.0'), Decimal('1126.7'), Decimal('1124.4'), Decimal('1125.2'), 3894413726)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 13:35:00 ERROR    [2ab5c8cb] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3728610012 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 8, 5, tzinfo=datetime.timezone.utc), Decimal('1124.9'), Decimal('1125.2'), Decimal('1121.3'), Decimal('1121.7'), 3728610012)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 13:40:01 ERROR    [af46c564] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 4333918094 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 8, 10, tzinfo=datetime.timezone.utc), Decimal('1121.7'), Decimal('1122.7'), Decimal('1120.0'), Decimal('1120.6'), 4333918094)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 13:45:00 ERROR    [200a805c] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 4288460756 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 8, 15, tzinfo=datetime.timezone.utc), Decimal('1120.6'), Decimal('1121.0'), Decimal('1118.9'), Decimal('1118.9'), 4288460756)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 13:50:00 ERROR    [6ff679a0] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 4796232152 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 8, 20, tzinfo=datetime.timezone.utc), Decimal('1119.0'), Decimal('1119.5'), Decimal('1116.6'), Decimal('1117.1'), 4796232152)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 13:55:00 ERROR    [11ab6986] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 4826696998 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 8, 25, tzinfo=datetime.timezone.utc), Decimal('1117.0'), Decimal('1118.0'), Decimal('1116.3'), Decimal('1117.0'), 4826696998)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 14:00:00 ERROR    [4a6c16f7] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 4619668553 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 8, 30, tzinfo=datetime.timezone.utc), Decimal('1117.0'), Decimal('1117.4'), Decimal('1115.5'), Decimal('1115.6'), 4619668553)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 14:05:00 ERROR    [fa3e94fc] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 5202233966 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 8, 35, tzinfo=datetime.timezone.utc), Decimal('1115.7'), Decimal('1116.0'), Decimal('1114.5'), Decimal('1114.5'), 5202233966)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 14:10:00 INFO     [e44234ab] trading.strategy.ema_crossover — EmaCrossover[INFY]: SELL fast=1120.1975→1119.5659 slow=1120.1385→1119.7824 stop=3.2417
+2026-05-15 14:10:00 INFO     [e44234ab] trading.registry.algo — AlgoRegistry[default]: signal a17d04d6-6011-4bed-bdf6-28ea959f90ac SELL INFY
+2026-05-15 14:10:00 ERROR    [e44234ab] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 4848462988 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 8, 40, tzinfo=datetime.timezone.utc), Decimal('1114.5'), Decimal('1115.5'), Decimal('1114.1'), Decimal('1114.7'), 4848462988)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 14:10:00 INFO     [e44234ab] trading.registry.risk — RiskRegistry: ACCEPTED signal=a17d04d6-6011-4bed-bdf6-28ea959f90ac symbol=INFY side=SELL qty=30
+2026-05-15 14:10:00 INFO     [e44234ab] trading.broker.paper_broker — PaperBroker: SIMULATED SELL INFY x30 MARKET → PAPER_AABFAAF51339
+2026-05-15 14:10:00 INFO     [e44234ab] trading.registry.exec — ExecRegistry: order PAPER_AABFAAF51339 status=PLACED
+2026-05-15 14:10:00 INFO     [e44234ab] trading.registry.exec — ExecRegistry: fill PAPER_AABFAAF51339 avg=1114.34 qty=30
+2026-05-15 14:15:00 ERROR    [3a9b5b14] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 4592680928 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 8, 45, tzinfo=datetime.timezone.utc), Decimal('1114.9'), Decimal('1115.8'), Decimal('1114.2'), Decimal('1115.2'), 4592680928)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 14:20:00 ERROR    [6a6b2b81] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 4784056372 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 8, 50, tzinfo=datetime.timezone.utc), Decimal('1115.2'), Decimal('1115.3'), Decimal('1113.5'), Decimal('1114.1'), 4784056372)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 14:25:00 ERROR    [ba25adbb] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 4168232733 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 8, 55, tzinfo=datetime.timezone.utc), Decimal('1114.1'), Decimal('1114.3'), Decimal('1113.1'), Decimal('1113.5'), 4168232733)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 14:30:00 ERROR    [c7010864] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 5042665443 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 9, 0, tzinfo=datetime.timezone.utc), Decimal('1113.6'), Decimal('1115.8'), Decimal('1112.8'), Decimal('1115.8'), 5042665443)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 14:35:00 ERROR    [335be654] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3635100709 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 9, 5, tzinfo=datetime.timezone.utc), Decimal('1115.4'), Decimal('1117.4'), Decimal('1114.7'), Decimal('1117.2'), 3635100709)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 14:40:00 ERROR    [3cfd2440] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 4402912625 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 9, 10, tzinfo=datetime.timezone.utc), Decimal('1117.0'), Decimal('1118.0'), Decimal('1115.7'), Decimal('1117.5'), 4402912625)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 14:45:03 ERROR    [23f8cb0c] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3532246806 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 9, 15, tzinfo=datetime.timezone.utc), Decimal('1117.5'), Decimal('1118.4'), Decimal('1117.3'), Decimal('1118.2'), 3532246806)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 14:50:00 ERROR    [aaf8bb2a] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 3779441485 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 9, 20, tzinfo=datetime.timezone.utc), Decimal('1118.0'), Decimal('1118.3'), Decimal('1115.0'), Decimal('1115.2'), 3779441485)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 14:55:00 ERROR    [84b86e20] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 5531341824 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 9, 25, tzinfo=datetime.timezone.utc), Decimal('1115.0'), Decimal('1117.6'), Decimal('1114.9'), Decimal('1117.3'), 5531341824)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 15:00:00 ERROR    [b20dda8d] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 5208897561 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 9, 30, tzinfo=datetime.timezone.utc), Decimal('1117.3'), Decimal('1118.9'), Decimal('1116.7'), Decimal('1118.9'), 5208897561)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 15:05:00 ERROR    [f2a363b6] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 5835739570 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 9, 35, tzinfo=datetime.timezone.utc), Decimal('1118.6'), Decimal('1120.3'), Decimal('1114.7'), Decimal('1118.9'), 5835739570)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 15:10:00 ERROR    [344e1ba4] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 6278469423 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 9, 40, tzinfo=datetime.timezone.utc), Decimal('1119.2'), Decimal('1119.9'), Decimal('1117.4'), Decimal('1118.6'), 6278469423)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 15:15:00 ERROR    [6a071ffb] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 7281825319 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 9, 45, tzinfo=datetime.timezone.utc), Decimal('1118.9'), Decimal('1122.9'), Decimal('1118.6'), Decimal('1119.9'), 7281825319)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 15:20:00 ERROR    [1a243f77] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 8345491408 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 9, 50, tzinfo=datetime.timezone.utc), Decimal('1119.9'), Decimal('1119.9'), Decimal('1115.3'), Decimal('1115.7'), 8345491408)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 15:25:00 ERROR    [e4507416] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 8584371039 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 9, 55, tzinfo=datetime.timezone.utc), Decimal('1116.2'), Decimal('1119.9'), Decimal('1116.0'), Decimal('1117.7'), 8584371039)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 15:30:00 INFO     [--------] apscheduler.executors.default — Running job "Market Close — stop runtime (trigger: cron[day_of_week='mon-fri', hour='15', minute='30'], next run at: 2026-05-18 15:30:00 IST)" (scheduled at 2026-05-15 15:30:00+05:30)
+2026-05-15 15:30:00 INFO     [--------] trading.engine.runtime — Runtime: stop requested
+2026-05-15 15:30:00 INFO     [--------] trading.engine.runtime — Runtime: shutting down components
+2026-05-15 15:30:00 INFO     [--------] apscheduler.executors.default — Job "Market Close — stop runtime (trigger: cron[day_of_week='mon-fri', hour='15', minute='30'], next run at: 2026-05-18 15:30:00 IST)" executed successfully
+2026-05-15 15:30:00 INFO     [--------] trading.engine.runtime — Runtime: all components stopped
+2026-05-15 15:30:00 ERROR    [d225f859] trading.registry.candle — CandleRegistry: candle persist/log failed for INFY 5min — DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $8: 9595385369 (value out of int32 range)
+[SQL: INSERT INTO candles (symbol, interval, ts, open, high, low, close, volume) VALUES ($1::VARCHAR, $2::VARCHAR, $3::TIMESTAMP WITH TIME ZONE, $4::NUMERIC(14, 4), $5::NUMERIC(14, 4), $6::NUMERIC(14, 4), $7::NUMERIC(14, 4), $8::INTEGER) ON CONFLICT ON CONSTRAINT uq_candle_symbol_interval_ts DO NOTHING]
+[parameters: ('INFY', '5min', datetime.datetime(2026, 5, 15, 10, 0, tzinfo=datetime.timezone.utc), Decimal('1117.6'), Decimal('1121.0'), Decimal('1115.0'), Decimal('1116.0'), 9595385369)]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+2026-05-15 15:30:00 ERROR    [--------] kiteconnect.ticker — Connection closed: None - None
+2026-05-15 15:30:00 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=None reason=None
+2026-05-15 15:30:00 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-15 15:30:30 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:15:00 INFO     [--------] apscheduler.executors.default — Running job "Market Open — start runtime (trigger: cron[day_of_week='mon-fri', hour='9', minute='15'], next run at: 2026-05-19 09:15:00 IST)" (scheduled at 2026-05-18 09:15:00+05:30)
+2026-05-18 09:15:00 INFO     [--------] trading.engine.runtime — Runtime: starting 6 components
+2026-05-18 09:15:00 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:15:00 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:15:00 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:15:00 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:15:03 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:15:03 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:15:03 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:15:03 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:15:10 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:15:10 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:15:10 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:15:10 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:15:28 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:15:28 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:15:28 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:15:28 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:15:30 INFO     [--------] trading.engine.runtime — Runtime: all components stopped
+2026-05-18 09:15:30 ERROR    [--------] apscheduler.executors.default — Job "Market Open — start runtime (trigger: cron[day_of_week='mon-fri', hour='9', minute='15'], next run at: 2026-05-19 09:15:00 IST)" raised an exception
+  + Exception Group Traceback (most recent call last):
+  |   File "C:\Users\saket\workspace\algo-trader\trading-platform\.venv\Lib\site-packages\apscheduler\executors\base.py", line 181, in run_coroutine_job
+  |     retval = await job.func(*job.args, **job.kwargs)
+  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "C:\Users\saket\workspace\algo-trader\trading-platform\src\trading\engine\runtime.py", line 70, in start
+  |     async with create_task_group() as tg:
+  |                ~~~~~~~~~~~~~~~~~^^
+  |   File "C:\Users\saket\workspace\algo-trader\trading-platform\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 783, in __aexit__
+  |     raise BaseExceptionGroup(
+  |         "unhandled errors in a TaskGroup", self._exceptions
+  |     ) from None
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "C:\Users\saket\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none\Lib\asyncio\tasks.py", line 507, in wait_for
+    |     return await fut
+    |            ^^^^^^^^^
+    |   File "C:\Users\saket\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none\Lib\asyncio\locks.py", line 213, in wait
+    |     await fut
+    | asyncio.exceptions.CancelledError
+    | 
+    | The above exception was the direct cause of the following exception:
+    | 
+    | Traceback (most recent call last):
+    |   File "C:\Users\saket\workspace\algo-trader\trading-platform\src\trading\engine\kite_ingestor.py", line 71, in _setup
+    |     try:
+    |     
+    |   File "C:\Users\saket\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none\Lib\asyncio\tasks.py", line 506, in wait_for
+    |     async with timeouts.timeout(timeout):
+    |                ~~~~~~~~~~~~~~~~^^^^^^^^^
+    |   File "C:\Users\saket\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none\Lib\asyncio\timeouts.py", line 116, in __aexit__
+    |     raise TimeoutError from exc_val
+    | TimeoutError
+    | 
+    | The above exception was the direct cause of the following exception:
+    | 
+    | Traceback (most recent call last):
+    |   File "C:\Users\saket\workspace\algo-trader\trading-platform\src\trading\engine\runtime.py", line 72, in start
+    |     await tg.start(component.start)
+    |   File "C:\Users\saket\workspace\algo-trader\trading-platform\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 917, in start
+    |     return await future
+    |            ^^^^^^^^^^^^
+    |   File "C:\Users\saket\workspace\algo-trader\trading-platform\src\trading\engine\component.py", line 56, in start
+    |     await self._setup()
+    |   File "C:\Users\saket\workspace\algo-trader\trading-platform\src\trading\engine\kite_ingestor.py", line 73, in _setup
+    |     except TimeoutError as err:
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |         raise RuntimeError(
+    |         ^^^^^^^^^^^^^^^^^^^
+    |             f"KiteIngestor: WebSocket did not connect within {self._connect_timeout_secs}s"
+    |             ^^^^^^
+    | RuntimeError: KiteIngestor: WebSocket did not connect within 30.0s
+    +------------------------------------
+2026-05-18 09:15:30 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:16:17 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:16:17 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:16:17 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:16:17 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:16:47 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:17:20 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:17:20 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:17:20 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:17:20 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:17:50 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:18:16 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:18:16 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:18:16 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:18:16 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:18:46 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:19:10 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:19:10 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:19:10 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:19:10 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:19:40 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:20:21 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:20:21 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:20:21 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:20:21 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:20:51 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:21:20 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:21:20 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:21:20 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:21:20 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:21:50 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:22:30 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:22:30 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:22:30 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:22:30 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:23:00 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:23:32 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:23:32 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:23:32 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:23:32 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:24:02 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:24:29 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:24:29 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:24:29 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:24:29 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:24:59 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:25:24 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:25:24 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:25:24 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:25:24 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:25:54 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:26:27 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:26:27 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:26:27 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:26:27 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:26:57 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:27:39 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:27:39 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:27:39 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:27:39 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:28:09 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:28:30 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:28:30 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:28:30 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:28:30 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:29:00 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:29:34 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:29:34 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:29:34 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:29:34 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:30:04 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:30:36 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:30:36 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:30:36 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:30:36 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:31:06 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:31:34 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:31:34 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:31:34 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:31:34 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:32:04 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:32:44 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:32:44 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:32:44 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:32:44 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:33:15 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:33:40 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:33:40 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:33:40 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:33:40 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:34:10 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:34:34 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:34:34 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:34:34 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:34:34 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:35:04 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:35:25 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:35:25 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:35:25 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:35:25 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:35:55 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:36:28 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:36:28 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:36:28 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:36:28 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:36:58 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:37:25 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:37:25 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:37:25 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:37:25 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:37:55 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:38:19 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:38:19 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:38:19 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:38:19 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:38:49 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:39:31 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:39:31 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:39:31 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:39:31 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:40:01 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:40:34 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:40:34 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:40:34 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:40:34 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:41:04 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:41:36 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:41:36 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:41:36 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:41:36 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:42:06 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:42:41 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:42:41 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:42:41 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:42:41 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:43:11 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:43:44 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:43:44 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:43:44 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:43:44 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:44:14 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:44:44 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:44:44 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:44:44 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:44:44 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:45:14 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:45:22 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:45:22 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:45:22 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:45:22 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:45:52 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:46:21 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:46:21 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:46:21 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:46:21 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:46:51 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:47:27 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:47:27 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:47:27 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:47:27 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:47:57 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:48:40 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:48:40 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:48:40 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:48:40 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:49:10 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:49:46 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:49:46 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:49:46 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:49:46 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:50:16 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:50:35 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:50:35 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:50:35 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:50:35 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:51:05 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:51:23 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:51:23 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:51:23 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:51:23 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:51:53 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:52:20 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:52:20 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:52:20 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:52:20 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:52:50 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:53:19 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:53:19 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:53:19 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:53:19 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:53:49 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:54:13 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:54:13 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:54:13 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:54:13 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:54:43 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:55:23 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:55:23 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:55:23 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:55:23 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:55:53 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:56:22 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:56:22 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:56:22 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:56:22 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:56:52 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:57:26 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:57:26 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:57:26 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:57:26 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:57:56 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:58:43 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:58:43 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:58:43 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:58:43 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 09:59:13 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 09:59:49 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:59:49 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 09:59:49 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 09:59:49 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 10:00:19 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 10:01:01 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 10:01:01 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 10:01:01 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 10:01:01 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 10:01:31 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 10:01:59 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 10:01:59 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 10:01:59 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 10:01:59 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 10:02:29 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
+2026-05-18 10:03:00 ERROR    [--------] kiteconnect.ticker — Connection error: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 10:03:00 ERROR    [--------] kiteconnect.ticker — Connection closed: 1006 - connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))
+2026-05-18 10:03:00 WARNING  [--------] trading.engine.kite_ingestor — KiteIngestor: disconnected code=1006 reason='connection was closed uncleanly (WebSocket connection upgrade failed (403 - Forbidden))'
+2026-05-18 10:03:00 WARNING  [--------] trading.registry.tick — TickRegistry: WebSocket disconnected — starting circuit timer
+2026-05-18 10:03:30 ERROR    [--------] trading.registry.tick — TickRegistry: circuit OPEN after 30s disconnect
