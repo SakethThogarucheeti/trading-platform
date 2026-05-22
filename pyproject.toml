@@ -62,7 +62,7 @@ report = "trading.scripts.report:main"
 package = true
 
 [tool.uv.sources]
-quantindicators = { path = "../quantindicators", editable = true }
+quantindicators = { git = "https://github.com/SakethThogarucheeti/quantindicators.git" }
 
 
 [tool.ruff]

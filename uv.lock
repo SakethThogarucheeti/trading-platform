@@ -1213,7 +1213,7 @@ wheels = [
 [[package]]
 name = "quantindicators"
 version = "0.1.0"
-source = { editable = "../quantindicators" }
+source = { git = "https://github.com/SakethThogarucheeti/quantindicators.git#9bce58dec40d8b0278fb1910ede1af276b50c5ed" }
 dependencies = [
     { name = "numpy" },
     { name = "pydantic" },
@@ -1222,22 +1222,6 @@ dependencies = [
 [package.optional-dependencies]
 scipy = [
     { name = "scipy" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "numpy", specifier = ">=2.2" },
-    { name = "pydantic", specifier = ">=2.0" },
-    { name = "scipy", marker = "extra == 'scipy'", specifier = ">=1.13" },
-]
-provides-extras = ["scipy"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "anyio", extras = ["trio"], specifier = ">=4.0" },
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-asyncio", specifier = ">=0.23" },
-    { name = "scipy", specifier = ">=1.13" },
 ]
 
 [[package]]
@@ -1531,7 +1515,7 @@ requires-dist = [
     { name = "pyright", specifier = ">=1.1.408" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "pytz", specifier = ">=2025.2" },
-    { name = "quantindicators", extras = ["scipy"], editable = "../quantindicators" },
+    { name = "quantindicators", extras = ["scipy"], git = "https://github.com/SakethThogarucheeti/quantindicators.git" },
     { name = "redis", extras = ["hiredis"], specifier = ">=5.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "tenacity", specifier = ">=9.1.4" },
