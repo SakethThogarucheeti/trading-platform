@@ -1,10 +1,5 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine

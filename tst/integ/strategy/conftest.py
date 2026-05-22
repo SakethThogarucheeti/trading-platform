@@ -1,12 +1,11 @@
 """
-Root conftest.py for strategy-testing.
+Root conftest.py for strategy integration tests.
 
-Adds the strategy-testing package root to sys.path so that both the
-``testing`` library and ``strategy-testing`` tests can import each other
-without installing the package first.
+Adds the strategy/testing library to sys.path so that `import testing`
+resolves without installing the package first.
 
-Provides a session-scoped Postgres fixture (via testcontainers) for tests
-that run a full BacktestSession.
+Provides a session-scoped Postgres fixture for tests that run a full
+BacktestSession.
 """
 
 from __future__ import annotations
@@ -20,13 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from trading.core.database import init_db
 
-# Add strategy-testing/ to path so `import testing` resolves
+# Add strategy/testing/ to path so `import testing` resolves
 sys.path.insert(0, str(Path(__file__).parent))
-
-
-# ---------------------------------------------------------------------------
-# Testcontainers — real Postgres, scope=session
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="session")
@@ -36,11 +30,6 @@ def pg_container():
 
     with PostgresContainer("postgres:16-alpine") as pg:
         yield pg
-
-
-# ---------------------------------------------------------------------------
-# Per-test fixtures derived from the containers
-# ---------------------------------------------------------------------------
 
 
 @pytest_asyncio.fixture
