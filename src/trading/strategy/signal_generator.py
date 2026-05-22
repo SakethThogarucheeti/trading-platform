@@ -162,7 +162,7 @@ class SignalGenerator(AbstractRegistry):
         if signal is None:
             return []
 
-        signal_event = SignalEvent.from_signal(signal, candle.tick_log_id)
+        signal_event = SignalEvent.from_signal(signal, candle.tick_log_id, algo_name=self._config.algo_name)
 
         fire(self._log_signal(signal_event, self._config.algo_name))
 

@@ -52,14 +52,18 @@ class HeartbeatMonitor(Component):
     # ------------------------------------------------------------------
 
     async def _setup(self) -> None:
-        """Register monitored component names, clearing any stale rows from prior runs."""
+        """Clear stale heartbeat rows from prior runs, then seed monitored component rows."""
         async with self._session_factory() as session:
             async with session.begin():
-                # Delete heartbeat rows not in the current monitored set so old
-                # component names from a previous process don't trigger false alerts.
-                await session.execute(
-                    delete(Heartbeat).where(Heartbeat.module.not_in(self._component_names))
-                )
+                if self._component_names:
+                    # Keep only the rows for monitored components; delete everything else.
+                    await session.execute(
+                        delete(Heartbeat).where(Heartbeat.module.not_in(self._component_names))
+                    )
+                else:
+                    # No external components monitored — wipe all rows so stale entries
+                    # from previous process runs don't show up in the health API.
+                    await session.execute(delete(Heartbeat))
         for name in self._component_names:
             await self._heartbeat.update_heartbeat(name)
         logger.info("HeartbeatMonitor: registered %d components", len(self._component_names))
