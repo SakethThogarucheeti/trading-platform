@@ -40,12 +40,14 @@ class Scheduler:
         on_market_close: Any | None = None,  # async callable
         on_eod: Any | None = None,  # async callable
         on_sync: Any | None = None,  # async callable
+        on_position_reset: Any | None = None,  # async callable — paper EOD square-off
     ) -> None:
         self._settings = settings
         self._on_market_open = on_market_open
         self._on_market_close = on_market_close
         self._on_eod = on_eod
         self._on_sync = on_sync
+        self._on_position_reset = on_position_reset
         self._scheduler: AsyncIOScheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
         self._register_jobs()
 
@@ -108,6 +110,17 @@ class Scheduler:
                 minute=0,
                 id="instrument_sync",
                 name="Weekly Instrument Sync",
+            )
+
+        if self._on_position_reset:
+            self._scheduler.add_job(
+                self._on_position_reset,
+                trigger="cron",
+                day_of_week="mon-fri",
+                hour=15,
+                minute=29,
+                id="position_reset",
+                name="EOD Position Reset — square off paper positions",
             )
 
     def get_job_ids(self) -> list[str]:

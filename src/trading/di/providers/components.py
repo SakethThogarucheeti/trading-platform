@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from trading.broker.base.broker import Broker
 from trading.broker.base.broker_stream import BrokerStream
 from trading.broker.paper_broker import AbstractPriceStore
+from trading.broker.zerodha.kite_client import KiteClient
 from trading.config.settings import AlgoSettings, Settings
 from trading.core.pipeline import AlgoPipeline, TickPipeline
 from trading.di.providers.strategy import make_strategy
@@ -16,6 +17,7 @@ from trading.engine.heartbeat import HeartbeatMonitor
 from trading.api.dashboard.component import DashboardServer
 from trading.engine.kite_ingestor import KiteIngestor
 from trading.engine.runtime import AbstractRuntime, Runtime
+from trading.engine.tick_publisher import TickPublisher
 from trading.engine.scheduler import Scheduler
 from quantindicators.polars_store import PolarsStore
 from trading.strategy.signal_generator import AlgoInstance, AlgoRunConfig, SignalGenerator
@@ -35,6 +37,10 @@ logger = logging.getLogger(__name__)
 
 class ComponentProvider(Provider):
     scope = Scope.APP
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._kite_ingestor: KiteIngestor | None = None
 
     @provide
     async def tick_registry(
@@ -99,7 +105,7 @@ class ComponentProvider(Provider):
         return HeartbeatMonitor(
             heartbeat,
             sf,
-            component_names=["heartbeat_monitor"],
+            component_names=[],
             beat_interval_secs=settings.heartbeat_interval_secs,
             timeout_secs=settings.heartbeat_timeout_secs,
             alerter=_alert,
@@ -120,6 +126,7 @@ class ComponentProvider(Provider):
         price_store: AbstractPriceStore,
         settings: Settings,
         sf: async_sessionmaker[AsyncSession],
+        redis: object,
     ) -> AbstractRuntime:
         instruments = await self._load_instruments(sf)
         instrument_type_map = {r.symbol: r.instrument_type for r in instruments}
@@ -128,12 +135,16 @@ class ComponentProvider(Provider):
         paper_price_store = price_store if settings.paper_trading else None
         polars_store = PolarsStore()
 
+        tick_publisher = TickPublisher(redis) if redis is not None else None
+
         ingestor = KiteIngestor(
             stream=stream,
             tick_registry=tick_registry,
             price_store=paper_price_store,
             connect_timeout_secs=settings.ws_connect_timeout_secs,
+            tick_publisher=tick_publisher,
         )
+        self._kite_ingestor = ingestor
         candle_aggregator = CandleAggregatorComponent(candle_registry)
 
         for algo in algo_configs:
@@ -299,6 +310,7 @@ class ComponentProvider(Provider):
         self,
         sf: async_sessionmaker[AsyncSession],
         settings: Settings,
+        client: KiteClient,
     ) -> DashboardServer | None:
         if not settings.dashboard_enabled:
             return None
@@ -309,12 +321,66 @@ class ComponentProvider(Provider):
             host=settings.dashboard_host,
             port=settings.dashboard_port,
             candle_intervals=settings.candle_intervals,
+            zerodha_api_key=settings.zerodha_api_key,
+            zerodha_api_secret=settings.zerodha_api_secret,
+            token_secret_key=settings.token_secret_key,
+            kite_client=client,
+            kite_ingestor=self._kite_ingestor,
         )
 
     @provide
-    def scheduler(self, settings: Settings, runtime: AbstractRuntime) -> Scheduler:
+    def scheduler(
+        self,
+        settings: Settings,
+        runtime: AbstractRuntime,
+        trading: TradingStore,
+        price_store: AbstractPriceStore,
+    ) -> Scheduler:
+        on_position_reset = None
+        if settings.paper_trading:
+            from datetime import UTC, datetime
+
+            from sqlalchemy import select
+
+            from trading.core.models import Position
+            from trading.core.schemas import FillEvent, Side
+
+            async def eod_square_off() -> None:
+                from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+                sf: async_sessionmaker[AsyncSession] = trading._sf  # type: ignore[attr-defined]
+                async with sf() as session:
+                    result = await session.execute(select(Position).where(Position.net_qty != 0))
+                    open_positions = result.scalars().all()
+
+                if not open_positions:
+                    return
+
+                for pos in open_positions:
+                    raw_price = price_store.get(pos.symbol)
+                    last_price = float(raw_price) if raw_price is not None else float(pos.avg_price)
+                    side = Side.SELL if pos.net_qty > 0 else Side.BUY
+                    qty = abs(pos.net_qty)
+                    fill = FillEvent(
+                        kite_order_id=f"EOD_{pos.symbol}_{datetime.now(UTC).date().isoformat()}",
+                        avg_price=last_price,
+                        filled_qty=qty,
+                        timestamp=datetime.now(UTC),
+                    )
+                    await trading.update_position(fill, side, pos.symbol, pos.instrument_type)
+                    logger.info(
+                        "EOD square-off: %s %s x%d @ %.2f",
+                        side.value,
+                        pos.symbol,
+                        qty,
+                        last_price,
+                    )
+
+            on_position_reset = eod_square_off
+
         return Scheduler(
             settings,
             on_market_open=runtime.start,
             on_market_close=runtime.stop,
+            on_position_reset=on_position_reset,
         )
