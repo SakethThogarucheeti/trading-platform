@@ -9,7 +9,7 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.core.models import Heartbeat
-from trading.engine.component import Component
+from trading.core.lifecycle.component import Component
 from trading.storage.stores.heartbeat import AbstractHeartbeatStore
 
 logger = logging.getLogger(__name__)

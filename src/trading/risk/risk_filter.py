@@ -14,7 +14,7 @@ from trading.core.schemas import (
     ValidatedOrderEvent,
 )
 from trading.core.tasks import fire
-from trading.engine.tick_ingestor import CircuitBreaker
+from trading.tick_ingest.tick_ingestor import CircuitBreaker
 from trading.risk.sizer import calculate_quantity
 from trading.storage.stores.audit import AbstractAuditStore, AuditContext
 from trading.storage.stores.trading import AbstractTradingStore

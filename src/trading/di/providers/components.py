@@ -12,18 +12,18 @@ from trading.broker.zerodha.kite_client import KiteClient
 from trading.config.settings import AlgoSettings, Settings
 from trading.core.pipeline import AlgoPipeline, TickPipeline
 from trading.di.providers.strategy import make_strategy
-from trading.engine.candle_aggregator import CandleAggregator, CandleAggregatorComponent, CandleConfig
-from trading.engine.heartbeat import HeartbeatMonitor
+from trading.candles.candle_aggregator import CandleAggregator, CandleAggregatorComponent, CandleConfig
+from trading.monitoring.heartbeat import HeartbeatMonitor
 from trading.api.dashboard.component import DashboardServer
-from trading.engine.kite_ingestor import KiteIngestor
-from trading.engine.runtime import AbstractRuntime, Runtime
-from trading.engine.tick_publisher import TickPublisher
-from trading.engine.scheduler import Scheduler
+from trading.tick_ingest.kite_ingestor import KiteIngestor
+from trading.core.lifecycle.runtime import AbstractRuntime, Runtime
+from trading.tick_ingest.tick_publisher import TickPublisher
+from trading.monitoring.scheduler import Scheduler
 from quantindicators.polars_store import PolarsStore
 from trading.strategy.signal_generator import AlgoInstance, AlgoRunConfig, SignalGenerator
 from trading.execution.order_executor import ExecConfig, OrderExecutor
 from trading.risk.risk_filter import RiskConfig, RiskFilter
-from trading.engine.tick_ingestor import TickConfig, TickIngestor
+from trading.tick_ingest.tick_ingestor import TickConfig, TickIngestor
 from trading.storage.stores.audit import AuditStore
 from trading.storage.stores.candle import CandleDataStore
 from trading.storage.stores.chart import ChartStore

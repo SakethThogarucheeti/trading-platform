@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 
 from anyio import CancelScope, create_task_group, sleep_forever
 
-from trading.engine.component import Component
+from trading.core.lifecycle.component import Component
 
 logger = logging.getLogger(__name__)
 

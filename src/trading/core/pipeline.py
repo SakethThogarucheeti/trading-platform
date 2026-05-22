@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from trading.core.schemas import SignalEvent, TickEvent
-from trading.engine.candle_aggregator import CandleAggregator
+from trading.candles.candle_aggregator import CandleAggregator
 from trading.strategy.signal_generator import SignalGenerator
 from trading.execution.order_executor import OrderExecutor
 from trading.risk.risk_filter import RiskFilter

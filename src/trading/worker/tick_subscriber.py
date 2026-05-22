@@ -7,8 +7,8 @@ from anyio import create_task_group
 from trading.broker.paper_broker import AbstractPriceStore
 from trading.core.schemas import TickEvent
 from trading.core.types import OnTickCallback
-from trading.engine.circuit_breaker_redis import RedisCircuitBreaker
-from trading.engine.component import Component
+from trading.worker.circuit_breaker_redis import RedisCircuitBreaker
+from trading.core.lifecycle.component import Component
 
 logger = logging.getLogger(__name__)
 

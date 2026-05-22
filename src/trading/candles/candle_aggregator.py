@@ -13,8 +13,8 @@ from trading.core.models import Instrument
 from trading.core.schemas import CandleEvent, InstrumentType, TickEvent
 from trading.core.tasks import fire
 from quantindicators.types import CandleRow
-from trading.engine.bar_accumulator import INTERVAL_MINUTES, AbstractBarAccumulator, BarAccumulator, SymbolConfig
-from trading.engine.component import Component
+from trading.candles.bar_accumulator import INTERVAL_MINUTES, AbstractBarAccumulator, BarAccumulator, SymbolConfig
+from trading.core.lifecycle.component import Component
 from trading.strategy.signal_generator import SignalGenerator
 from trading.storage.stores.audit import AbstractAuditStore, AuditContext
 from trading.storage.stores.candle import AbstractCandleDataStore

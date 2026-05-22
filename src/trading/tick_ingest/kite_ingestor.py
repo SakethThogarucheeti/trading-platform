@@ -13,9 +13,9 @@ from trading.broker.types import Tick
 from trading.core.context import thread_id
 from trading.core.schemas import TickEvent
 from trading.core.types import OnTickCallback
-from trading.engine.component import Component
-from trading.engine.tick_ingestor import TickIngestor
-from trading.engine.tick_publisher import TickPublisher
+from trading.core.lifecycle.component import Component
+from trading.tick_ingest.tick_ingestor import TickIngestor
+from trading.tick_ingest.tick_publisher import TickPublisher
 
 logger = logging.getLogger(__name__)
 

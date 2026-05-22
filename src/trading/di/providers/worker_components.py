@@ -11,13 +11,13 @@ from trading.config.settings import AlgoSettings, Settings
 from trading.core.models import Instrument
 from trading.core.pipeline import AlgoPipeline, TickPipeline
 from trading.di.providers.strategy import make_strategy
-from trading.engine.candle_aggregator import CandleAggregator, CandleAggregatorComponent, CandleConfig
-from trading.engine.circuit_breaker_redis import RedisCircuitBreaker
-from trading.engine.heartbeat import HeartbeatMonitor
-from trading.engine.runtime import AbstractRuntime, Runtime
-from trading.engine.scheduler import Scheduler
-from trading.engine.tick_ingestor import TickConfig
-from trading.engine.tick_subscriber import TickSubscriber
+from trading.candles.candle_aggregator import CandleAggregator, CandleAggregatorComponent, CandleConfig
+from trading.worker.circuit_breaker_redis import RedisCircuitBreaker
+from trading.monitoring.heartbeat import HeartbeatMonitor
+from trading.core.lifecycle.runtime import AbstractRuntime, Runtime
+from trading.monitoring.scheduler import Scheduler
+from trading.tick_ingest.tick_ingestor import TickConfig
+from trading.worker.tick_subscriber import TickSubscriber
 from trading.execution.order_executor import ExecConfig, OrderExecutor
 from trading.risk.risk_filter import RiskConfig, RiskFilter
 from trading.storage.stores.audit import AuditStore

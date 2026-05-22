@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from trading.broker.zerodha.kite_client import KiteClient
 from trading.core.clock import SYSTEM_CLOCK, Clock
 from trading.core.models import AlgoConfig, Candle, DecisionLog, Heartbeat, Order, Position, Signal
-from trading.engine.kite_ingestor import KiteIngestor
+from trading.tick_ingest.kite_ingestor import KiteIngestor
 
 logger = logging.getLogger(__name__)
 
