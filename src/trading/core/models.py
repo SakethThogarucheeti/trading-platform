@@ -59,6 +59,7 @@ class Signal(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
     strategy_id: Mapped[str] = mapped_column(String)
+    algo_name: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     symbol: Mapped[str] = mapped_column(String)
     instrument_type: Mapped[str] = mapped_column(String)
     side: Mapped[str] = mapped_column(String)
@@ -93,6 +94,23 @@ class Position(Base):
     instrument_type: Mapped[str] = mapped_column(String, primary_key=True)
     net_qty: Mapped[int] = mapped_column(default=0)
     avg_price: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BrokerToken(Base):
+    """
+    Encrypted broker access token stored in Postgres.
+
+    ``token_enc`` holds the pgcrypto-encrypted ciphertext written via
+    ``pgp_sym_encrypt(token, key)`` and read back with ``pgp_sym_decrypt``.
+    The encryption key lives in the ``TOKEN_SECRET_KEY`` env var and never
+    touches the DB.
+    """
+
+    __tablename__ = "broker_tokens"
+
+    broker: Mapped[str] = mapped_column(String, primary_key=True)  # e.g. "zerodha"
+    token_enc: Mapped[str] = mapped_column(String)                  # pgcrypto ciphertext
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
