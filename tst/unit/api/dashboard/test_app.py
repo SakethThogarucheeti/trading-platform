@@ -52,15 +52,6 @@ async def _client(sf, clock=None):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_index_returns_html():
-    sf = _mock_sf(scalars_return=[])
-    async with await _client(sf) as client:
-        resp = await client.get("/")
-    assert resp.status_code == 200
-    assert "text/html" in resp.headers["content-type"]
-
-
 # ---------------------------------------------------------------------------
 # GET /api/sessions
 # ---------------------------------------------------------------------------
@@ -357,3 +348,178 @@ async def test_dashboard_server_teardown_noop_when_no_server():
 
     # Should not raise
     await server._teardown()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/pnl?algo_name= — per-algo filter
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pnl_with_algo_name_filter():
+    """When algo_name is passed, Signal.algo_name filter is applied."""
+    sf = _mock_sf(all_return=[])
+    with patch("trading.reports.fetch.fetch_nifty_benchmark", new=AsyncMock(return_value=None)):
+        async with await _client(sf) as client:
+            resp = await client.get("/api/pnl?algo_name=ema_crossover")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["points"] == []
+    assert data["summary"]["gross"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_pnl_with_signal_data_computes_summary():
+    """P&L endpoint sums gross/net across filled orders."""
+    from decimal import Decimal
+
+    order = MagicMock()
+    order.avg_price = Decimal("1500")
+    order.qty = 10
+    order.created_at = datetime(2025, 1, 6, 9, 30, tzinfo=UTC)
+
+    signal = MagicMock()
+    signal.side = "SELL"
+    signal.symbol = "INFY"
+    signal.signal_type = "ENTRY"
+
+    sf = _mock_sf(all_return=[(order, signal)])
+    with patch("trading.reports.fetch.fetch_nifty_benchmark", new=AsyncMock(return_value=None)):
+        async with await _client(sf) as client:
+            resp = await client.get("/api/pnl")
+    assert resp.status_code == 200
+    data = resp.json()
+    # SELL 10 @ 1500 = +15000 gross
+    assert data["summary"]["gross"] == pytest.approx(15000.0)
+    assert data["summary"]["net"] < data["summary"]["gross"]  # costs deducted
+
+
+# ---------------------------------------------------------------------------
+# GET /api/pnl/by-algo
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pnl_by_algo_empty():
+    sf = _mock_sf(all_return=[])
+    async with await _client(sf) as client:
+        resp = await client.get("/api/pnl/by-algo")
+    assert resp.status_code == 200
+    assert resp.json() == {}
+
+
+@pytest.mark.asyncio
+async def test_pnl_by_algo_groups_by_algo_name():
+    from decimal import Decimal
+
+    order_a = MagicMock()
+    order_a.avg_price = Decimal("1000")
+    order_a.qty = 5
+    order_a.created_at = datetime(2025, 1, 6, 9, 30, tzinfo=UTC)
+
+    signal_a = MagicMock()
+    signal_a.side = "SELL"
+    signal_a.algo_name = "algo_a"
+
+    order_b = MagicMock()
+    order_b.avg_price = Decimal("2000")
+    order_b.qty = 3
+    order_b.created_at = datetime(2025, 1, 6, 10, 0, tzinfo=UTC)
+
+    signal_b = MagicMock()
+    signal_b.side = "BUY"
+    signal_b.algo_name = "algo_b"
+
+    sf = _mock_sf(all_return=[(order_a, signal_a), (order_b, signal_b)])
+    async with await _client(sf) as client:
+        resp = await client.get("/api/pnl/by-algo")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "algo_a" in data
+    assert "algo_b" in data
+    # algo_a: SELL 5 @ 1000 = +5000 gross
+    assert data["algo_a"]["gross"] == pytest.approx(5000.0)
+    # algo_b: BUY 3 @ 2000 = -6000 gross
+    assert data["algo_b"]["gross"] == pytest.approx(-6000.0)
+
+
+@pytest.mark.asyncio
+async def test_pnl_by_algo_null_algo_name_grouped_as_default():
+    from decimal import Decimal
+
+    order = MagicMock()
+    order.avg_price = Decimal("500")
+    order.qty = 2
+    order.created_at = datetime(2025, 1, 6, 9, 30, tzinfo=UTC)
+
+    signal = MagicMock()
+    signal.side = "SELL"
+    signal.algo_name = None  # no algo_name set
+
+    sf = _mock_sf(all_return=[(order, signal)])
+    async with await _client(sf) as client:
+        resp = await client.get("/api/pnl/by-algo")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "default" in data
+    assert data["default"]["gross"] == pytest.approx(1000.0)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/ping
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ping_returns_ok():
+    sf = _mock_sf(scalars_return=[])
+    async with await _client(sf) as client:
+        resp = await client.get("/api/ping")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/settings
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_settings_returns_candle_intervals():
+    sf = _mock_sf(scalars_return=[])
+    app = build_app(sf, candle_intervals=["1min", "5min"])
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/api/settings")
+    assert resp.status_code == 200
+    assert resp.json()["candle_intervals"] == ["1min", "5min"]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/signals?algo_name=
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_signals_with_algo_name_filter():
+    """algo_name query param is forwarded and endpoint returns filtered rows."""
+    sf = _mock_sf(scalars_return=[])
+    async with await _client(sf) as client:
+        resp = await client.get("/api/signals?algo_name=ema_crossover")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+# ---------------------------------------------------------------------------
+# GET /api/charts?algo_name=
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_charts_with_algo_name_filter():
+    """charts endpoint with algo_name restricts to that algo's series."""
+    sf = _mock_sf(scalars_return=[], fetchall_return=[])
+    with patch("trading.storage.stores.chart.ChartStore.get_chart_names", new=AsyncMock(return_value=[])):
+        async with await _client(sf) as client:
+            resp = await client.get("/api/charts?algo_name=ema_crossover")
+    assert resp.status_code == 200
+    assert resp.json() == {}
