@@ -107,6 +107,8 @@ async def test_exec_paper_fill_price_method_is_called(engine: AsyncEngine) -> No
         async def update_position(self, fill, side, symbol, instrument_type): pass
         async def get_position(self, symbol, instrument_type): return None
         async def get_daily_realized_pnl(self, date): return 0.0
+        async def save_broker_token(self, broker, token, secret_key): pass
+        async def get_broker_token(self, broker, secret_key): return None
 
     price_store = PriceStore()
     price_store.update("INFY", 1500.0)
@@ -139,6 +141,8 @@ async def test_exec_paper_fill_price_returns_none_logs_warning(engine: AsyncEngi
         async def update_position(self, fill, side, symbol, instrument_type): pass
         async def get_position(self, symbol, instrument_type): return None
         async def get_daily_realized_pnl(self, date): return 0.0
+        async def save_broker_token(self, broker, token, secret_key): pass
+        async def get_broker_token(self, broker, secret_key): return None
 
     # PriceStore with no price set → fill_price returns None
     price_store = PriceStore()  # no update → returns None

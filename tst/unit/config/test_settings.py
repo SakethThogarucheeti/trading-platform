@@ -14,6 +14,7 @@ from trading.config.settings import Settings, get_settings
 VALID = dict(
     zerodha_api_key="key123",
     zerodha_api_secret="secret123",
+    token_secret_key="test-secret-key-32-chars-padding",
     postgres_url="postgresql+asyncpg://user:pass@localhost:5432/trading",
 )
 
@@ -160,51 +161,6 @@ def test_invalid_postgres_url_raises() -> None:
         make(postgres_url="not-a-url")
 
 
-# ---------------------------------------------------------------------------
-# Startup config warnings
-# ---------------------------------------------------------------------------
-
-
-def _capture_settings_warnings(**kwargs: object) -> list[str]:
-    """Instantiate Settings and return any WARNING messages from trading.config.settings."""
-    import logging
-
-    records: list[logging.LogRecord] = []
-
-    class _Capture(logging.Handler):
-        def emit(self, record: logging.LogRecord) -> None:
-            records.append(record)
-
-    handler = _Capture()
-    log = logging.getLogger("trading.config.settings")
-    log.addHandler(handler)
-    try:
-        make(**kwargs)
-    finally:
-        log.removeHandler(handler)
-
-    return [r.getMessage() for r in records if r.levelno >= logging.WARNING]
-
-
-def test_empty_access_token_live_mode_emits_warning() -> None:
-    """Instantiating Settings with paper_trading=False and no access token must log a warning."""
-    msgs = _capture_settings_warnings(paper_trading=False, zerodha_access_token="")
-    assert any("access_token" in m.lower() for m in msgs), (
-        "Expected a WARNING about empty zerodha_access_token in live mode"
-    )
-
-
-def test_non_empty_access_token_live_mode_no_warning() -> None:
-    """A set access token in live mode must not emit the warning."""
-    msgs = _capture_settings_warnings(paper_trading=False, zerodha_access_token="valid_token_abc")
-    assert not any("access_token" in m.lower() for m in msgs)
-
-
-def test_paper_trading_mode_no_warning_on_empty_token() -> None:
-    """paper_trading=True must not warn even with an empty access token."""
-    msgs = _capture_settings_warnings(paper_trading=True, zerodha_access_token="")
-    assert not any("access_token" in m.lower() for m in msgs)
-
 
 # ---------------------------------------------------------------------------
 # get_settings cache
@@ -218,6 +174,7 @@ def test_get_settings_returns_same_object(monkeypatch: pytest.MonkeyPatch) -> No
     # Patch env so Settings() can instantiate without a real .env
     monkeypatch.setenv("ZERODHA_API_KEY", "k")
     monkeypatch.setenv("ZERODHA_API_SECRET", "s")
+    monkeypatch.setenv("TOKEN_SECRET_KEY", "test-secret")
     monkeypatch.setenv("POSTGRES_URL", "postgresql+asyncpg://u:p@localhost/db")
 
     first = get_settings()

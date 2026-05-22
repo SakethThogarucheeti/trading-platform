@@ -73,6 +73,7 @@ def make_signal_event(**overrides: object) -> SignalEvent:
     base = dict(
         signal_id=uuid4(),
         strategy_id="ema_cross",
+        algo_name="test_algo",
         symbol="INFY",
         instrument_type=InstrumentType.EQUITY,
         side=Side.BUY,
@@ -135,6 +136,16 @@ async def test_save_signal_persists(engine: AsyncEngine, trading_store: TradingS
     assert sig is not None
     assert sig.strategy_id == "ema_cross"
     assert sig.symbol == "INFY"
+    assert sig.algo_name == "test_algo"
+
+
+async def test_save_signal_algo_name_none(engine: AsyncEngine, trading_store: TradingStore) -> None:
+    event = make_signal_event(algo_name=None)
+    await trading_store.save_signal(event)
+    async with get_session(engine) as s:
+        sig = await s.get(Signal, event.signal_id)
+    assert sig is not None
+    assert sig.algo_name is None
 
 
 # ---------------------------------------------------------------------------

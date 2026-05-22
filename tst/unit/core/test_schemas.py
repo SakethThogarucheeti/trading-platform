@@ -291,3 +291,49 @@ def test_signal_event_round_trip() -> None:
     restored = SignalEvent.model_validate_json(original.model_dump_json())
     assert restored.signal_id == original.signal_id
     assert restored.stop_distance == original.stop_distance
+
+
+def test_signal_event_algo_name_defaults_none() -> None:
+    s = SignalEvent(
+        symbol="TCS",
+        instrument_type=InstrumentType.EQUITY,
+        side=Side.BUY,
+        strategy_id="s",
+        signal_type=SignalType.ENTRY,
+        stop_distance=1.0,
+        tick_log_id=1,
+    )
+    assert s.algo_name is None
+
+
+def test_signal_event_algo_name_preserved_in_round_trip() -> None:
+    original = SignalEvent(
+        symbol="INFY",
+        instrument_type=InstrumentType.EQUITY,
+        side=Side.BUY,
+        strategy_id="ema_cross",
+        algo_name="my_algo",
+        signal_type=SignalType.ENTRY,
+        stop_distance=5.0,
+        tick_log_id=1,
+    )
+    restored = SignalEvent.model_validate_json(original.model_dump_json())
+    assert restored.algo_name == "my_algo"
+
+
+def test_signal_event_from_signal_propagates_algo_name() -> None:
+    from trading.core.schemas import CandleEvent
+
+    base = SignalEvent(
+        symbol="INFY",
+        instrument_type=InstrumentType.EQUITY,
+        side=Side.BUY,
+        strategy_id="ema_cross",
+        signal_type=SignalType.ENTRY,
+        stop_distance=5.0,
+        tick_log_id=1,
+    )
+    copied = SignalEvent.from_signal(base, tick_log_id=42, algo_name="ema_algo")
+    assert copied.algo_name == "ema_algo"
+    assert copied.tick_log_id == 42
+    assert copied.symbol == "INFY"
