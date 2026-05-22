@@ -25,13 +25,14 @@ services:
       timeout: 3s
       retries: 10
 
-  app:
+  ingestor:
     build: .
+    command: ["uv", "run", "python", "main.py", "ingestor"]
     env_file: .env
     environment:
       POSTGRES_URL: postgresql+asyncpg://trading:trading@postgres/trading
       REDIS_URL: redis://redis:6379
-      DASHBOARD_HOST: "0.0.0.0"   # bind to all interfaces so the port is reachable from the host
+      DASHBOARD_HOST: "0.0.0.0"
     ports:
       - "8081:8081"
     depends_on:
@@ -39,6 +40,54 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  worker-rsi:
+    build: .
+    command: ["uv", "run", "python", "main.py", "worker", "--algo", "rsi_mean_reversion"]
+    env_file: .env
+    environment:
+      POSTGRES_URL: postgresql+asyncpg://trading:trading@postgres/trading
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      ingestor:
+        condition: service_started
+    restart: unless-stopped
+
+  worker-linreg:
+    build: .
+    command: ["uv", "run", "python", "main.py", "worker", "--algo", "linreg_trend"]
+    env_file: .env
+    environment:
+      POSTGRES_URL: postgresql+asyncpg://trading:trading@postgres/trading
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      ingestor:
+        condition: service_started
+    restart: unless-stopped
+
+  worker-dpo:
+    build: .
+    command: ["uv", "run", "python", "main.py", "worker", "--algo", "dpo_mean_reversion"]
+    env_file: .env
+    environment:
+      POSTGRES_URL: postgresql+asyncpg://trading:trading@postgres/trading
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      ingestor:
+        condition: service_started
+    restart: unless-stopped
+
+  worker-squeeze:
+    build: .
+    command: ["uv", "run", "python", "main.py", "worker", "--algo", "squeeze_breakout"]
+    env_file: .env
+    environment:
+      POSTGRES_URL: postgresql+asyncpg://trading:trading@postgres/trading
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      ingestor:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

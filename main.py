@@ -29,8 +29,8 @@ from zoneinfo import ZoneInfo
 from anyio import sleep_forever
 
 from trading.di.container import build_container
-from trading.engine.runtime import AbstractRuntime
-from trading.engine.scheduler import Scheduler
+from trading.core.lifecycle.runtime import AbstractRuntime
+from trading.monitoring.scheduler import Scheduler
 from trading.api.dashboard.component import DashboardServer
 
 if TYPE_CHECKING:
@@ -253,8 +253,52 @@ async def _main() -> None:
                 await dashboard_task
 
 
+async def _run_worker(algo_name: str) -> None:
+    """
+    Worker process: subscribe to Redis ticks and run one named algo.
+
+    Does NOT run migrations or instrument sync — the ingestor owns those.
+    """
+    from trading.di.container import build_worker_container
+
+    logger.info("Worker starting: algo=%r", algo_name)
+    async with build_worker_container(algo_name) as container:
+        runtime: AbstractRuntime = await container.get(AbstractRuntime)
+        scheduler: Scheduler = await container.get(Scheduler)
+        scheduler.start()
+        logger.info("Worker scheduler started for algo=%r", algo_name)
+
+        runtime_task: asyncio.Task[None] | None = None
+        if _is_market_hours():
+            logger.info("Market is open — starting worker runtime immediately for algo=%r", algo_name)
+            runtime_task = asyncio.get_event_loop().create_task(runtime.start())
+        else:
+            logger.info("Outside market hours — worker waiting for 09:15 IST trigger")
+
+        try:
+            await sleep_forever()
+        finally:
+            scheduler.stop()
+            runtime.stop()
+            if runtime_task is not None and not runtime_task.done():
+                await runtime_task
+            logger.info("Worker stopped for algo=%r", algo_name)
+
+
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="main.py")
+    sub = parser.add_subparsers(dest="command")
+    sub.add_parser("ingestor", help="Run the Zerodha ingestor (default)")
+    worker_p = sub.add_parser("worker", help="Run a strategy worker for one algo")
+    worker_p.add_argument("--algo", required=True, metavar="NAME")
+    args = parser.parse_args()
+
     try:
-        asyncio.run(_main())
+        if args.command == "worker":
+            asyncio.run(_run_worker(args.algo))
+        else:
+            asyncio.run(_main())
     except KeyboardInterrupt:
         logger.info("Interrupted — shutting down.")
