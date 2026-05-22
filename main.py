@@ -132,7 +132,6 @@ async def _sync_instruments(settings: "Settings") -> None:
     logger.info("Syncing instruments for symbols: %s", sorted(symbols))
 
     client = KiteClient(settings.zerodha_api_key)
-    client.set_access_token(settings.zerodha_access_token)
 
     _TYPE_MAP = {"EQ": "EQUITY", "FUT": "FUTURES", "CE": "OPTIONS", "PE": "OPTIONS"}
 
@@ -200,6 +199,23 @@ async def _main() -> None:
     await _sync_instruments(settings)
 
     async with build_container() as container:
+        from trading.broker.zerodha.kite_client import KiteClient
+        from trading.core.database import build_engine, build_session_factory
+        from trading.storage.stores.trading import TradingStore
+
+        _engine = build_engine(str(settings.postgres_url))
+        _sf = build_session_factory(_engine)
+        _trading = TradingStore(_sf)
+        _token = await _trading.get_broker_token("zerodha", settings.token_secret_key)
+        await _engine.dispose()
+
+        kite_client: KiteClient = await container.get(KiteClient)
+        if _token:
+            kite_client.set_access_token(_token)
+            logger.info("Loaded Zerodha token from DB")
+        else:
+            logger.warning("No Zerodha token in DB — complete login before trading starts")
+
         runtime: AbstractRuntime = await container.get(AbstractRuntime)
         scheduler: Scheduler = await container.get(Scheduler)
         dashboard: DashboardServer | None = await container.get(DashboardServer | None)

@@ -17,6 +17,25 @@ from trading.storage.stores.instrument import InstrumentStore
 from trading.storage.stores.trading import TradingStore
 
 
+class RedisProvider(Provider):
+    """Provides a redis.asyncio.Redis client for pub/sub and caching."""
+
+    scope = Scope.APP
+
+    @provide
+    async def redis_client(self, settings: Settings) -> AsyncIterator[object]:
+        if not settings.redis_url:
+            yield None
+            return
+        import redis.asyncio as aioredis  # type: ignore[import-untyped]
+
+        client = aioredis.Redis.from_url(settings.redis_url, decode_responses=False)
+        try:
+            yield client
+        finally:
+            await client.aclose()
+
+
 class InfrastructureProvider(Provider):
     """
     Singletons that live for the entire process lifetime.
