@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from trading.config.settings import Settings
 from trading.core.database import build_session_factory, init_db
 from trading.core.models import Heartbeat
-from trading.engine.heartbeat import HeartbeatMonitor
+from trading.monitoring.heartbeat import HeartbeatMonitor
 from trading.api.telegram import TelegramAlerter
 from trading.storage.stores.heartbeat import HeartbeatStore
 

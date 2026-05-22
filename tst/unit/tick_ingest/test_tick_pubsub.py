@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from trading.core.schemas import InstrumentType, TickEvent
-from trading.engine.circuit_breaker_redis import RedisCircuitBreaker
-from trading.engine.tick_publisher import TickPublisher
+from trading.worker.circuit_breaker_redis import RedisCircuitBreaker
+from trading.tick_ingest.tick_publisher import TickPublisher
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ class TestRedisCircuitBreaker:
         return r
 
     def test_inherits_circuit_breaker(self) -> None:
-        from trading.engine.tick_ingestor import CircuitBreaker
+        from trading.tick_ingest.tick_ingestor import CircuitBreaker
         assert issubclass(RedisCircuitBreaker, CircuitBreaker)
 
     def test_initial_state_closed(self) -> None:
@@ -163,7 +163,7 @@ class TestRedisCircuitBreaker:
 
 class TestTickSubscriber:
     def _make_subscriber(self, tokens=None, callbacks=None):
-        from trading.engine.tick_subscriber import TickSubscriber
+        from trading.worker.tick_subscriber import TickSubscriber
 
         redis = MagicMock()
         pubsub = MagicMock()
@@ -276,7 +276,7 @@ class TestTickSubscriber:
         tick = _tick(token=738561, price=1600.0)
         messages = [{"type": "message", "data": tick.model_dump_json().encode()}]
 
-        from trading.engine.tick_subscriber import TickSubscriber
+        from trading.worker.tick_subscriber import TickSubscriber
 
         redis = MagicMock()
         pubsub = MagicMock()

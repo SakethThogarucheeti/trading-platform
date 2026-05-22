@@ -14,8 +14,8 @@ from trading.broker.base.broker import Broker
 from trading.core.database import build_session_factory, init_db
 from trading.core.models import Instrument
 from trading.core.schemas import CandleEvent, InstrumentType
-from trading.engine.candle_aggregator import CandleAggregator, CandleAggregatorComponent, CandleConfig
-from trading.engine.component import ComponentState
+from trading.candles.candle_aggregator import CandleAggregator, CandleAggregatorComponent, CandleConfig
+from trading.core.lifecycle.component import ComponentState
 from trading.storage.stores.audit import AuditStore
 from trading.storage.stores.candle import CandleDataStore
 

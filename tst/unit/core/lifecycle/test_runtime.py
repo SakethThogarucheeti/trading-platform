@@ -10,9 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from trading.core.database import build_session_factory, init_db
 from trading.core.models import Heartbeat
-from trading.engine.component import Component, ComponentState
-from trading.engine.heartbeat import HeartbeatMonitor
-from trading.engine.runtime import Runtime
+from trading.core.lifecycle.component import Component, ComponentState
+from trading.monitoring.heartbeat import HeartbeatMonitor
+from trading.core.lifecycle.runtime import Runtime
 from trading.storage.stores.heartbeat import HeartbeatStore
 
 # ---------------------------------------------------------------------------

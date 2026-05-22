@@ -12,8 +12,8 @@ from trading.broker.base.broker import Broker
 from trading.core.database import build_session_factory, init_db
 from trading.core.models import Instrument
 from trading.core.schemas import CandleEvent, InstrumentType, TickEvent
-from trading.engine.bar_accumulator import bar_open_time
-from trading.engine.candle_aggregator import CandleAggregator, CandleConfig
+from trading.candles.bar_accumulator import bar_open_time
+from trading.candles.candle_aggregator import CandleAggregator, CandleConfig
 from trading.storage.stores.audit import AuditStore
 from trading.storage.stores.candle import CandleDataStore
 
@@ -302,14 +302,14 @@ async def test_warmup_respects_warmup_count(engine: AsyncEngine) -> None:
 
 
 def test_ensure_utc_raises_on_non_datetime() -> None:
-    from trading.engine.candle_aggregator import _ensure_utc
+    from trading.candles.candle_aggregator import _ensure_utc
 
     with pytest.raises(TypeError):
         _ensure_utc("2025-01-06")  # string, not datetime
 
 
 def test_ensure_utc_adds_utc_to_naive_datetime() -> None:
-    from trading.engine.candle_aggregator import _ensure_utc
+    from trading.candles.candle_aggregator import _ensure_utc
 
     naive = datetime(2025, 1, 6, 9, 15)
     result = _ensure_utc(naive)

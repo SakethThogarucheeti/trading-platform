@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from anyio import create_task_group, sleep, sleep_forever
 
-from trading.engine.component import Component, ComponentState
+from trading.core.lifecycle.component import Component, ComponentState
 
 # ---------------------------------------------------------------------------
 # Concrete test doubles

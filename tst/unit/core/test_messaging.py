@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from trading.core.messaging import AbstractRegistry
-from trading.engine.tick_ingestor import CircuitBreaker
+from trading.tick_ingest.tick_ingestor import CircuitBreaker
 
 # ---------------------------------------------------------------------------
 # AbstractRegistry

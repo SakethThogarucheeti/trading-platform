@@ -14,8 +14,8 @@ from trading.broker.paper_broker import AbstractPriceStore
 from trading.core.database import build_session_factory, init_db
 from trading.core.models import Instrument
 from trading.core.schemas import InstrumentType, TickEvent
-from trading.engine.kite_ingestor import KiteIngestor
-from trading.engine.tick_ingestor import TickConfig, TickIngestor
+from trading.tick_ingest.kite_ingestor import KiteIngestor
+from trading.tick_ingest.tick_ingestor import TickConfig, TickIngestor
 from trading.storage.stores.audit import AuditStore
 
 NOW = datetime.now(UTC)

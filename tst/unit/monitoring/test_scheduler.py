@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from trading.config.settings import Settings
-from trading.engine.scheduler import Scheduler
+from trading.monitoring.scheduler import Scheduler
 
 
 def make_settings() -> Settings:

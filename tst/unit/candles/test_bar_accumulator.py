@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from trading.core.schemas import CandleEvent, InstrumentType, TickEvent
-from trading.engine.bar_accumulator import BarAccumulator, SymbolConfig
+from trading.candles.bar_accumulator import BarAccumulator, SymbolConfig
 
 BASE_TIME = datetime(2025, 1, 6, 9, 15, 0, tzinfo=UTC)
 
