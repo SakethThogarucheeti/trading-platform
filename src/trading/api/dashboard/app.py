@@ -9,13 +9,20 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import ColumnElement, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from trading.broker.zerodha.kite_client import KiteClient
 from trading.core.clock import SYSTEM_CLOCK, Clock
 from trading.core.models import AlgoConfig, Candle, DecisionLog, Heartbeat, Order, Position, Signal
+from trading.engine.kite_ingestor import KiteIngestor
 
 logger = logging.getLogger(__name__)
+
+
+class _CallbackRequest(BaseModel):
+    request_token: str
 
 
 def build_app(
@@ -23,6 +30,11 @@ def build_app(
     clock: Clock = SYSTEM_CLOCK,
     results_dir: Path | None = None,
     candle_intervals: list[str] | None = None,
+    zerodha_api_key: str = "",
+    zerodha_api_secret: str = "",
+    token_secret_key: str = "",
+    kite_client: KiteClient | None = None,
+    kite_ingestor: KiteIngestor | None = None,
 ) -> FastAPI:
     """
     Build the monitoring dashboard FastAPI application.
@@ -42,7 +54,7 @@ def build_app(
         CORSMiddleware,
         allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
         allow_credentials=True,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
 
@@ -60,6 +72,59 @@ def build_app(
     @app.get("/api/ping")
     async def ping() -> JSONResponse:
         return JSONResponse(content={"ok": True})
+
+    # ------------------------------------------------------------------
+    # GET /api/auth/login-url — return Zerodha OAuth URL
+    # ------------------------------------------------------------------
+
+    @app.get("/api/auth/login-url")
+    async def get_login_url() -> JSONResponse:
+        if not zerodha_api_key:
+            raise HTTPException(status_code=503, detail="ZERODHA_API_KEY not configured")
+        url = KiteClient(zerodha_api_key).login_url()
+        return JSONResponse(content={"url": url})
+
+    # ------------------------------------------------------------------
+    # POST /api/auth/callback — exchange request_token for access_token
+    # ------------------------------------------------------------------
+
+    @app.post("/api/auth/callback")
+    async def auth_callback(body: _CallbackRequest) -> JSONResponse:
+        if not zerodha_api_key or not zerodha_api_secret:
+            raise HTTPException(status_code=503, detail="Zerodha credentials not configured")
+        if not token_secret_key:
+            raise HTTPException(status_code=503, detail="TOKEN_SECRET_KEY not configured")
+
+        # Use a temporary client just for the session exchange
+        exchange_client = KiteClient(zerodha_api_key)
+        try:
+            session = exchange_client.generate_session(body.request_token, zerodha_api_secret)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Token exchange failed: {exc}") from exc
+
+        access_token: str = session["access_token"]
+
+        # Persist the encrypted token in Postgres
+        from trading.storage.stores.trading import TradingStore
+        trading_store = TradingStore(session_factory)
+        await trading_store.save_broker_token("zerodha", access_token, token_secret_key)
+
+        # Update the live broker's KiteClient so in-flight trades use the new token
+        if kite_client is not None:
+            kite_client.set_access_token(access_token)
+
+        # Reconnect the WebSocket stream with the new token
+        if kite_ingestor is not None:
+            import asyncio
+            asyncio.get_event_loop().create_task(kite_ingestor.reconnect_stream())
+
+        return JSONResponse(
+            content={
+                "ok": True,
+                "user_name": session.get("user_name", ""),
+                "login_time": str(session.get("login_time", "")),
+            }
+        )
 
     # ------------------------------------------------------------------
     # GET /api/sessions — list all distinct session_ids (for session selector)
@@ -144,17 +209,18 @@ def build_app(
     # ------------------------------------------------------------------
 
     @app.get("/api/signals")
-    async def get_signals(session_id: str = "") -> JSONResponse:
+    async def get_signals(session_id: str = "", algo_name: str = "") -> JSONResponse:
         async with session_factory() as session:
+            conditions = [
+                DecisionLog.step.in_(["SIGNAL_GENERATED", "SIGNAL_ACCEPTED", "SIGNAL_REJECTED"]),
+                DecisionLog.created_at >= _today_start(),
+                _session_filter(DecisionLog, session_id),
+            ]
+            if algo_name:
+                conditions.append(DecisionLog.algo_name == algo_name)
             stmt = (
                 select(DecisionLog)
-                .where(
-                    DecisionLog.step.in_(
-                        ["SIGNAL_GENERATED", "SIGNAL_ACCEPTED", "SIGNAL_REJECTED"]
-                    ),
-                    DecisionLog.created_at >= _today_start(),
-                    _session_filter(DecisionLog, session_id),
-                )
+                .where(*conditions)
                 .order_by(DecisionLog.created_at.desc())
                 .limit(50)
             )
@@ -249,20 +315,23 @@ def build_app(
     # ------------------------------------------------------------------
 
     @app.get("/api/pnl")
-    async def get_pnl(session_id: str = "") -> JSONResponse:
+    async def get_pnl(session_id: str = "", algo_name: str = "") -> JSONResponse:
         from trading.reports.fetch import fetch_nifty_benchmark
         from trading.reports.pnl import DEFAULT_COSTS
 
         today = _today_start()
 
         async with session_factory() as session:
+            conditions: list[ColumnElement[bool]] = [
+                Order.status == "FILLED",
+                Order.created_at >= today,
+            ]
+            if algo_name:
+                conditions.append(Signal.algo_name == algo_name)
             result = await session.execute(
                 select(Order, Signal)
                 .join(Signal, Order.signal_id == Signal.id)
-                .where(
-                    Order.status == "FILLED",
-                    Order.created_at >= today,
-                )
+                .where(*conditions)
                 .order_by(Order.created_at)
             )
             rows = result.all()
@@ -305,11 +374,55 @@ def build_app(
         return JSONResponse(content={"points": points, "summary": summary})
 
     # ------------------------------------------------------------------
+    # GET /api/pnl/by-algo — per-algo P&L summary (JSON)
+    # ------------------------------------------------------------------
+
+    @app.get("/api/pnl/by-algo")
+    async def get_pnl_by_algo() -> JSONResponse:
+        from trading.reports.pnl import DEFAULT_COSTS
+
+        today = _today_start()
+
+        async with session_factory() as session:
+            result = await session.execute(
+                select(Order, Signal)
+                .join(Signal, Order.signal_id == Signal.id)
+                .where(
+                    Order.status == "FILLED",
+                    Order.created_at >= today,
+                )
+                .order_by(Order.created_at)
+            )
+            rows = result.all()
+
+        by_algo: dict[str, dict[str, float]] = {}
+        for order, signal in rows:
+            name = signal.algo_name or "default"
+            if name not in by_algo:
+                by_algo[name] = {"gross": 0.0, "costs": 0.0, "net": 0.0}
+            sign = 1.0 if signal.side == "SELL" else -1.0
+            notional = float(order.avg_price) * order.qty
+            cost = DEFAULT_COSTS.cost_for_fill(signal.side, order.qty, float(order.avg_price))
+            by_algo[name]["gross"] += sign * notional
+            by_algo[name]["net"] += sign * notional - cost
+            by_algo[name]["costs"] += cost
+
+        result_payload = {
+            name: {
+                "gross": round(v["gross"], 2),
+                "costs": round(v["costs"], 2),
+                "net": round(v["net"], 2),
+            }
+            for name, v in by_algo.items()
+        }
+        return JSONResponse(content=result_payload)
+
+    # ------------------------------------------------------------------
     # GET /api/charts?session_id=&limit= — indicator chart series (JSON)
     # ------------------------------------------------------------------
 
     @app.get("/api/charts")
-    async def get_charts(session_id: str = "", limit: int = 500) -> JSONResponse:
+    async def get_charts(session_id: str = "", algo_name: str = "", limit: int = 500) -> JSONResponse:
         from trading.storage.stores.chart import ChartStore
 
         chart_store = ChartStore(session_factory)
@@ -317,19 +430,18 @@ def build_app(
         since = _today_start()
 
         async with session_factory() as session:
-            # Collect all algo names
             result = await session.execute(select(AlgoConfig.name))
-            algo_names = [r[0] for r in result.fetchall()]
+            all_algo_names = [r[0] for r in result.fetchall()]
 
-        # For each algo, get chart names then fetch each chart's series
+        algo_names = [algo_name] if algo_name else all_algo_names
+
         combined: dict[str, dict[str, list[dict[str, object]]]] = {}
-        for algo_name in algo_names:
-            chart_names = await chart_store.get_chart_names(algo_name, since, sid)
+        for name in algo_names:
+            chart_names = await chart_store.get_chart_names(name, since, sid)
             for chart_name in chart_names:
                 series = await chart_store.get_indicator_series(
-                    algo_name, chart_name, since, sid, limit
+                    name, chart_name, since, sid, limit
                 )
-                # Merge series from multiple algos into the same chart bucket
                 if chart_name not in combined:
                     combined[chart_name] = {}
                 combined[chart_name].update(series)
@@ -341,7 +453,7 @@ def build_app(
     # ------------------------------------------------------------------
 
     @app.get("/api/decisions/stream")
-    async def decisions_stream(request: Request, session_id: str = "") -> StreamingResponse:
+    async def decisions_stream(request: Request, session_id: str = "", algo_name: str = "") -> StreamingResponse:
         async def _event_generator() -> AsyncIterator[str]:
             yield ": connected\n\n"  # triggers EventSource.onopen immediately
             last_id = 0
@@ -350,13 +462,16 @@ def build_app(
                     break
                 try:
                     async with session_factory() as session:
+                        conditions = [
+                            DecisionLog.id > last_id,
+                            DecisionLog.created_at >= _today_start(),
+                            _session_filter(DecisionLog, session_id),
+                        ]
+                        if algo_name:
+                            conditions.append(DecisionLog.algo_name == algo_name)
                         stmt = (
                             select(DecisionLog)
-                            .where(
-                                DecisionLog.id > last_id,
-                                DecisionLog.created_at >= _today_start(),
-                                _session_filter(DecisionLog, session_id),
-                            )
+                            .where(*conditions)
                             .order_by(DecisionLog.id)
                             .limit(20)
                         )
@@ -414,19 +529,9 @@ def build_app(
         return JSONResponse(content=sessions)
 
     # ------------------------------------------------------------------
-    # GET /api/reports/{session_id} — full report JSON for one session
-    # ------------------------------------------------------------------
-
-    @app.get("/api/reports/{session_id}")
-    async def get_report(session_id: str) -> JSONResponse:
-        report_file = _results_dir / session_id / "report.json"
-        if not report_file.exists():
-            raise HTTPException(status_code=404, detail=f"Report not found: {session_id}")
-        data = json.loads(report_file.read_text(encoding="utf-8"))
-        return JSONResponse(content=data)
-
-    # ------------------------------------------------------------------
     # GET /api/reports/live?period=day|week|month&date=YYYY-MM-DD
+    # NOTE: must be registered BEFORE /api/reports/{session_id} so the
+    # literal path segment "live" is not captured as a session_id.
     # ------------------------------------------------------------------
 
     @app.get("/api/reports/live")
@@ -460,6 +565,19 @@ def build_app(
         data = await fetch_report_data(start, end, session_factory)
         return JSONResponse(content=data)
 
+    # ------------------------------------------------------------------
+    # GET /api/reports/{session_id} — full report JSON for one session
+    # NOTE: registered after /api/reports/live so "live" is not matched here.
+    # ------------------------------------------------------------------
+
+    @app.get("/api/reports/{session_id}")
+    async def get_report(session_id: str) -> JSONResponse:
+        report_file = _results_dir / session_id / "report.json"
+        if not report_file.exists():
+            raise HTTPException(status_code=404, detail=f"Report not found: {session_id}")
+        data = json.loads(report_file.read_text(encoding="utf-8"))
+        return JSONResponse(content=data)
+
     return app
 
 
@@ -472,3 +590,5 @@ def _session_filter(model: type[DecisionLog], session_id: str) -> ColumnElement[
     if session_id:
         return model.session_id == session_id
     return model.session_id.is_(None)
+
+

@@ -4,8 +4,10 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from trading.broker.zerodha.kite_client import KiteClient
 from trading.core.clock import SYSTEM_CLOCK, Clock
 from trading.engine.component import Component
+from trading.engine.kite_ingestor import KiteIngestor
 from trading.api.dashboard.app import build_app
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,11 @@ class DashboardServer(Component):
         port: int = 8081,
         clock: Clock = SYSTEM_CLOCK,
         candle_intervals: list[str] | None = None,
+        zerodha_api_key: str = "",
+        zerodha_api_secret: str = "",
+        token_secret_key: str = "",
+        kite_client: KiteClient | None = None,
+        kite_ingestor: KiteIngestor | None = None,
     ) -> None:
         super().__init__(name="dashboard")
         self._session_factory = session_factory
@@ -36,6 +43,11 @@ class DashboardServer(Component):
         self._port = port
         self._clock = clock
         self._candle_intervals = candle_intervals
+        self._zerodha_api_key = zerodha_api_key
+        self._zerodha_api_secret = zerodha_api_secret
+        self._token_secret_key = token_secret_key
+        self._kite_client = kite_client
+        self._kite_ingestor = kite_ingestor
         self._server: object | None = None  # uvicorn.Server, set in _setup
 
     async def _setup(self) -> None:
@@ -43,7 +55,16 @@ class DashboardServer(Component):
 
         import uvicorn
 
-        app = build_app(self._session_factory, self._clock, candle_intervals=self._candle_intervals)
+        app = build_app(
+            self._session_factory,
+            self._clock,
+            candle_intervals=self._candle_intervals,
+            zerodha_api_key=self._zerodha_api_key,
+            zerodha_api_secret=self._zerodha_api_secret,
+            token_secret_key=self._token_secret_key,
+            kite_client=self._kite_client,
+            kite_ingestor=self._kite_ingestor,
+        )
         config = uvicorn.Config(
             app=app,
             host=self._host,
