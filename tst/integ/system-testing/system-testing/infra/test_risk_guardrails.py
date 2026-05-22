@@ -20,7 +20,8 @@ from trading.core.schemas import (
 )
 from trading.risk.risk_filter import RiskConfig, RiskFilter
 from trading.engine.tick_ingestor import CircuitBreaker
-from trading.storage.repository import Repository
+from trading.storage.stores.trading import TradingStore
+from trading.storage.stores.audit import AuditStore
 
 
 def _signal(
@@ -47,6 +48,8 @@ def _make_risk_reg(
     equity: float = 1_000_000.0,
     clock=None,
 ) -> RiskFilter:
+    trading = TradingStore(session_factory)
+    audit = AuditStore(session_factory)
     return RiskFilter(
         config=RiskConfig(
             equity=equity,
@@ -58,8 +61,8 @@ def _make_risk_reg(
             intraday_cutoff_minute=cutoff_minute,
         ),
         circuit=CircuitBreaker(),
-        session_factory=session_factory,
-        repo=Repository(),
+        trading=trading,
+        audit=audit,
         clock=clock,
     )
 
@@ -69,7 +72,6 @@ async def test_time_cutoff_rejects_signal(engine, session_factory):
     from datetime import UTC, datetime
 
     clock = SimulatedClock()
-    # Advance clock to 16:00 UTC — past any reasonable cutoff
     clock.advance(datetime(2024, 1, 2, 16, 0, 0, tzinfo=UTC))
 
     risk_reg = _make_risk_reg(session_factory, cutoff_hour=15, cutoff_minute=30, clock=clock)
@@ -105,7 +107,7 @@ async def test_zero_quantity_rejected(engine, session_factory):
         session_factory,
         cutoff_hour=15,
         cutoff_minute=30,
-        equity=1_000.0,  # tiny equity
+        equity=1_000.0,
         clock=clock,
     )
     # stop_distance=100_000 → risk_amount=10 → qty = 10/100_000 = 0
@@ -124,6 +126,8 @@ async def test_circuit_open_rejects_signal(engine, session_factory):
     circuit = CircuitBreaker()
     circuit.open()
 
+    trading = TradingStore(session_factory)
+    audit = AuditStore(session_factory)
     risk_reg = RiskFilter(
         config=RiskConfig(
             equity=1_000_000.0,
@@ -132,8 +136,8 @@ async def test_circuit_open_rejects_signal(engine, session_factory):
             intraday_cutoff_minute=30,
         ),
         circuit=circuit,
-        session_factory=session_factory,
-        repo=Repository(),
+        trading=trading,
+        audit=audit,
         clock=clock,
     )
     result = await risk_reg.handle(_signal())

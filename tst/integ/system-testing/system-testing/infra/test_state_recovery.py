@@ -4,7 +4,7 @@ State recovery tests.
 Verifies that:
 - Duplicate orders are not placed if the process restarts mid-trade.
 - Idempotency holds across multiple executions with the same signal_id.
-- The repository can read back orders after a DB write.
+- Orders can be read back from DB after write.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from trading.broker.paper_broker import PriceStore
 from trading.core.models import Order
 from trading.core.schemas import InstrumentType, OrderType, Side, ValidatedOrderEvent
 from trading.execution.order_executor import ExecConfig, OrderExecutor
-from trading.storage.repository import Repository
+from trading.storage.stores.trading import TradingStore
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 from helpers import seed_signal
@@ -45,16 +45,6 @@ class _CountingBroker:
         self.call_count += 1
         return f"ORDER_{uuid.uuid4().hex[:8]}"
 
-    def get_instruments(self):
-        import polars as pl
-
-        return pl.DataFrame()
-
-    def get_ohlc(self, *a, **kw):
-        import polars as pl
-
-        return pl.DataFrame()
-
 
 async def test_no_duplicate_order_on_restart(engine, session_factory):
     """
@@ -65,11 +55,12 @@ async def test_no_duplicate_order_on_restart(engine, session_factory):
     price_store = PriceStore()
     price_store.update("RELIANCE", 2000.0)
 
+    trading = TradingStore(session_factory)
     exec_reg = OrderExecutor(
         config=ExecConfig(exec_id="paper"),
         broker=broker,
         session_factory=session_factory,
-        repo=Repository(),
+        trading=trading,
         price_store=price_store,
     )
 
@@ -96,21 +87,12 @@ async def test_order_persisted_in_db(engine, session_factory):
         async def place_order(self, *a, **kw):
             return f"ORDER_{uuid.uuid4().hex[:8]}"
 
-        def get_instruments(self):
-            import polars as pl
-
-            return pl.DataFrame()
-
-        def get_ohlc(self, *a, **kw):
-            import polars as pl
-
-            return pl.DataFrame()
-
+    trading = TradingStore(session_factory)
     exec_reg = OrderExecutor(
         config=ExecConfig(exec_id="paper"),
         broker=_SimpleBroker(),
         session_factory=session_factory,
-        repo=Repository(),
+        trading=trading,
         price_store=price_store,
     )
 

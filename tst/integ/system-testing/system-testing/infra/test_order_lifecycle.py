@@ -23,7 +23,7 @@ from trading.core.schemas import (
     ValidatedOrderEvent,
 )
 from trading.execution.order_executor import ExecConfig, OrderExecutor
-from trading.storage.repository import Repository
+from trading.storage.stores.trading import TradingStore
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 from helpers import seed_signal
@@ -52,27 +52,18 @@ class _NullRealBroker:
     async def place_order(self, symbol, side, qty, order_type, limit_price=None):
         return f"ZERODHA_{uuid.uuid4().hex[:8]}"
 
-    def get_instruments(self):
-        import polars as pl
-
-        return pl.DataFrame()
-
-    def get_ohlc(self, *a, **kw):
-        import polars as pl
-
-        return pl.DataFrame()
-
 
 async def test_place_and_fill(engine, session_factory):
     """Full happy-path: place order → immediate fill via PaperBroker → position updated."""
     price_store = PriceStore()
     price_store.update("INFY", 1500.0)
 
+    trading = TradingStore(session_factory)
     exec_reg = OrderExecutor(
         config=ExecConfig(exec_id="paper"),
         broker=PaperBroker(_NullRealBroker()),
         session_factory=session_factory,
-        repo=Repository(),
+        trading=trading,
         price_store=price_store,
     )
 
@@ -80,7 +71,6 @@ async def test_place_and_fill(engine, session_factory):
     await seed_signal(session_factory, event)
     await exec_reg.handle(event)
 
-    # Order must exist and be FILLED
     async with session_factory() as session:
         result = await session.execute(select(Order).where(Order.signal_id == event.signal_id))
         order = result.scalar_one_or_none()
@@ -96,11 +86,12 @@ async def test_position_updated_after_fill(engine, session_factory):
     price_store = PriceStore()
     price_store.update("INFY", 1500.0)
 
+    trading = TradingStore(session_factory)
     exec_reg = OrderExecutor(
         config=ExecConfig(exec_id="paper"),
         broker=PaperBroker(_NullRealBroker()),
         session_factory=session_factory,
-        repo=Repository(),
+        trading=trading,
         price_store=price_store,
     )
 
@@ -131,21 +122,12 @@ async def test_idempotency_duplicate_signal(engine, session_factory):
             broker_calls.append(oid)
             return oid
 
-        def get_instruments(self):
-            import polars as pl
-
-            return pl.DataFrame()
-
-        def get_ohlc(self, *a, **kw):
-            import polars as pl
-
-            return pl.DataFrame()
-
+    trading = TradingStore(session_factory)
     exec_reg = OrderExecutor(
         config=ExecConfig(exec_id="direct"),
         broker=_CountingBroker(),
         session_factory=session_factory,
-        repo=Repository(),
+        trading=trading,
     )
 
     event = _validated_order()
@@ -167,21 +149,12 @@ async def test_broker_rejection_marks_order_rejected(engine, session_factory):
         async def place_order(self, *a, **kw):
             raise RuntimeError("Broker unavailable")
 
-        def get_instruments(self):
-            import polars as pl
-
-            return pl.DataFrame()
-
-        def get_ohlc(self, *a, **kw):
-            import polars as pl
-
-            return pl.DataFrame()
-
+    trading = TradingStore(session_factory)
     exec_reg = OrderExecutor(
         config=ExecConfig(exec_id="direct"),
         broker=_FailingBroker(),
         session_factory=session_factory,
-        repo=Repository(),
+        trading=trading,
     )
 
     event = _validated_order()

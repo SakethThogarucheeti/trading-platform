@@ -24,7 +24,7 @@ from trading.core.schemas import (
     ValidatedOrderEvent,
 )
 from trading.execution.order_executor import ExecConfig, OrderExecutor
-from trading.storage.repository import Repository
+from trading.storage.stores.trading import TradingStore
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 from helpers import seed_signal
@@ -49,21 +49,12 @@ async def test_broker_timeout_produces_rejected_order(engine, session_factory):
         async def place_order(self, *a, **kw):
             raise TimeoutError("broker timeout")
 
-        def get_instruments(self):
-            import polars as pl
-
-            return pl.DataFrame()
-
-        def get_ohlc(self, *a, **kw):
-            import polars as pl
-
-            return pl.DataFrame()
-
+    trading = TradingStore(session_factory)
     exec_reg = OrderExecutor(
         config=ExecConfig(exec_id="direct"),
         broker=_TimeoutBroker(),
         session_factory=session_factory,
-        repo=Repository(),
+        trading=trading,
     )
 
     event = _event()
@@ -90,21 +81,12 @@ async def test_consecutive_broker_failures_no_deadlock(engine, session_factory):
             call_count += 1
             raise RuntimeError(f"Failure #{call_count}")
 
-        def get_instruments(self):
-            import polars as pl
-
-            return pl.DataFrame()
-
-        def get_ohlc(self, *a, **kw):
-            import polars as pl
-
-            return pl.DataFrame()
-
+    trading = TradingStore(session_factory)
     exec_reg = OrderExecutor(
         config=ExecConfig(exec_id="direct"),
         broker=_AlwaysFailBroker(),
         session_factory=session_factory,
-        repo=Repository(),
+        trading=trading,
     )
 
     for _ in range(5):
@@ -122,21 +104,12 @@ async def test_broker_api_error_leaves_db_consistent(engine, session_factory):
         async def place_order(self, *a, **kw):
             raise ValueError("Invalid API key")
 
-        def get_instruments(self):
-            import polars as pl
-
-            return pl.DataFrame()
-
-        def get_ohlc(self, *a, **kw):
-            import polars as pl
-
-            return pl.DataFrame()
-
+    trading = TradingStore(session_factory)
     exec_reg = OrderExecutor(
         config=ExecConfig(exec_id="direct"),
         broker=_ErrorBroker(),
         session_factory=session_factory,
-        repo=Repository(),
+        trading=trading,
     )
 
     event = _event()

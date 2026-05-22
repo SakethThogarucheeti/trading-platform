@@ -33,11 +33,8 @@ from trading.core.schemas import (
 from trading.execution.order_executor import ExecConfig, OrderExecutor
 from trading.risk.risk_filter import RiskConfig, RiskFilter
 from trading.engine.tick_ingestor import CircuitBreaker
-from trading.storage.repository import Repository
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+from trading.storage.stores.audit import AuditStore
+from trading.storage.stores.trading import TradingStore
 
 
 def _candle(
@@ -73,6 +70,8 @@ def _make_pipeline(session_factory, broker):
     """Build RiskFilter → OrderExecutor wired together."""
     clock = SimulatedClock()
     clock.advance(datetime(2024, 1, 2, 10, 0, tzinfo=UTC))
+    trading = TradingStore(session_factory)
+    audit = AuditStore(session_factory)
 
     risk_reg = RiskFilter(
         config=RiskConfig(
@@ -82,8 +81,8 @@ def _make_pipeline(session_factory, broker):
             intraday_cutoff_minute=30,
         ),
         circuit=CircuitBreaker(),
-        session_factory=session_factory,
-        repo=Repository(),
+        trading=trading,
+        audit=audit,
         clock=clock,
     )
     price_store = PriceStore()
@@ -93,15 +92,10 @@ def _make_pipeline(session_factory, broker):
         config=ExecConfig(exec_id="paper"),
         broker=broker,
         session_factory=session_factory,
-        repo=Repository(),
+        trading=trading,
         price_store=price_store,
     )
     return risk_reg, exec_reg
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 
 
 async def test_pipeline_happy_path(engine, session_factory):
@@ -110,16 +104,6 @@ async def test_pipeline_happy_path(engine, session_factory):
     class _OkBroker:
         async def place_order(self, *a, **kw):
             return f"ORDER_{uuid.uuid4().hex[:8]}"
-
-        def get_instruments(self):
-            import polars as pl
-
-            return pl.DataFrame()
-
-        def get_ohlc(self, *a, **kw):
-            import polars as pl
-
-            return pl.DataFrame()
 
     risk_reg, exec_reg = _make_pipeline(session_factory, _OkBroker())
     signal = _signal(stop_distance=1.0)
@@ -143,16 +127,6 @@ async def test_fault_injector_timeout_marks_rejected(engine, session_factory):
     class _OkBroker:
         async def place_order(self, *a, **kw):
             return f"ORDER_{uuid.uuid4().hex[:8]}"
-
-        def get_instruments(self):
-            import polars as pl
-
-            return pl.DataFrame()
-
-        def get_ohlc(self, *a, **kw):
-            import polars as pl
-
-            return pl.DataFrame()
 
     faulty = FaultInjector(_OkBroker(), seed=0).with_timeout_rate(1.0)
     risk_reg, exec_reg = _make_pipeline(session_factory, faulty)
@@ -178,27 +152,15 @@ async def test_fault_injector_partial_failures_no_deadlock(engine, session_facto
         async def place_order(self, *a, **kw):
             return f"ORDER_{uuid.uuid4().hex[:8]}"
 
-        def get_instruments(self):
-            import polars as pl
-
-            return pl.DataFrame()
-
-        def get_ohlc(self, *a, **kw):
-            import polars as pl
-
-            return pl.DataFrame()
-
     faulty = FaultInjector(_OkBroker(), seed=42).with_error_rate(0.5)
     risk_reg, exec_reg = _make_pipeline(session_factory, faulty)
 
-    # Send 10 signals with unique signal_ids so idempotency doesn't block them
     for _ in range(10):
         signal = _signal(stop_distance=1.0)
         order_event = await risk_reg.handle(signal)
         if order_event is not None:
             await exec_reg.handle(order_event)
 
-    # Verify no orders are stuck in PENDING state
     async with session_factory() as session:
         result = await session.execute(
             select(Order).where(Order.status == OrderStatus.PENDING.value)
@@ -221,17 +183,14 @@ async def test_idempotency_duplicate_signal_end_to_end(engine, session_factory):
             broker_calls.append(oid)
             return oid
 
-        def get_instruments(self):
-            import polars as pl
-
-            return pl.DataFrame()
-
-        def get_ohlc(self, *a, **kw):
-            import polars as pl
-
-            return pl.DataFrame()
-
-    _, exec_reg = _make_pipeline(session_factory, _CountingBroker())
+    trading = TradingStore(session_factory)
+    audit = AuditStore(session_factory)
+    exec_reg = OrderExecutor(
+        config=ExecConfig(exec_id="direct"),
+        broker=_CountingBroker(),
+        session_factory=session_factory,
+        trading=trading,
+    )
 
     from trading.core.schemas import OrderType, ValidatedOrderEvent
 
