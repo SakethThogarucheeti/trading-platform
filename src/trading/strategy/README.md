@@ -8,10 +8,14 @@ Signal generators. Each strategy is a pure function: given a completed candle (a
 strategy/
 ├── base.py                    # Strategy ABC + Signal dataclass
 ├── factory.py                 # StrategyFactory — lookup and instantiation
+├── signal_generator.py        # SignalGenerator — drives on_candle per algo
 ├── ema_crossover.py           # EMA fast/slow crossover with ATR stop
 ├── rsi_mean_reversion.py      # RSI oversold/overbought with ATR filter
 ├── opening_range_breakout.py  # First N-bar high/low breakout
-└── vwap_reversion.py          # VWAP ± N×ATR mean reversion
+├── vwap_reversion.py          # VWAP ± N×ATR mean reversion
+├── dpo_mean_reversion.py      # DPO-based detrended price oscillator reversion
+├── linreg_trend.py            # Linear regression channel trend-following
+└── squeeze_breakout.py        # Bollinger/Keltner squeeze breakout
 ```
 
 ## `Strategy` ABC
@@ -60,12 +64,21 @@ Waits for the first N bars to define a range, then generates ENTRY signals on br
 ### `VwapReversionStrategy` (`alias = "vwap_reversion"`)
 Fades moves that exceed VWAP ± `n_atr × ATR`. BUY when price is below the lower band; SELL when above the upper band.
 
+### `DpoMeanReversionStrategy` (`alias = "dpo_mean_reversion"`)
+Uses the Detrended Price Oscillator (DPO) to identify price excursions from a displaced moving average. Signals generated when DPO crosses back toward the center from an extreme.
+
+### `LinregTrendStrategy` (`alias = "linreg_trend"`)
+Fits a linear regression channel over a lookback window. Enters in the trend direction when price is within the channel and momentum confirms.
+
+### `SqueezeBreakoutStrategy` (`alias = "squeeze_breakout"`)
+Detects Bollinger Band / Keltner Channel squeeze (low volatility compression) and enters in the breakout direction when the squeeze releases.
+
 ## Adding a new strategy
 
 1. Create `src/trading/strategy/my_strategy.py` with a class that inherits `Strategy` and sets `alias = "my_strategy"`.
 2. Add it to `StrategyFactory` in `factory.py`.
-3. Reference `"my_strategy"` in `pipeline.py` or the `ALGOS` env var.
-4. Backtest with `tst/integ/strategy-testing/` — the same registry and risk code runs unchanged.
+3. Reference `"my_strategy"` in the `ALGOS` env var / `strategy_config.json`.
+4. Backtest with `tst/integ/strategy/` — the same pipeline and risk code runs unchanged.
 
 ## Design rules
 

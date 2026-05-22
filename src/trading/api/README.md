@@ -1,15 +1,15 @@
-# monitoring
+# api/
 
-Live portfolio visibility and out-of-band alerts. Exposes a read-only HTTP dashboard and sends Telegram notifications for risk events.
+External-facing interfaces: the read-only HTTP dashboard and Telegram alerting.
 
 ## Structure
 
 ```
-monitoring/
+api/
 ├── telegram.py          # TelegramAlerter — async Telegram Bot API client
 └── dashboard/
     ├── app.py           # FastAPI app factory — all /api/* endpoints
-    ├── component.py     # DashboardComponent — Component wrapper (starts uvicorn)
+    ├── component.py     # DashboardServer — Component wrapper (starts uvicorn)
     └── static/          # HTML + JS frontend
 ```
 
@@ -19,25 +19,13 @@ When `DASHBOARD_ENABLED=true`, a FastAPI app serves on `DASHBOARD_HOST:DASHBOARD
 
 All endpoints are **read-only** — the dashboard never writes to the database or sends orders.
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/positions` | Current net positions |
-| `GET /api/orders` | Order history with status |
-| `GET /api/signals` | Generated signals |
-| `GET /api/decision-log` | Full pipeline audit trail (filterable by `tick_log_id`) |
-| `GET /api/sessions` | List of trading sessions |
-| `GET /api/algo-state` | Per-strategy live state snapshot |
-| `GET /health` | Liveness probe |
+See `dashboard/README.md` for the full endpoint list.
 
-The `DashboardComponent` starts a `uvicorn` server in `_setup()` and shuts it down in `_teardown()`, so it participates in the ordered `Runtime` lifecycle.
+`DashboardServer` participates in the `Runtime` lifecycle — it starts last (so all other components are running when requests arrive) and shuts down gracefully on stop.
 
 ## Telegram alerts
 
-`TelegramAlerter` sends messages to a configured chat ID via the Telegram Bot API. Alerts are fired by:
-
-- `HeartbeatMonitor` — when any module's heartbeat goes stale
-- `RiskRegistry` — when the daily loss limit is breached
-- `TickRegistry` — when the circuit breaker opens
+`TelegramAlerter` sends messages to a configured chat ID via the Telegram Bot API. It is passed as the alerter callback to `HeartbeatMonitor` in `monitoring/`, which calls it when any module's heartbeat goes stale.
 
 Configuration:
 
@@ -47,3 +35,8 @@ TELEGRAM_CHAT_ID=your_chat_id   # or group chat ID (negative number)
 ```
 
 Leave both empty to disable alerting without changing any other code.
+
+## Relationship to other packages
+
+- `monitoring/heartbeat.py` — receives `TelegramAlerter` as its alerter callback
+- `dashboard/` — see its own README for full details

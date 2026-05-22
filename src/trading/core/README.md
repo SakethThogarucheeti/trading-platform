@@ -6,12 +6,18 @@ Shared domain primitives: ORM models, Pydantic event schemas, database infrastru
 
 ```
 core/
-├── models.py     # SQLAlchemy ORM — the persistent record of every pipeline event
-├── schemas.py    # Pydantic event DTOs — the in-memory flow between registries
-├── messaging.py  # AbstractRegistry — base class for all pipeline stages
-├── database.py   # Async engine factory + session context manager
-├── clock.py      # Clock ABC, SystemClock, SimulatedClock
-└── tasks.py      # fire() — fire-and-forget async background task helper
+├── models.py       # SQLAlchemy ORM — the persistent record of every pipeline event
+├── schemas.py      # Pydantic event DTOs — the in-memory flow between registries
+├── messaging.py    # AbstractRegistry — base class for all pipeline stages
+├── pipeline.py     # AlgoPipeline + TickPipeline — pipeline wiring helpers
+├── database.py     # Async engine factory + session context manager
+├── clock.py        # Clock ABC, SystemClock, SimulatedClock
+├── context.py      # thread_id context variable for structured logging
+├── types.py        # Shared type aliases
+├── tasks.py        # fire() — fire-and-forget async background task helper
+└── lifecycle/      # Component ABC + Runtime supervisor (see lifecycle/README.md)
+    ├── component.py
+    └── runtime.py
 ```
 
 ## ORM models (`models.py`)

@@ -1,14 +1,25 @@
 # storage
 
-The only layer that touches PostgreSQL. All other packages call the repository interface; none issue SQLAlchemy queries directly.
+The only layer that touches PostgreSQL. All other packages call store interfaces; none issue SQLAlchemy queries directly.
 
 ## Structure
 
 ```
 storage/
-├── base.py        # AbstractRepository — the full method contract
-└── repository.py  # Repository — concrete implementation
+├── base.py          # AbstractRepository — legacy base (kept for compatibility)
+├── repository.py    # Repository — concrete legacy implementation
+└── stores/          # Domain-specific stores (preferred interface going forward)
+    ├── audit.py         # Tick logs + per-decision audit trail
+    ├── candle.py        # OHLCV candle persistence and retrieval
+    ├── candle_store.py  # Candle fetch with optional Redis cache
+    ├── chart.py         # Indicator value logging for charting
+    ├── config.py        # Algo config rows + live algo state
+    ├── heartbeat.py     # Module liveness timestamps
+    ├── instrument.py    # Instrument master (symbol, token, type)
+    └── trading.py       # Signals, orders, positions, broker tokens
 ```
+
+See `stores/README.md` for per-store details.
 
 ## `AbstractRepository`
 

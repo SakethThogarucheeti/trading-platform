@@ -8,11 +8,12 @@ Dependency injection wiring using [Dishka](https://github.com/reagento/dishka). 
 di/
 ├── container.py
 └── providers/
-    ├── infra.py        # Singletons: Settings, AsyncEngine, Repository, PriceStore
-    ├── broker.py       # KiteClient, ZerodhaBroker (or PaperBroker), ZerodhaStream
-    ├── components.py   # Runtime, KiteIngestor, CandleAggregator, all AlgoRunners, etc.
-    ├── indicators.py   # IndicatorContext per (symbol, interval)
-    └── strategy.py     # Strategy instances per algo config entry
+    ├── infra.py             # Settings, AsyncEngine, session factory, all domain stores, PriceStore, Redis
+    ├── broker.py            # KiteClient, ZerodhaBroker (or PaperBroker), ZerodhaStream
+    ├── components.py        # Main-process Runtime + all Component instances
+    ├── worker_components.py # Worker-process Runtime (TickSubscriber instead of KiteIngestor)
+    ├── indicators.py        # CandleStore with optional Redis cache
+    └── strategy.py          # Strategy instances (dispatches to strategy/factory.py)
 ```
 
 ## Composition root
@@ -34,8 +35,10 @@ await runtime.start()
 ### `InfrastructureProvider`
 - `Settings` singleton (reads `.env`)
 - `AsyncEngine` (Postgres connection pool)
-- `Repository` (single shared instance)
+- `async_sessionmaker` — shared across all stores
+- All domain stores: `TradingStore`, `AuditStore`, `HeartbeatStore`, `CandleDataStore`, `ChartStore`, `InstrumentStore`, `ConfigStore`
 - `PriceStore` (in-memory last-price cache for paper trading)
+- Optional async Redis client
 
 ### `BrokerProvider`
 - `KiteClient` (wraps `kiteconnect.KiteConnect`)
@@ -43,15 +46,21 @@ await runtime.start()
 - `ZerodhaStream`
 
 ### `ComponentProvider`
-- One `AlgoRunner` + `RiskController` + `OrderExecutor` per entry in the `ALGOS` config
-- Shared: `KiteIngestor`, `CandleAggregator`, `HeartbeatMonitor`, `DashboardComponent`
-- `Runtime` — receives the ordered list of all components
+Builds the main-process component list and wires them into `Runtime`. Includes:
+- `TickIngestor`, `KiteIngestor`, `TickPublisher` (tick ingestion)
+- `CandleAggregator` (OHLCV aggregation)
+- `HeartbeatMonitor` (liveness)
+- `DashboardServer` (HTTP API — started last)
+- `Scheduler` (market-hours cron)
 
-### `IndicatorsProvider`
-- `IndicatorContext` instances bound to `(store, symbol, interval)` tuples
+### `WorkerComponentProvider`
+Mirrors `ComponentProvider` for worker processes. Uses `TickSubscriber` (Redis) instead of `KiteIngestor` (WebSocket) and `RedisCircuitBreaker` instead of in-process `CircuitBreaker`. Activates only the named algo.
 
-### `StrategyProvider`
-- Strategy instances constructed from `strategy_config.json` parameters
+### `IndicatorsProvider` (indicators.py)
+- `CandleStore` — Postgres-backed candle fetcher with optional Redis caching
+
+### `StrategyProvider` (strategy.py)
+- Strategy instances constructed from `strategy_config.json` via `strategy/factory.py`
 
 ## Why Dishka
 

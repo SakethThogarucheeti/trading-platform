@@ -6,9 +6,9 @@ Order lifecycle management: placement, fill simulation (paper), and idempotency.
 
 ```
 execution/
-├── base.py          # ExecutionEngine ABC
-├── executor.py      # OrderExecutor — Component wrapper around ExecRegistry
-└── idempotency.py   # is_duplicate() — DB-backed duplicate detection
+├── base.py            # ExecutionEngine ABC
+├── order_executor.py  # OrderExecutor — handles ValidatedOrderEvent → broker → DB
+└── idempotency.py     # is_duplicate() — DB-backed duplicate detection
 ```
 
 ## `ExecutionEngine` ABC
@@ -19,11 +19,11 @@ class ExecutionEngine(ABC):
     async def execute(self, order: ValidatedOrderEvent, session: AsyncSession) -> None: ...
 ```
 
-Currently `ExecRegistry` implements the full execution logic directly; `ExecutionEngine` is the intended ABC for separating live vs paper implementations cleanly (see refactoring notes).
+`OrderExecutor` implements the full execution logic for both live and paper trading.
 
 ## `OrderExecutor`
 
-`Component` wrapper around `ExecRegistry`. Its `_setup()` verifies broker connectivity; its `_run()` calls `await sleep_forever()` since execution is event-driven (called by `KiteIngestor`'s tick handler, not a polling loop).
+Handles `ValidatedOrderEvent` objects. Checks idempotency, persists the order, calls the broker, and updates position. Event-driven (called synchronously from the pipeline), not a polling loop.
 
 ## Idempotency (`idempotency.py`)
 
