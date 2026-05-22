@@ -28,7 +28,6 @@ class BrokerProvider(Provider):
 
     @provide
     def broker(self, client: KiteClient, settings: Settings) -> Broker:
-        client.set_access_token(settings.zerodha_access_token)
         real_broker = ZerodhaBroker(client, order_timeout_secs=settings.order_timeout_secs)
         if settings.paper_trading:
             logger.info("BrokerProvider: paper trading mode enabled")

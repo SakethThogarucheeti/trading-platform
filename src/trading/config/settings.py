@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     zerodha_api_key: str
     zerodha_api_secret: str
-    zerodha_access_token: str = ""  # populated after login; empty at boot
+    token_secret_key: str  # encrypts/decrypts broker tokens stored in DB
 
     # ------------------------------------------------------------------ #
     # Infrastructure — required                                           #
@@ -152,15 +152,6 @@ class Settings(BaseSettings):
                 f"heartbeat_interval_secs ({interval})"
             )
         return v
-
-    @model_validator(mode="after")
-    def warn_if_live_without_access_token(self) -> Settings:
-        if not self.paper_trading and not self.zerodha_access_token:
-            _log.warning(
-                "Settings: zerodha_access_token is empty and paper_trading=False. "
-                "Live order placement will fail. Set ZERODHA_ACCESS_TOKEN before trading."
-            )
-        return self
 
 
 @lru_cache(maxsize=1)
