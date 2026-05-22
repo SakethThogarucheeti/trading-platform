@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.core.models import Order, Position, Signal
@@ -41,6 +41,12 @@ class AbstractTradingStore(ABC):
     @abstractmethod
     async def get_daily_realized_pnl(self, for_date: date) -> float: ...
 
+    @abstractmethod
+    async def save_broker_token(self, broker: str, token: str, secret_key: str) -> None: ...
+
+    @abstractmethod
+    async def get_broker_token(self, broker: str, secret_key: str) -> str | None: ...
+
 
 class TradingStore(AbstractTradingStore):
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -50,6 +56,7 @@ class TradingStore(AbstractTradingStore):
         signal = Signal(
             id=event.signal_id,
             strategy_id=event.strategy_id,
+            algo_name=event.algo_name,
             symbol=event.symbol,
             instrument_type=event.instrument_type.value,
             side=event.side.value,
@@ -176,3 +183,30 @@ class TradingStore(AbstractTradingStore):
                 sign = 1.0 if signal.side == Side.SELL.value else -1.0
                 pnl += sign * float(order.avg_price) * order.qty
         return pnl
+
+    async def save_broker_token(self, broker: str, token: str, secret_key: str) -> None:
+        async with self._sf() as session:
+            async with session.begin():
+                await session.execute(
+                    text("""
+                        INSERT INTO broker_tokens (broker, token_enc, updated_at)
+                        VALUES (:broker, pgp_sym_encrypt(:token, :key), now())
+                        ON CONFLICT (broker) DO UPDATE
+                          SET token_enc = pgp_sym_encrypt(:token, :key),
+                              updated_at = now()
+                    """),
+                    {"broker": broker, "token": token, "key": secret_key},
+                )
+
+    async def get_broker_token(self, broker: str, secret_key: str) -> str | None:
+        async with self._sf() as session:
+            result = await session.execute(
+                text("""
+                    SELECT pgp_sym_decrypt(token_enc::bytea, :key)
+                    FROM broker_tokens
+                    WHERE broker = :broker
+                """),
+                {"broker": broker, "key": secret_key},
+            )
+            row = result.scalar_one_or_none()
+            return str(row) if row is not None else None
