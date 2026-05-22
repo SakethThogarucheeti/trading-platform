@@ -90,3 +90,8 @@ class ZerodhaStream(BrokerStream):
 
             await to_thread.run_sync(self._ticker.close)  # type: ignore[attr-defined]
             self._ticker = None
+
+    async def reconnect(self) -> None:
+        """Close the current KiteTicker and open a fresh one with the latest token."""
+        await self.close()
+        await self.connect()
