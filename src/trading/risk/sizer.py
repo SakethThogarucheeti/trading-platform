@@ -1,6 +1,30 @@
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from trading.core.schemas import SignalEvent
+    from trading.risk.policy import RiskContext
+
+
+class VolatilitySizer:
+    """
+    ATR-based position sizer implementing the RiskSizer protocol.
+
+    Wraps ``calculate_quantity`` with optional lot-size rounding.
+    """
+
+    def __init__(self, lot_size: int | None = None) -> None:
+        self._lot_size = lot_size
+
+    def size(self, event: SignalEvent, ctx: RiskContext) -> int:
+        return calculate_quantity(
+            stop_distance=event.stop_distance,
+            equity=ctx.equity,
+            risk_pct=ctx.risk_per_trade_pct,
+            lot_size=self._lot_size,
+        )
 
 
 def calculate_quantity(
