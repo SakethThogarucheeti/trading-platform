@@ -60,7 +60,7 @@ class OrderType(StrEnum):
 # It is assigned by KiteIngestor after the TickLog row is flushed to Postgres,
 # and propagated forward through every subsequent event in the pipeline:
 #
-#   TickEvent → CandleEvent → SignalEvent → ValidatedOrderEvent
+#   TickEvent → CandleEvent → SignalEvent → ValidatedOrderEvent → FillEvent
 #
 # Every DecisionLog row in Postgres carries this same tick_log_id, forming
 # a complete audit trail queryable with a single WHERE tick_log_id = ?.
@@ -153,3 +153,4 @@ class FillEvent(BaseModel):
     avg_price: float = Field(gt=0)
     filled_qty: int = Field(gt=0)
     timestamp: datetime
+    tick_log_id: int = 0  # carried through from the originating tick; 0 = unknown

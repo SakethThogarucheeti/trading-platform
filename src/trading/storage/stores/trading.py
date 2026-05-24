@@ -7,8 +7,8 @@ from decimal import Decimal
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from trading.core.models import Order, Position, Signal
-from trading.core.schemas import FillEvent, OrderStatus, Side, SignalEvent
+from trading.core.models import Order, Signal
+from trading.core.schemas import OrderStatus, SignalEvent, Side
 
 
 class NotFoundError(Exception):
@@ -28,14 +28,6 @@ class AbstractTradingStore(ABC):
     @abstractmethod
     async def update_order_status(
         self, kite_order_id: str, status: OrderStatus, avg_price: float = 0
-    ) -> None: ...
-
-    @abstractmethod
-    async def get_position(self, symbol: str, instrument_type: str) -> Position | None: ...
-
-    @abstractmethod
-    async def update_position(
-        self, fill: FillEvent, side: Side, symbol: str, instrument_type: str
     ) -> None: ...
 
     @abstractmethod
@@ -94,69 +86,6 @@ class TradingStore(AbstractTradingStore):
                     raise NotFoundError(f"Order not found: {kite_order_id!r}")
                 order.status = status.value
                 order.avg_price = Decimal(str(avg_price))
-
-    async def get_position(self, symbol: str, instrument_type: str) -> Position | None:
-        async with self._sf() as session:
-            return await session.get(Position, {"symbol": symbol, "instrument_type": instrument_type})
-
-    async def update_position(
-        self, fill: FillEvent, side: Side, symbol: str, instrument_type: str
-    ) -> None:
-        """
-        Atomically update a position after a fill.
-
-        Uses SELECT … FOR UPDATE so concurrent fills don't race.
-
-        Position arithmetic:
-          BUY fill  → net_qty += filled_qty, avg_price recomputed (weighted)
-          SELL fill → net_qty -= filled_qty, avg_price unchanged when closing
-        """
-        async with self._sf() as session:
-            async with session.begin():
-                # SQLite doesn't support FOR UPDATE; use plain SELECT in tests.
-                result = await session.execute(
-                    select(Position)
-                    .where(
-                        Position.symbol == symbol,
-                        Position.instrument_type == instrument_type,
-                    )
-                    .with_for_update()
-                )
-                position = result.scalar_one_or_none()
-                fill_price = Decimal(str(fill.avg_price))
-                fill_qty = fill.filled_qty
-
-                if position is None:
-                    net_qty = fill_qty if side == Side.BUY else -fill_qty
-                    session.add(
-                        Position(
-                            symbol=symbol,
-                            instrument_type=instrument_type,
-                            net_qty=net_qty,
-                            avg_price=fill_price,
-                            updated_at=datetime.now(UTC),
-                        )
-                    )
-                else:
-                    prev_qty = position.net_qty
-                    prev_price = position.avg_price
-
-                    if side == Side.BUY:
-                        new_qty = prev_qty + fill_qty
-                        if new_qty != 0:
-                            position.avg_price = (
-                                prev_price * prev_qty + fill_price * fill_qty
-                            ) / new_qty
-                        position.net_qty = new_qty
-                    else:  # SELL
-                        new_qty = prev_qty - fill_qty
-                        position.net_qty = new_qty
-                        # avg_price stays the same when reducing a long; when crossing
-                        # zero (short) we record the fill price as the new avg
-                        if new_qty < 0:
-                            position.avg_price = fill_price
-
-                    position.updated_at = datetime.now(UTC)
 
     async def get_daily_realized_pnl(self, for_date: date) -> float:
         """
