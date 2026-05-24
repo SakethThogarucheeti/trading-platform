@@ -6,14 +6,13 @@ from pydantic import BaseModel
 
 from trading.broker.base.broker_stream import BrokerStream
 from trading.broker.types import Tick
-from trading.core.messaging import AbstractRegistry
+from trading.core.clock import Clock, SystemClock
+from trading.core.messaging import AbstractCircuitBreaker, AbstractRegistry
 from trading.core.models import Instrument
 from trading.core.schemas import InstrumentType, TickEvent
 from trading.storage.stores.audit import AbstractAuditStore
 
 logger = logging.getLogger(__name__)
-
-_CIRCUIT_TIMEOUT_SECS = 30.0
 
 
 class TickConfig(BaseModel):
@@ -25,9 +24,9 @@ class TickConfig(BaseModel):
     exec_id: str = "direct"  # "paper" | "direct"
 
 
-class CircuitBreaker:
+class CircuitBreaker(AbstractCircuitBreaker):
     """
-    Tracks whether the ingestor WebSocket is healthy.
+    In-process circuit breaker.
 
     Opened by KiteIngestor after 30s of disconnection.
     Closed on reconnect. Read by RiskFilter before placing orders.
@@ -50,9 +49,6 @@ class TickIngestor(AbstractRegistry):
     """
     Ingests raw WebSocket ticks, persists them to DB, and produces TickEvents.
 
-    Owns the CircuitBreaker — KiteIngestor opens it after prolonged disconnect
-    and closes it on reconnect. RiskFilter receives a reference to this same instance.
-
     Call handle(raw_tick_dict) for each tick arriving from the broker stream.
     Returns a TickEvent on success, None if the tick is invalid or unknown.
     """
@@ -62,14 +58,14 @@ class TickIngestor(AbstractRegistry):
         config: TickConfig,
         stream: BrokerStream,
         audit: AbstractAuditStore,
-        circuit_timeout_secs: float = _CIRCUIT_TIMEOUT_SECS,
+        circuit: AbstractCircuitBreaker,
+        clock: Clock | None = None,
     ) -> None:
         self._config = config
         self._stream = stream
         self._audit = audit
-        self._circuit_timeout_secs = circuit_timeout_secs
-
-        self.circuit = CircuitBreaker()
+        self.circuit = circuit
+        self._clock: Clock = clock or SystemClock()
 
         self._token_type: dict[int, InstrumentType] = {
             inst.token: InstrumentType(inst.instrument_type) for inst in config.instruments
@@ -103,14 +99,12 @@ class TickIngestor(AbstractRegistry):
         if not last_price:
             return None
 
-        from datetime import UTC, datetime
-
         raw_event = TickEvent(
             instrument_token=token,
             instrument_type=instrument_type,
             last_price=last_price,
             volume=raw.get("volume_traded", raw.get("volume", 0)),
-            timestamp=datetime.now(UTC),
+            timestamp=self._clock.now(),
             tick_log_id=0,
         )
 

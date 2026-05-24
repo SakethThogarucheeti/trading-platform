@@ -70,7 +70,7 @@ class TestAlgoPipeline:
         executor.handle = AsyncMock()
 
         pipe = AlgoPipeline(risk_filter=risk, executor=executor)
-        await pipe.run(_signal())
+        await pipe.run([_signal()])
 
         risk.handle.assert_awaited_once()
         executor.handle.assert_awaited_once_with(order)
@@ -83,7 +83,7 @@ class TestAlgoPipeline:
         executor.handle = AsyncMock()
 
         pipe = AlgoPipeline(risk_filter=risk, executor=executor)
-        await pipe.run(_signal())
+        await pipe.run([_signal()])
 
         risk.handle.assert_awaited_once()
         executor.handle.assert_not_called()
@@ -129,7 +129,7 @@ class TestTickPipeline:
 
         candle_agg.handle.assert_awaited_once()
         sig_gen.handle.assert_awaited_once_with(candle)
-        algo_pipe.run.assert_awaited_once_with(signal)
+        algo_pipe.run.assert_awaited_once_with([signal])
 
     @pytest.mark.anyio
     async def test_run_stops_when_candle_not_complete(self) -> None:
@@ -179,4 +179,4 @@ class TestTickPipeline:
         )
         await pipe.run(_tick())
 
-        assert algo_pipe.run.await_count == 2
+        algo_pipe.run.assert_awaited_once_with(signals)

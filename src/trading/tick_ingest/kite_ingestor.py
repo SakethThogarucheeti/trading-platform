@@ -11,6 +11,7 @@ from trading.broker.base.broker_stream import BrokerStream
 from trading.broker.paper_broker import AbstractPriceStore
 from trading.broker.types import Tick
 from trading.core.context import thread_id
+from trading.core.messaging import AbstractCircuitBreaker
 from trading.core.schemas import TickEvent
 from trading.core.types import OnTickCallback
 from trading.core.lifecycle.component import Component
@@ -20,6 +21,7 @@ from trading.tick_ingest.tick_publisher import TickPublisher
 logger = logging.getLogger(__name__)
 
 _CONNECT_TIMEOUT_SECS = 30.0
+_CIRCUIT_TIMEOUT_SECS = 30.0
 
 
 class KiteIngestor(Component):
@@ -48,6 +50,8 @@ class KiteIngestor(Component):
         self,
         stream: BrokerStream,
         tick_registry: TickIngestor,
+        circuit: AbstractCircuitBreaker,
+        circuit_timeout_secs: float = _CIRCUIT_TIMEOUT_SECS,
         price_store: AbstractPriceStore | None = None,
         connect_timeout_secs: float = _CONNECT_TIMEOUT_SECS,
         tick_publisher: TickPublisher | None = None,
@@ -55,6 +59,8 @@ class KiteIngestor(Component):
         super().__init__(name="kite_ingestor")
         self._stream = stream
         self._tick_registry = tick_registry
+        self._circuit = circuit
+        self._circuit_timeout_secs = circuit_timeout_secs
         self._price_store = price_store
         self._connect_timeout_secs = connect_timeout_secs
         self._tick_publisher = tick_publisher
@@ -134,14 +140,14 @@ class KiteIngestor(Component):
     async def _run_circuit_timer(self) -> None:
         with CancelScope() as scope:
             self._circuit_scope = scope
-            await sleep(self._tick_registry._circuit_timeout_secs)
+            await sleep(self._circuit_timeout_secs)
         if not scope.cancel_called:
-            self._tick_registry.circuit.open()
+            self._circuit.open()
             if self._tick_publisher is not None and self._task_group is not None:
                 self._task_group.start_soon(self._tick_publisher.set_circuit_state, True)
             logger.error(
                 "KiteIngestor: circuit OPEN after %.0fs disconnect",
-                self._tick_registry._circuit_timeout_secs,
+                self._circuit_timeout_secs,
             )
         self._circuit_scope = None
 
@@ -151,7 +157,7 @@ class KiteIngestor(Component):
 
     def _on_connected(self) -> None:
         self._cancel_circuit_scope()
-        self._tick_registry.circuit.close()
+        self._circuit.close()
         if self._connected is not None:
             self._connected.set()
         if self._running and self._tick_publisher is not None and self._task_group is not None:
