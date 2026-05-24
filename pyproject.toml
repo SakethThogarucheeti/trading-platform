@@ -19,6 +19,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "pytz>=2025.2",
     "redis[hiredis]>=5.0",
+    "cashews[redis]>=7.4",
     "tenacity>=9.1.4",
     "tzdata>=2026.1",
     # DB — required at runtime (ORM + async driver + migrations)
