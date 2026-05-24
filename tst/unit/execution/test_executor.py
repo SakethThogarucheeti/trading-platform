@@ -19,8 +19,12 @@ from trading.core.schemas import (
     Side,
     ValidatedOrderEvent,
 )
+from trading.execution.fill_handler import FillHandler
 from trading.execution.idempotency import is_duplicate
 from trading.execution.order_executor import ExecConfig, OrderExecutor
+from trading.execution.position_accountant import PositionAccountant
+from trading.storage.cache import CacherFactory, ValueCache, setup_cache
+from trading.storage.stores.position import PositionStore
 from trading.storage.stores.trading import TradingStore
 
 NOW = datetime.now(UTC)
@@ -46,27 +50,11 @@ class MockBroker(Broker):
 
         return pl.DataFrame()
 
-    async def place_order(self, symbol, side, qty, order_type, limit_price=None) -> str:  # type: ignore[override]
+    async def place_order(self, symbol, side, qty, order_type, limit_price=None, instrument_type="EQUITY", tick_log_id=0) -> str:  # type: ignore[override]
         self.place_order_calls.append(dict(symbol=symbol, side=side, qty=qty))
         if self._raises:
             raise RuntimeError("broker error")
         return self._order_id
-
-
-# ---------------------------------------------------------------------------
-# Mock price store (for paper trading)
-# ---------------------------------------------------------------------------
-
-
-class MockPriceStore:
-    def __init__(self, prices: dict[str, float] | None = None) -> None:
-        self._prices = prices or {}
-
-    def get(self, symbol: str) -> float | None:
-        return self._prices.get(symbol)
-
-    def update(self, symbol: str, price: float) -> None:
-        self._prices[symbol] = price
 
 
 # ---------------------------------------------------------------------------
@@ -82,20 +70,24 @@ async def engine() -> AsyncEngine:  # type: ignore[misc]
     await eng.dispose()
 
 
+def _make_factory() -> CacherFactory:
+    setup_cache(None)
+    return CacherFactory(ValueCache())
+
+
 def make_registry(
     engine: AsyncEngine,
     broker: MockBroker | None = None,
-    exec_id: str = "direct",
-    price_store: MockPriceStore | None = None,
 ) -> OrderExecutor:
     sf = build_session_factory(engine)
-    config = ExecConfig(exec_id=exec_id)
+    accountant = PositionAccountant(PositionStore(sf), _make_factory())
+    fill_handler = FillHandler(TradingStore(sf), accountant)
     return OrderExecutor(
-        config=config,
+        config=ExecConfig(),
         broker=broker or MockBroker(),
         session_factory=sf,
         trading=TradingStore(sf),
-        price_store=price_store,
+        fill_handler=fill_handler,
     )
 
 
@@ -231,7 +223,7 @@ async def test_broker_error_marks_order_rejected(engine: AsyncEngine) -> None:
 
 async def test_broker_timeout_marks_order_rejected(engine: AsyncEngine) -> None:
     class _TimeoutBroker(MockBroker):
-        async def place_order(self, symbol, side, qty, order_type, limit_price=None) -> str:  # type: ignore[override]
+        async def place_order(self, symbol, side, qty, order_type, limit_price=None, instrument_type="EQUITY", tick_log_id=0) -> str:  # type: ignore[override]
             raise RuntimeError("ZerodhaBroker: place_order timed out after 10.0s")
 
     reg = make_registry(engine, _TimeoutBroker())
@@ -250,67 +242,13 @@ async def test_broker_timeout_marks_order_rejected(engine: AsyncEngine) -> None:
     assert order.status == OrderStatus.REJECTED.value
 
 
-# ---------------------------------------------------------------------------
-# Paper trading auto-fill
-# ---------------------------------------------------------------------------
-
-
-async def test_paper_trading_auto_fills_at_price_store_price(engine: AsyncEngine) -> None:
-    price_store = MockPriceStore({"INFY": 1500.0})
-    broker = MockBroker(order_id="PAPER_001")
-    reg = make_registry(engine, broker, exec_id="paper", price_store=price_store)
-
-    sig_id = uuid4()
-    await _insert_signal(engine, sig_id)
-    await reg.handle(make_validated(signal_id=sig_id))
-
-    sf = build_session_factory(engine)
-    pos = await TradingStore(sf).get_position("INFY", "EQUITY")
-
-    assert pos is not None
-    assert pos.net_qty == 10
-    assert float(pos.avg_price) == pytest.approx(1500.0)
-
-
-async def test_paper_trading_no_fill_when_price_unknown(engine: AsyncEngine) -> None:
-    price_store = MockPriceStore()  # empty — no price for INFY
-    broker = MockBroker(order_id="PAPER_002")
-    reg = make_registry(engine, broker, exec_id="paper", price_store=price_store)
-
-    sig_id = uuid4()
-    await _insert_signal(engine, sig_id)
-    await reg.handle(make_validated(signal_id=sig_id))
-
-    sf = build_session_factory(engine)
-    pos = await TradingStore(sf).get_position("INFY", "EQUITY")
-
-    assert pos is None  # no fill, no position
-
-
-async def test_direct_exec_does_not_auto_fill(engine: AsyncEngine) -> None:
-    """exec_id=direct with a price_store — price_store should be ignored."""
-    price_store = MockPriceStore({"INFY": 1500.0})
-    broker = MockBroker(order_id="DIRECT_001")
-    # exec_id="direct" means price_store is not used
-    reg = make_registry(engine, broker, exec_id="direct", price_store=price_store)
-
-    sig_id = uuid4()
-    await _insert_signal(engine, sig_id)
-    await reg.handle(make_validated(signal_id=sig_id))
-
-    sf = build_session_factory(engine)
-    pos = await TradingStore(sf).get_position("INFY", "EQUITY")
-
-    assert pos is None
-
-
 async def test_handle_fill_unknown_order_returns_early(engine: AsyncEngine) -> None:
-    """handle_fill for an unknown kite_order_id hits the NotFoundError path (lines 143-145)."""
+    """handle_fill for an unknown kite_order_id hits the NotFoundError path and returns early."""
     broker = MockBroker()
     reg = make_registry(engine, broker)
 
     # kite_order_id "GHOST" does not exist in the DB → NotFoundError → early return, no crash
-    await reg._handle_fill(
+    await reg.handle_fill(
         kite_order_id="GHOST",
         avg_price=100.0,
         filled_qty=10,
@@ -318,3 +256,100 @@ async def test_handle_fill_unknown_order_returns_early(engine: AsyncEngine) -> N
         instrument_type="EQUITY",
         side="BUY",
     )
+
+
+async def test_pnl_updated_in_cache_after_handle_fill(engine: AsyncEngine) -> None:
+    """PnL cache is updated synchronously after a fill via increment_sync."""
+    from datetime import date
+
+    broker = MockBroker(order_id="KITE_CB")
+    factory = _make_factory()
+    sf = build_session_factory(engine)
+    accountant = PositionAccountant(PositionStore(sf), factory)
+    fill_handler = FillHandler(TradingStore(sf), accountant)
+    reg = OrderExecutor(
+        config=ExecConfig(),
+        broker=broker,
+        session_factory=sf,
+        trading=TradingStore(sf),
+        fill_handler=fill_handler,
+    )
+
+    sig_id = uuid4()
+    await _insert_signal(engine, sig_id)
+    await reg.handle(make_validated(signal_id=sig_id))
+
+    # Simulate a fill arriving (BUY fill reduces realized PnL by avg_price * qty)
+    await reg.handle_fill(
+        kite_order_id="KITE_CB",
+        avg_price=150.0,
+        filled_qty=10,
+        symbol="INFY",
+        instrument_type="EQUITY",
+        side="BUY",
+    )
+
+    today = date.today()
+    pnl_key = f"rf:pnl:{today.isoformat()}"
+    cached = factory.pnl()._cache.get_sync(pnl_key)
+    # BUY fill: sign = -1 → PnL = -150.0 * 10 = -1500.0
+    assert cached is not None
+    assert float(cached) == pytest.approx(-1500.0)
+
+
+async def test_persist_order_status_retries_on_failure(engine: AsyncEngine) -> None:
+    """Phase 3 DB write fails all 3 tenacity attempts; CRITICAL is logged, no exception raised."""
+    import logging
+    from unittest.mock import patch
+
+    from sqlalchemy.exc import OperationalError
+
+    broker = MockBroker(order_id="KITE_RETRY")
+    sf = build_session_factory(engine)
+
+    # Track how many times _attempt() is invoked inside _persist_order_status
+    attempt_count = 0
+    original_sf = sf
+
+    class _FailingSession:
+        """Context manager that raises OperationalError on enter."""
+        async def __aenter__(self):
+            nonlocal attempt_count
+            attempt_count += 1
+            raise OperationalError("simulated DB blip", None, None)
+
+        async def __aexit__(self, *_):
+            pass
+
+    class _FailingSessionFactory:
+        """Returns real session for Phase 1 (idempotency), failing sessions for Phase 3."""
+        _real_calls = 0
+
+        def __call__(self):
+            self._real_calls += 1
+            # Phase 1 gets real session; subsequent calls (Phase 3 retries) fail
+            if self._real_calls <= 1:
+                return original_sf()
+            return _FailingSession()
+
+    flaky_sf = _FailingSessionFactory()
+    accountant = PositionAccountant(PositionStore(sf), _make_factory())
+    fill_handler = FillHandler(TradingStore(sf), accountant)
+    reg = OrderExecutor(
+        config=ExecConfig(),
+        broker=broker,
+        session_factory=flaky_sf,  # type: ignore[arg-type]
+        trading=TradingStore(sf),
+        fill_handler=fill_handler,
+    )
+
+    sig_id = uuid4()
+    await _insert_signal(engine, sig_id)
+
+    with patch.object(logging.getLogger("trading.execution.order_executor"), "critical") as mock_crit:
+        await reg.handle(make_validated(signal_id=sig_id))
+
+    assert mock_crit.called
+    assert "UNRECOVERABLE" in mock_crit.call_args[0][0]
+    # tenacity retried 3 times → 3 failing session calls (calls 2, 3, 4)
+    assert attempt_count == 3
