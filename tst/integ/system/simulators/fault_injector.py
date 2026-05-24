@@ -79,6 +79,8 @@ class FaultInjector(Broker):
         qty: int,
         order_type: OrderType,
         limit_price: float | None = None,
+        instrument_type: str = "EQUITY",
+        tick_log_id: int = 0,
     ) -> str:
         # 1. Timeout fault
         if self._timeout_rate > 0 and self._rng.random() < self._timeout_rate:

@@ -99,6 +99,8 @@ class SyntheticDataBroker(Broker):
         qty: int,
         order_type: OrderType,
         limit_price: float | None = None,
+        instrument_type: str = "EQUITY",
+        tick_log_id: int = 0,
     ) -> str:
         raise NotImplementedError("SyntheticDataBroker does not support place_order")
 

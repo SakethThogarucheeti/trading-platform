@@ -88,6 +88,8 @@ class SlippageFillSimulator(Broker):
         qty: int,
         order_type: OrderType,
         limit_price: float | None = None,
+        instrument_type: str = "EQUITY",
+        tick_log_id: int = 0,
     ) -> str:
         order_id = f"SIM_{uuid4().hex[:12].upper()}"
         price = self._get_fill_price(symbol, side, limit_price)

@@ -31,9 +31,14 @@ from trading.core.schemas import (
     SignalType,
 )
 from trading.execution.order_executor import ExecConfig, OrderExecutor
+from trading.risk.gates.circuit_breaker import CircuitBreakerGate
+from trading.risk.gates.daily_loss import DailyLossGate
+from trading.risk.gates.duplicate_position import DuplicatePositionGate
+from trading.risk.gates.time_cutoff import TimeCutoffGate
 from trading.risk.risk_filter import RiskConfig, RiskFilter
-from trading.engine.tick_ingestor import CircuitBreaker
+from trading.tick_ingest.tick_ingestor import CircuitBreaker
 from trading.storage.stores.audit import AuditStore
+from trading.storage.stores.position import PositionStore
 from trading.storage.stores.trading import TradingStore
 
 
@@ -72,17 +77,23 @@ def _make_pipeline(session_factory, broker):
     clock.advance(datetime(2024, 1, 2, 10, 0, tzinfo=UTC))
     trading = TradingStore(session_factory)
     audit = AuditStore(session_factory)
+    position = PositionStore(session_factory)
 
     risk_reg = RiskFilter(
         config=RiskConfig(
             equity=1_000_000.0,
-            paper_trading=True,
             intraday_cutoff_hour=15,
             intraday_cutoff_minute=30,
         ),
-        circuit=CircuitBreaker(),
+        gates=[
+            TimeCutoffGate(),
+            CircuitBreakerGate(CircuitBreaker()),
+            DailyLossGate(enabled=False),
+            DuplicatePositionGate(),
+        ],
         trading=trading,
         audit=audit,
+        position=position,
         clock=clock,
     )
     price_store = PriceStore()
@@ -93,7 +104,7 @@ def _make_pipeline(session_factory, broker):
         broker=broker,
         session_factory=session_factory,
         trading=trading,
-        price_store=price_store,
+        position=position,
     )
     return risk_reg, exec_reg
 

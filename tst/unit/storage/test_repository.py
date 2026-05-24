@@ -25,6 +25,7 @@ from trading.storage.stores.chart import ChartStore
 from trading.storage.stores.config import ConfigStore
 from trading.storage.stores.heartbeat import HeartbeatStore
 from trading.storage.stores.instrument import InstrumentStore
+from trading.storage.stores.position import PositionStore
 from trading.storage.stores.trading import NotFoundError, TradingStore
 
 NOW = datetime.now(UTC)
@@ -52,6 +53,11 @@ def instrument_store(engine: AsyncEngine) -> InstrumentStore:
 @pytest.fixture
 def trading_store(engine: AsyncEngine) -> TradingStore:
     return TradingStore(build_session_factory(engine))
+
+
+@pytest.fixture
+def position_store(engine: AsyncEngine) -> PositionStore:
+    return PositionStore(build_session_factory(engine))
 
 
 @pytest.fixture
@@ -211,61 +217,61 @@ async def test_update_order_status_missing_raises(trading_store: TradingStore) -
 # ---------------------------------------------------------------------------
 
 
-async def test_get_position_missing_returns_none(trading_store: TradingStore) -> None:
-    result = await trading_store.get_position("INFY", "EQUITY")
+async def test_get_position_missing_returns_none(position_store: PositionStore) -> None:
+    result = await position_store.get_position("INFY", "EQUITY")
     assert result is None
 
 
-async def test_update_position_creates_on_first_buy(trading_store: TradingStore) -> None:
+async def test_update_position_creates_on_first_buy(position_store: PositionStore) -> None:
     fill = make_fill(avg_price=100.0, filled_qty=10)
-    await trading_store.update_position(fill, Side.BUY, "INFY", "EQUITY")
-    pos = await trading_store.get_position("INFY", "EQUITY")
+    await position_store.update_position(fill, Side.BUY, "INFY", "EQUITY")
+    pos = await position_store.get_position("INFY", "EQUITY")
     assert pos is not None
     assert pos.net_qty == 10
     assert float(pos.avg_price) == 100.0
 
 
-async def test_update_position_adds_to_existing_long(trading_store: TradingStore) -> None:
+async def test_update_position_adds_to_existing_long(position_store: PositionStore) -> None:
     fill1 = make_fill(avg_price=100.0, filled_qty=10)
     fill2 = make_fill(avg_price=110.0, filled_qty=10)
-    await trading_store.update_position(fill1, Side.BUY, "TCS", "EQUITY")
-    await trading_store.update_position(fill2, Side.BUY, "TCS", "EQUITY")
-    pos = await trading_store.get_position("TCS", "EQUITY")
+    await position_store.update_position(fill1, Side.BUY, "TCS", "EQUITY")
+    await position_store.update_position(fill2, Side.BUY, "TCS", "EQUITY")
+    pos = await position_store.get_position("TCS", "EQUITY")
     assert pos is not None
     assert pos.net_qty == 20
     assert float(pos.avg_price) == pytest.approx(105.0)
 
 
-async def test_update_position_sell_reduces_qty(trading_store: TradingStore) -> None:
+async def test_update_position_sell_reduces_qty(position_store: PositionStore) -> None:
     fill_buy = make_fill(avg_price=100.0, filled_qty=10)
     fill_sell = make_fill(avg_price=120.0, filled_qty=10)
-    await trading_store.update_position(fill_buy, Side.BUY, "RELIANCE", "EQUITY")
-    await trading_store.update_position(fill_sell, Side.SELL, "RELIANCE", "EQUITY")
-    pos = await trading_store.get_position("RELIANCE", "EQUITY")
+    await position_store.update_position(fill_buy, Side.BUY, "RELIANCE", "EQUITY")
+    await position_store.update_position(fill_sell, Side.SELL, "RELIANCE", "EQUITY")
+    pos = await position_store.get_position("RELIANCE", "EQUITY")
     assert pos is not None
     assert pos.net_qty == 0
 
 
-async def test_update_position_sell_goes_short(trading_store: TradingStore) -> None:
+async def test_update_position_sell_goes_short(position_store: PositionStore) -> None:
     """Selling more than owned (futures short) produces negative net_qty."""
     fill_buy = make_fill(avg_price=100.0, filled_qty=10)
     fill_sell = make_fill(avg_price=90.0, filled_qty=15)
-    await trading_store.update_position(fill_buy, Side.BUY, "NIFTY", "FUTURES")
-    await trading_store.update_position(fill_sell, Side.SELL, "NIFTY", "FUTURES")
-    pos = await trading_store.get_position("NIFTY", "FUTURES")
+    await position_store.update_position(fill_buy, Side.BUY, "NIFTY", "FUTURES")
+    await position_store.update_position(fill_sell, Side.SELL, "NIFTY", "FUTURES")
+    pos = await position_store.get_position("NIFTY", "FUTURES")
     assert pos is not None
     assert pos.net_qty == -5
     assert float(pos.avg_price) == 90.0  # new avg is the fill price when short
 
 
-async def test_position_composite_pk_independent(trading_store: TradingStore) -> None:
+async def test_position_composite_pk_independent(position_store: PositionStore) -> None:
     """INFY EQUITY and INFY FUTURES are tracked independently."""
     fill = make_fill(avg_price=1500.0, filled_qty=5)
-    await trading_store.update_position(fill, Side.BUY, "INFY", "EQUITY")
+    await position_store.update_position(fill, Side.BUY, "INFY", "EQUITY")
     fill2 = make_fill(avg_price=1510.0, filled_qty=75)
-    await trading_store.update_position(fill2, Side.BUY, "INFY", "FUTURES")
-    eq = await trading_store.get_position("INFY", "EQUITY")
-    fut = await trading_store.get_position("INFY", "FUTURES")
+    await position_store.update_position(fill2, Side.BUY, "INFY", "FUTURES")
+    eq = await position_store.get_position("INFY", "EQUITY")
+    fut = await position_store.get_position("INFY", "FUTURES")
     assert eq is not None and eq.net_qty == 5
     assert fut is not None and fut.net_qty == 75
 

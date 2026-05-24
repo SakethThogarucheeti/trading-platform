@@ -31,11 +31,19 @@ from trading.core.schemas import CandleEvent, InstrumentType
 from trading.di.providers.strategy import make_strategy
 from quantindicators.polars_store import PolarsStore
 from trading.strategy.signal_generator import AlgoInstance, AlgoRunConfig, SignalGenerator
-from trading.engine.bar_accumulator import SymbolConfig
+from trading.candles.bar_accumulator import SymbolConfig
 from trading.execution.order_executor import ExecConfig, OrderExecutor
+from trading.risk.gates.circuit_breaker import CircuitBreakerGate
+from trading.risk.gates.daily_loss import DailyLossGate
+from trading.risk.gates.duplicate_position import DuplicatePositionGate
+from trading.risk.gates.time_cutoff import TimeCutoffGate
 from trading.risk.risk_filter import RiskConfig, RiskFilter
-from trading.engine.tick_ingestor import CircuitBreaker
-from trading.storage.repository import Repository
+from trading.tick_ingest.tick_ingestor import CircuitBreaker
+from trading.storage.stores.audit import AuditStore
+from trading.storage.stores.chart import ChartStore
+from trading.storage.stores.config import ConfigStore
+from trading.storage.stores.position import PositionStore
+from trading.storage.stores.trading import TradingStore
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +103,6 @@ class BacktestSession(TestingSession):
             schema_engine = await _make_schema_engine(self._db_engine, self._db_schema)
             sf = build_session_factory(schema_engine)
             await init_db(schema_engine)
-            repo = Repository()
             logger.debug("BacktestSession[%s]: DB schema ready", self._db_schema)
 
             # ------------------------------------------------------------------
@@ -151,6 +158,10 @@ class BacktestSession(TestingSession):
 
             polars_store = PolarsStore()
 
+            audit = AuditStore(sf)
+            trading = TradingStore(sf)
+            position = PositionStore(sf)
+
             algo_reg = SignalGenerator(
                 config=AlgoRunConfig(
                     instrument_strategy_map={s: algo.strategy_id for s in algo.instruments},
@@ -159,22 +170,30 @@ class BacktestSession(TestingSession):
                     algo_name=algo.name,
                     instrument_types={s: InstrumentType.EQUITY.value for s in algo.instruments},
                 ),
-                session_factory=sf,
-                repo=repo,
+                chart=ChartStore(sf),
+                config_store=ConfigStore(sf),
+                audit=audit,
                 algos=algo_instances,
                 store=polars_store,
+                clock=sim_clock,
             )
+            algo_reg.setup()
 
             risk_reg = RiskFilter(
                 config=RiskConfig(
                     equity=config.initial_equity,
-                    paper_trading=True,
                     intraday_cutoff_hour=23,
                     intraday_cutoff_minute=59,
                 ),
-                circuit=CircuitBreaker(),
-                session_factory=sf,
-                repo=repo,
+                gates=[
+                    TimeCutoffGate(),
+                    CircuitBreakerGate(CircuitBreaker()),
+                    DailyLossGate(enabled=False),
+                    DuplicatePositionGate(),
+                ],
+                trading=trading,
+                audit=audit,
+                position=position,
                 clock=sim_clock,
             )
 
@@ -182,8 +201,10 @@ class BacktestSession(TestingSession):
                 config=ExecConfig(exec_id="paper"),
                 broker=simulator,
                 session_factory=sf,
-                repo=repo,
-                price_store=price_store,
+                trading=trading,
+                position=position,
+                clock=sim_clock,
+                fill_observers=[risk_reg],
             )
 
             # ------------------------------------------------------------------
