@@ -33,6 +33,8 @@ class Broker(ABC):
         qty: int,
         order_type: OrderType,
         limit_price: float | None = None,
+        instrument_type: str = "EQUITY",
+        tick_log_id: int = 0,
     ) -> str:
         """
         Place an order and return the broker-assigned order ID.

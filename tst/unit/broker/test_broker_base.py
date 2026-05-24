@@ -33,6 +33,8 @@ class _ConcreteBroker(Broker):
         qty: int,
         order_type: OrderType,
         limit_price: float | None = None,
+        instrument_type: str = "EQUITY",
+        tick_log_id: int = 0,
     ) -> str:
         await super().place_order(symbol, side, qty, order_type, limit_price)  # covers line 26 (...)
         return "TEST_ORDER"

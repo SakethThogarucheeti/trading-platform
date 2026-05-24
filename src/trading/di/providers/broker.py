@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import logging
 
+import httpx
 from dishka import Provider, Scope, provide  # type: ignore[import-untyped]
 
 from trading.broker.base.broker import Broker
 from trading.broker.base.broker_stream import BrokerStream
-from trading.broker.paper_broker import PaperBroker
+from trading.broker.paper_broker import AbstractPriceStore, PaperBroker
 from trading.broker.zerodha.broker import ZerodhaBroker
 from trading.broker.zerodha.kite_client import KiteClient
 from trading.config.settings import Settings
@@ -27,11 +28,13 @@ class BrokerProvider(Provider):
         return KiteClient(settings.zerodha_api_key)
 
     @provide
-    def broker(self, client: KiteClient, settings: Settings) -> Broker:
+    def broker(self, client: KiteClient, settings: Settings, price_store: AbstractPriceStore) -> Broker:
         real_broker = ZerodhaBroker(client, order_timeout_secs=settings.order_timeout_secs)
         if settings.paper_trading:
             logger.info("BrokerProvider: paper trading mode enabled")
-            return PaperBroker(real_broker)
+            postback_url = f"http://{settings.dashboard_host}:{settings.dashboard_port}/api/postback"
+            http_client = httpx.AsyncClient()
+            return PaperBroker(real_broker, price_store, postback_url=postback_url, http_client=http_client)
         return real_broker
 
     @provide
