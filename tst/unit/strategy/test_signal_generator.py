@@ -12,12 +12,18 @@ from trading.core.database import build_session_factory, init_db
 from trading.core.schemas import CandleEvent, InstrumentType, SignalEvent
 from trading.di.providers.strategy import make_strategy
 from quantindicators.polars_store import PolarsStore
+from trading.storage.cache import CacherFactory, ValueCache, setup_cache
 from trading.strategy.signal_generator import AlgoInstance, AlgoRunConfig, SignalGenerator
 from trading.storage.stores.audit import AuditStore
 from trading.storage.stores.chart import ChartStore
 from trading.storage.stores.config import ConfigStore
 
 BASE_TIME = datetime(2025, 1, 6, 9, 15, tzinfo=UTC)
+
+
+def _make_factory() -> CacherFactory:
+    setup_cache(None)
+    return CacherFactory(ValueCache())
 
 
 @pytest.fixture
@@ -58,14 +64,17 @@ def make_registry(
     )
     algos = _build_algos(instrument_strategy_map, instrument_types)
     store = PolarsStore()
-    return SignalGenerator(
+    reg = SignalGenerator(
         config=config,
         chart=ChartStore(sf),
         config_store=ConfigStore(sf),
         audit=AuditStore(sf),
+        factory=_make_factory(),
         algos=algos,
         store=store,
     )
+    reg.setup()  # initialize strategies before any handle() calls
+    return reg
 
 
 def make_candle(symbol: str = "INFY", tick_log_id: int = 0, **overrides) -> CandleEvent:
@@ -108,8 +117,10 @@ def test_registry_with_multiple_instruments(engine: AsyncEngine) -> None:
         chart=ChartStore(sf),
         config_store=ConfigStore(sf),
         audit=AuditStore(sf),
+        factory=_make_factory(),
         algos=algos,
     )
+    reg.setup()
     assert "INFY" in reg._algos
     assert "TCS" in reg._algos
 
@@ -195,8 +206,10 @@ async def test_handle_only_affects_matching_symbol(engine: AsyncEngine) -> None:
         chart=ChartStore(sf),
         config_store=ConfigStore(sf),
         audit=AuditStore(sf),
+        factory=_make_factory(),
         algos=algos,
     )
+    reg.setup()
 
     await reg.handle(make_candle(symbol="INFY"))
 
@@ -317,6 +330,7 @@ async def test_log_signal_audit_failure_is_swallowed() -> None:
         chart=mock_chart,
         config_store=mock_config_store,
         audit=_FailingAuditStore(),
+        factory=_make_factory(),
         algos={},
         store=PolarsStore(),
     )
@@ -361,3 +375,143 @@ def test_algo_config_defaults() -> None:
     assert cfg.equity == 100_000.0
     assert cfg.warmup_candles == 200
     assert cfg.algo_name == "default"
+
+
+# ---------------------------------------------------------------------------
+# setup() and warmup() lifecycle
+# ---------------------------------------------------------------------------
+
+
+async def test_handle_without_setup_returns_empty(engine: AsyncEngine) -> None:
+    """handle() before setup() returns [] and logs a warning — no crash."""
+    sf = build_session_factory(engine)
+    instrument_strategy_map = {"INFY": "ema_crossover"}
+    instrument_types = {"INFY": "EQUITY"}
+    config = AlgoRunConfig(
+        instrument_strategy_map=instrument_strategy_map,
+        instrument_types=instrument_types,
+    )
+    algos = _build_algos(instrument_strategy_map, instrument_types)
+    reg = SignalGenerator(
+        config=config,
+        chart=ChartStore(sf),
+        config_store=ConfigStore(sf),
+        audit=AuditStore(sf),
+        factory=_make_factory(),
+        algos=algos,
+    )
+    # setup() intentionally NOT called
+    result = await reg.handle(make_candle())
+    assert result == []
+
+
+# ---------------------------------------------------------------------------
+# AlgoInstance — pure unit tests (no DB, no collaborators)
+# ---------------------------------------------------------------------------
+
+
+def _make_instance() -> AlgoInstance:
+    return AlgoInstance(
+        strategy=make_strategy("ema_crossover"),
+        instrument_type=InstrumentType.EQUITY,
+    )
+
+
+def test_algo_instance_tick_bar_increments_bars_seen() -> None:
+    inst = _make_instance()
+    inst.tick_bar("1min", warmup_candles=5)
+    assert inst.bars_seen == 1
+
+
+def test_algo_instance_tick_bar_updates_interval() -> None:
+    inst = _make_instance()
+    inst.tick_bar("5min", warmup_candles=5)
+    assert inst.interval == "5min"
+
+
+def test_algo_instance_tick_bar_sets_warmup_flag_at_threshold() -> None:
+    inst = _make_instance()
+    for _ in range(5):
+        inst.tick_bar("1min", warmup_candles=5)
+    assert inst.warmed_up is True
+
+
+def test_algo_instance_tick_bar_no_warmup_before_threshold() -> None:
+    inst = _make_instance()
+    inst.tick_bar("1min", warmup_candles=5)
+    assert inst.warmed_up is False
+
+
+def test_algo_instance_record_signal_sets_timestamp() -> None:
+    inst = _make_instance()
+    now = datetime(2025, 1, 6, 9, 30, tzinfo=UTC)
+    inst.record_signal(now)
+    assert inst.last_signal_at == now.isoformat()
+
+
+def test_algo_instance_is_ready_false_before_setup() -> None:
+    inst = _make_instance()
+    assert inst.is_ready() is False
+
+
+def test_algo_instance_is_ready_true_after_setup() -> None:
+    from quantindicators.polars_store import PolarsStore
+
+    inst = _make_instance()
+    inst.strategy.set_store(PolarsStore())
+    assert inst.is_ready() is True
+
+
+def test_algo_instance_state_dict_before_warmup() -> None:
+    inst = _make_instance()
+    d = inst.state_dict(warmup_candles=10)
+    assert d["bars_seen"] == 0
+    assert d["warmup_complete"] is False
+    assert d["bars_remaining"] == 10
+    assert d["last_signal_at"] is None
+
+
+def test_algo_instance_state_dict_after_warmup() -> None:
+    inst = _make_instance()
+    for _ in range(10):
+        inst.tick_bar("1min", warmup_candles=10)
+    d = inst.state_dict(warmup_candles=10)
+    assert d["warmup_complete"] is True
+    assert d["bars_remaining"] == 0
+    assert d["bars_seen"] == 10
+
+
+def test_algo_instance_state_dict_bars_remaining_clamped() -> None:
+    inst = _make_instance()
+    inst.tick_bar("1min", warmup_candles=3)
+    d = inst.state_dict(warmup_candles=3)
+    assert d["bars_remaining"] == 2
+
+
+def test_warmup_pre_builds_ema_crossover_indicators(engine: AsyncEngine) -> None:
+    """After setup(warmup_candles), EmaCrossoverStrategy has indicator instances ready."""
+    reg = make_registry(engine)  # calls setup() with no warmup candles
+    strategy = reg._algos["INFY"].strategy
+
+    # _inds should be empty before any candles (no warmup data provided)
+    assert strategy._inds == {}  # type: ignore[union-attr]
+
+    # Provide a warmup candle — rebuild with warmup data
+    sf = build_session_factory(engine)
+    config = AlgoRunConfig(
+        instrument_strategy_map={"INFY": "ema_crossover"},
+        instrument_types={"INFY": "EQUITY"},
+    )
+    algos = _build_algos({"INFY": "ema_crossover"}, {"INFY": "EQUITY"})
+    reg2 = SignalGenerator(
+        config=config,
+        chart=ChartStore(sf),
+        config_store=ConfigStore(sf),
+        audit=AuditStore(sf),
+        factory=_make_factory(),
+        algos=algos,
+    )
+    warmup = {"INFY": [make_candle()]}
+    reg2.setup(warmup)
+    # After setup() with a candle for INFY, indicators are pre-built
+    assert "INFY" in reg2._algos["INFY"].strategy._inds  # type: ignore[union-attr]
