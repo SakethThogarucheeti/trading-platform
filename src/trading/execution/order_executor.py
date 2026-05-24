@@ -1,25 +1,21 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from trading.broker.base.broker import Broker
-from trading.broker.paper_broker import AbstractPriceStore
+from trading.core.clock import Clock, SystemClock
 from trading.core.messaging import AbstractRegistry
 from trading.core.models import Order
-from trading.core.schemas import (
-    FillEvent,
-    OrderStatus,
-    Side,
-    ValidatedOrderEvent,
-)
+from trading.core.schemas import OrderStatus, ValidatedOrderEvent
+from trading.execution.fill_handler import FillHandler
 from trading.execution.idempotency import is_duplicate
-from trading.storage.stores.trading import AbstractTradingStore, NotFoundError
+from trading.storage.stores.trading import AbstractTradingStore
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +30,9 @@ class OrderExecutor(AbstractRegistry):
     """
     Routes a ValidatedOrderEvent to the broker and handles fills.
 
-    exec_id="paper"  — simulates an immediate fill at the last known price
-    exec_id="direct" — places a real order via the broker
+    Places the order via the broker. Fills arrive via handle_fill() — called
+    either by a Zerodha postback webhook (live) or by PaperBroker.place_order()
+    (paper trading simulation).
 
     handle() always returns None (fire-and-forget terminal stage).
     """
@@ -46,13 +43,15 @@ class OrderExecutor(AbstractRegistry):
         broker: Broker,
         session_factory: async_sessionmaker[AsyncSession],
         trading: AbstractTradingStore,
-        price_store: AbstractPriceStore | None = None,
+        fill_handler: FillHandler,
+        clock: Clock | None = None,
     ) -> None:
         self._config = config
         self._broker = broker
         self._session_factory = session_factory
         self._trading = trading
-        self._price_store = price_store if config.exec_id == "paper" else None
+        self._fill_handler = fill_handler
+        self._clock: Clock = clock or SystemClock()
 
     @property
     def config(self) -> ExecConfig:
@@ -71,7 +70,7 @@ class OrderExecutor(AbstractRegistry):
             status=OrderStatus.PENDING.value,
             qty=event.quantity,
             avg_price=Decimal("0"),
-            created_at=datetime.now(UTC),
+            created_at=self._clock.now(),
         )
 
         # Idempotency check + order insert must be atomic (prevent TOCTOU)
@@ -82,7 +81,8 @@ class OrderExecutor(AbstractRegistry):
                     return
                 session.add(order)
 
-        # Broker call outside transaction
+        # Broker call outside transaction. PaperBroker fires handle_fill() inline;
+        # live broker waits for the Zerodha postback to call handle_fill().
         try:
             kite_order_id = await self._broker.place_order(
                 symbol=event.symbol,
@@ -90,6 +90,8 @@ class OrderExecutor(AbstractRegistry):
                 qty=event.quantity,
                 order_type=event.order_type,
                 limit_price=event.limit_price,
+                instrument_type=event.instrument_type.value,
+                tick_log_id=event.tick_log_id,
             )
             final_status = OrderStatus.PLACED
         except Exception as exc:
@@ -97,38 +99,39 @@ class OrderExecutor(AbstractRegistry):
             kite_order_id = f"FAILED_{order_id}"
             final_status = OrderStatus.REJECTED
 
-        # Write kite_order_id + final status back to the order row
-        async with self._session_factory() as session:
-            async with session.begin():
-                row = await session.get(Order, order_id)
-                if row is not None:
-                    row.kite_order_id = kite_order_id
-                    row.status = final_status.value
-
+        await self._persist_order_status(order_id, kite_order_id, final_status)
         logger.info("OrderExecutor: order %s status=%s", kite_order_id, final_status.value)
 
-        # Paper trading: simulate immediate fill
-        if self._price_store is not None and final_status == OrderStatus.PLACED:
-            _ps = self._price_store
-            if hasattr(_ps, "fill_price"):
-                _fp = _ps.fill_price(event.symbol, event.side)  # type: ignore[attr-defined]
-                fill_price: float | None = float(_fp) if _fp is not None else None  # type: ignore[arg-type]
-            else:
-                raw = _ps.get(event.symbol)  # type: ignore[attr-defined]
-                fill_price = float(raw) if raw is not None else None
-            if fill_price is None:
-                logger.warning("OrderExecutor: no price known for %s — fill skipped", event.symbol)
-            else:
-                await self._handle_fill(
-                    kite_order_id=kite_order_id,
-                    avg_price=fill_price,
-                    filled_qty=event.quantity,
-                    symbol=event.symbol,
-                    instrument_type=event.instrument_type.value,
-                    side=event.side.value,
-                )
+    async def _persist_order_status(
+        self, order_id: UUID, kite_order_id: str, status: OrderStatus
+    ) -> None:
+        """Write kite_order_id + status back to the Order row, with retries."""
 
-    async def _handle_fill(
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=0.1, min=0.1, max=1.0),
+            retry=retry_if_exception_type(Exception),
+            reraise=True,
+        )
+        async def _attempt() -> None:
+            async with self._session_factory() as session:
+                async with session.begin():
+                    row = await session.get(Order, order_id)
+                    if row is not None:
+                        row.kite_order_id = kite_order_id
+                        row.status = status.value
+
+        try:
+            await _attempt()
+        except Exception as exc:
+            logger.critical(
+                "UNRECOVERABLE: order placed on broker (kite_order_id=%s) but DB update "
+                "failed after 3 attempts — manual reconciliation needed. error=%s",
+                kite_order_id,
+                exc,
+            )
+
+    async def handle_fill(
         self,
         kite_order_id: str,
         avg_price: float,
@@ -136,19 +139,13 @@ class OrderExecutor(AbstractRegistry):
         symbol: str,
         instrument_type: str,
         side: str,
+        tick_log_id: int = 0,
     ) -> None:
-        fill = FillEvent(
-            kite_order_id=kite_order_id,
-            avg_price=avg_price,
-            filled_qty=filled_qty,
-            timestamp=datetime.now(UTC),
+        """
+        Process a fill notification.
+
+        Called by the Zerodha postback webhook (live) or by PaperBroker (paper trading).
+        """
+        await self._fill_handler.handle(
+            kite_order_id, avg_price, filled_qty, symbol, instrument_type, side, tick_log_id
         )
-        try:
-            await self._trading.update_order_status(kite_order_id, OrderStatus.FILLED, avg_price)
-        except NotFoundError:
-            logger.warning(
-                "OrderExecutor: fill for unknown order %s — skipping", kite_order_id
-            )
-            return
-        await self._trading.update_position(fill, Side(side), symbol, instrument_type)
-        logger.info("OrderExecutor: fill %s avg=%.2f qty=%d", kite_order_id, avg_price, filled_qty)
