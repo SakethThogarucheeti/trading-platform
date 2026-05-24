@@ -3,15 +3,17 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from trading.core.clock import Clock, SystemClock
 from trading.core.messaging import AbstractRegistry
 from trading.core.schemas import CandleEvent, InstrumentType, SignalEvent
 from trading.core.tasks import fire
 from quantindicators.polars_store import PolarsStore
 from quantindicators.store import AbstractCandleStore, BarCachingStore
+from trading.storage.cache import CacherFactory
 from trading.storage.stores.audit import AbstractAuditStore, AuditContext
 from trading.storage.stores.chart import AbstractChartStore
 from trading.storage.stores.config import AbstractConfigStore
@@ -42,9 +44,32 @@ class AlgoRunConfig(BaseModel):
 class AlgoInstance:
     strategy: Strategy
     instrument_type: InstrumentType
+    interval: str = ""
     bars_seen: int = 0
     warmed_up: bool = False
     last_signal_at: str | None = None
+
+    def tick_bar(self, interval: str, warmup_candles: int) -> None:
+        self.interval = interval
+        self.bars_seen += 1
+        if self.bars_seen >= warmup_candles:
+            self.warmed_up = True
+
+    def record_signal(self, now: datetime) -> None:
+        self.last_signal_at = now.isoformat()
+
+    def is_ready(self) -> bool:
+        return self.strategy._store is not None  # type: ignore[union-attr]
+
+    def state_dict(self, warmup_candles: int) -> dict[str, object]:
+        return {
+            "bars_seen": self.bars_seen,
+            "warmup_candles": warmup_candles,
+            "warmup_complete": self.warmed_up,
+            "bars_remaining": 0 if self.warmed_up else max(0, warmup_candles - self.bars_seen),
+            "last_signal_at": self.last_signal_at,
+            **self.strategy.get_state(),
+        }
 
 
 class SignalGenerator(AbstractRegistry):
@@ -61,16 +86,20 @@ class SignalGenerator(AbstractRegistry):
         chart: AbstractChartStore,
         config_store: AbstractConfigStore,
         audit: AbstractAuditStore,
+        factory: CacherFactory,
         algos: dict[str, AlgoInstance] | None = None,
         store: PolarsStore | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._config = config
         self._chart = chart
         self._config_store = config_store
         self._audit = audit
+        self._factory = factory
         self._algos: dict[str, AlgoInstance] = algos if algos is not None else {}
         self._store: PolarsStore = store if store is not None else PolarsStore()
         self._indicator_store: AbstractCandleStore = self._store
+        self._clock: Clock = clock or SystemClock()
 
         if not self._algos:
             logger.warning(
@@ -92,6 +121,18 @@ class SignalGenerator(AbstractRegistry):
             self._indicator_store = store
         else:
             self._indicator_store = BarCachingStore(store)
+
+    def setup(self, warmup_candles: dict[str, list[CandleEvent]] | None = None) -> None:
+        """
+        Initialize all strategy instances with the indicator store and pre-built indicators.
+
+        Must be called after set_indicator_store() (if used) and before the first handle().
+        Pass warmup_candles to let strategies eagerly construct per-symbol indicator instances.
+        """
+        candles_by_symbol = warmup_candles or {}
+        for symbol, instance in self._algos.items():
+            instance.strategy.set_store(self._indicator_store)
+            instance.strategy.warmup(symbol, candles_by_symbol.get(symbol, []))
 
     def _make_chart_cb(
         self, symbol: str, interval: str
@@ -139,23 +180,34 @@ class SignalGenerator(AbstractRegistry):
             },
         )
 
-        if instance.bars_seen == 0:
-            instance.strategy.set_store(self._indicator_store)
+        if not instance.is_ready():
+            logger.warning(
+                "SignalGenerator.setup() not called for '%s' — skipping", candle.symbol
+            )
+            return []
 
-        instance.bars_seen += 1
+        instance.tick_bar(candle.interval, self._config.warmup_candles)
 
-        if isinstance(self._indicator_store, BarCachingStore):
-            self._indicator_store.invalidate()
+        self._indicator_store.on_bar_close()
 
         instance.strategy.set_chart_callback(self._make_chart_cb(candle.symbol, candle.interval))
 
         signal = await instance.strategy.on_candle(candle.symbol, instance.instrument_type, candle)
 
-        if instance.bars_seen >= self._config.warmup_candles:
-            instance.warmed_up = True
-
         if signal is not None:
-            instance.last_signal_at = datetime.now(UTC).isoformat()
+            instance.record_signal(self._clock.now())
+
+        rolling = instance.strategy.rolling_state()
+        if rolling:
+            fire(
+                self._factory.rolling_state().save(
+                    algo=instance.strategy.id,
+                    symbol=candle.symbol,
+                    interval=candle.interval,
+                    tick_log_id=candle.tick_log_id,
+                    data=rolling,
+                )
+            )
 
         fire(self._upsert_state(instance))
 
@@ -175,20 +227,48 @@ class SignalGenerator(AbstractRegistry):
         )
         return [signal_event]
 
+    async def restore_state(self) -> None:
+        """
+        Restore rolling indicator state from cache for all algo instances.
+
+        Called once at startup (after setup()) by the DI wiring layer.
+        On corrupt/unusable state, clears the cache entry and falls back to DB warmup.
+        """
+        state_cacher = self._factory.rolling_state()
+        for symbol, instance in self._algos.items():
+            if not instance.interval:
+                continue  # interval not yet known (no candles processed)
+            result = await state_cacher.load_latest(
+                algo=instance.strategy.id,
+                symbol=symbol,
+                interval=instance.interval,
+            )
+            if result is None:
+                continue
+            tick_log_id, state = result
+            ok = await instance.strategy.restore_from_state(state)
+            if ok:
+                logger.info(
+                    "SignalGenerator[%s]: restored state for %s from tick_log_id=%d",
+                    self._config.algo_name,
+                    symbol,
+                    tick_log_id,
+                )
+            else:
+                logger.warning(
+                    "SignalGenerator[%s]: state invalid for %s — clearing cache, using warmup",
+                    self._config.algo_name,
+                    symbol,
+                )
+                await state_cacher.clear(
+                    algo=instance.strategy.id, symbol=symbol, interval=instance.interval
+                )
+
     async def _upsert_state(self, instance: AlgoInstance) -> None:
-        warmup_complete = instance.warmed_up
-        state: dict[str, object] = {
-            "bars_seen": instance.bars_seen,
-            "warmup_candles": self._config.warmup_candles,
-            "warmup_complete": warmup_complete,
-            "bars_remaining": (
-                0 if warmup_complete else max(0, self._config.warmup_candles - instance.bars_seen)
-            ),
-            "last_signal_at": instance.last_signal_at,
-            **instance.strategy.get_state(),
-        }
         try:
-            await self._config_store.upsert_algo_state(self._config.algo_name, state)
+            await self._config_store.upsert_algo_state(
+                self._config.algo_name, instance.state_dict(self._config.warmup_candles)
+            )
         except Exception:
             logger.warning("SignalGenerator: state upsert failed for %s", self._config.algo_name, exc_info=True)
 

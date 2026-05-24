@@ -108,6 +108,15 @@ class Strategy(ABC):
         strategies that don't use indicators.
         """
 
+    def warmup(self, symbol: str, candles: list[CandleEvent]) -> None:  # noqa: B027
+        """
+        Called once per symbol after set_store() and before the first live on_candle().
+
+        Strategies that construct indicators eagerly should override this to pre-build
+        their indicator instances so the lazy path in on_candle() is never taken.
+        Default is a no-op — lazy construction remains supported.
+        """
+
     def get_params(self) -> dict[str, object]:
         """Return static strategy configuration (periods, thresholds, etc.)."""
         return {}
@@ -120,6 +129,25 @@ class Strategy(ABC):
         Merged into ``algo_state.state`` in Postgres after every candle.
         """
         return {}
+
+    def rolling_state(self) -> dict[str, object]:
+        """
+        Return the rolling indicator state to snapshot after each bar.
+
+        The returned dict is persisted by SignalGenerator via RollingStateCacher
+        and restored at startup via restore_from_state(). Override to include
+        the specific fields this strategy needs to resume from (e.g. prev indicator values).
+        Default is empty — no-op for strategies that have no inter-bar state.
+        """
+        return {}
+
+    async def restore_from_state(self, state: dict[str, object]) -> bool:
+        """
+        Restore rolling state from a cached snapshot. Return True if the state
+        is valid and was applied, False if it is unusable (triggers cache clear + warmup).
+        Default always returns True (no-op for strategies with no rolling state).
+        """
+        return True
 
     @abstractmethod
     async def on_candle(
