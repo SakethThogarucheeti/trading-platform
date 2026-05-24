@@ -19,10 +19,16 @@ from trading.core.schemas import (
     SignalType,
     ValidatedOrderEvent,
 )
+from trading.risk.gates.circuit_breaker import CircuitBreakerGate
+from trading.risk.gates.daily_loss import DailyLossGate
+from trading.risk.gates.duplicate_position import DuplicatePositionGate
+from trading.risk.gates.time_cutoff import TimeCutoffGate
 from trading.risk.risk_filter import RiskConfig, RiskFilter
 from trading.tick_ingest.tick_ingestor import CircuitBreaker
 from trading.risk.sizer import calculate_quantity
 from trading.storage.stores.audit import AuditStore
+from trading.storage.cache import CacherFactory, ValueCache, setup_cache
+from trading.storage.stores.position import PositionStore
 from trading.storage.stores.trading import TradingStore
 
 NOW = datetime.now(UTC)
@@ -90,7 +96,6 @@ def make_config(**overrides) -> RiskConfig:
         max_daily_loss_pct=2.0,
         risk_per_trade_pct=1.0,
         rc_id="default",
-        paper_trading=False,
         # Use 23:59 so tests never fail due to time-of-day
         intraday_cutoff_hour=23,
         intraday_cutoff_minute=59,
@@ -98,18 +103,34 @@ def make_config(**overrides) -> RiskConfig:
     return RiskConfig(**{**base, **overrides})  # type: ignore[arg-type]
 
 
+def _make_factory() -> CacherFactory:
+    setup_cache(None)
+    return CacherFactory(ValueCache())
+
+
 def make_registry(
     engine: AsyncEngine,
     circuit: CircuitBreaker | None = None,
     config: RiskConfig | None = None,
-) -> RiskFilter:
+    daily_loss_enabled: bool = True,
+) -> tuple[RiskFilter, CacherFactory]:
     sf = build_session_factory(engine)
-    return RiskFilter(
+    cb = circuit or CircuitBreaker()
+    factory = _make_factory()
+    rf = RiskFilter(
         config=config or make_config(),
-        circuit=circuit or CircuitBreaker(),
+        gates=[
+            TimeCutoffGate(),
+            CircuitBreakerGate(cb),
+            DailyLossGate(enabled=daily_loss_enabled),
+            DuplicatePositionGate(),
+        ],
         trading=TradingStore(sf),
         audit=AuditStore(sf),
+        position=PositionStore(sf),
+        factory=factory,
     )
+    return rf, factory
 
 
 def make_signal(**overrides) -> SignalEvent:
@@ -133,7 +154,7 @@ def make_signal(**overrides) -> SignalEvent:
 
 
 async def test_valid_signal_returns_validated_order(engine: AsyncEngine) -> None:
-    reg = make_registry(engine)
+    reg, factory = make_registry(engine)
     result = await reg.handle(make_signal())
 
     assert result is not None
@@ -149,7 +170,7 @@ async def test_valid_signal_returns_validated_order(engine: AsyncEngine) -> None
 
 async def test_after_cutoff_rejects_signal(engine: AsyncEngine) -> None:
     config = make_config(intraday_cutoff_hour=0, intraday_cutoff_minute=0)
-    reg = make_registry(engine, config=config)
+    reg, factory = make_registry(engine, config=config)
 
     result = await reg.handle(make_signal())
     assert result is None
@@ -163,7 +184,7 @@ async def test_after_cutoff_rejects_signal(engine: AsyncEngine) -> None:
 async def test_circuit_open_rejects_signal(engine: AsyncEngine) -> None:
     circuit = CircuitBreaker()
     circuit.open()
-    reg = make_registry(engine, circuit=circuit)
+    reg, factory = make_registry(engine, circuit=circuit)
 
     result = await reg.handle(make_signal())
     assert result is None
@@ -172,7 +193,7 @@ async def test_circuit_open_rejects_signal(engine: AsyncEngine) -> None:
 async def test_circuit_closed_allows_signal(engine: AsyncEngine) -> None:
     circuit = CircuitBreaker()
     circuit.close()  # explicitly closed
-    reg = make_registry(engine, circuit=circuit)
+    reg, factory = make_registry(engine, circuit=circuit)
 
     result = await reg.handle(make_signal())
     assert result is not None
@@ -184,77 +205,32 @@ async def test_circuit_closed_allows_signal(engine: AsyncEngine) -> None:
 
 
 async def test_daily_loss_limit_rejects_signal(engine: AsyncEngine) -> None:
-    from trading.core.database import get_session
-
-    sig_id = uuid4()
-    async with get_session(engine) as s:
-        s.add(
-            Signal(
-                id=sig_id,
-                strategy_id="s",
-                symbol="INFY",
-                instrument_type="EQUITY",
-                side="SELL",
-                signal_type="ENTRY",
-                stop_distance=Decimal("10"),
-                created_at=NOW,
-            )
-        )
-
-    # P&L = 10*1000 = 10_000, limit = 100_000 * 2% = 2_000 → exceeded
-    async with get_session(engine) as s:
-        s.add(
-            Order(
-                id=uuid4(),
-                kite_order_id="K_LOSS",
-                signal_id=sig_id,
-                status=OrderStatus.FILLED.value,
-                qty=10,
-                avg_price=Decimal("1000"),
-                created_at=NOW,
-            )
-        )
-
-    reg = make_registry(engine, config=make_config(equity=100_000.0, paper_trading=False))
+    """increment_sync pre-seeds the PnL cache; next signal is rejected by DailyLossGate."""
+    reg, factory = make_registry(engine, config=make_config(equity=100_000.0))
+    # SELL fill: sign=+1, pnl = 1.0 * 1000 * 10 = 10_000, limit = 2_000 → exceeded
+    factory.pnl().increment_sync(TODAY, Side.SELL, avg_price=1000.0, qty=10)
     result = await reg.handle(make_signal())
     assert result is None
 
 
-async def test_paper_trading_skips_daily_loss_check(engine: AsyncEngine) -> None:
-    """In paper trading mode, daily loss limit is skipped."""
-    from trading.core.database import get_session
+async def test_on_fill_increments_cache_and_blocks_second_signal(engine: AsyncEngine) -> None:
+    """Two small fills accumulate past limit; second signal is rejected."""
+    reg, factory = make_registry(engine, config=make_config(equity=100_000.0, max_daily_loss_pct=2.0))
+    # limit = 2_000. Each fill = 1_500 (SELL). After 2 fills pnl = 3_000 > 2_000.
+    factory.pnl().increment_sync(TODAY, Side.SELL, avg_price=1500.0, qty=1)
+    result1 = await reg.handle(make_signal())
+    assert result1 is not None  # 1_500 < 2_000, passes
+    factory.pnl().increment_sync(TODAY, Side.SELL, avg_price=1500.0, qty=1)
+    result2 = await reg.handle(make_signal())
+    assert result2 is None  # 3_000 > 2_000, rejected
 
-    sig_id = uuid4()
-    async with get_session(engine) as s:
-        s.add(
-            Signal(
-                id=sig_id,
-                strategy_id="s",
-                symbol="INFY",
-                instrument_type="EQUITY",
-                side="SELL",
-                signal_type="ENTRY",
-                stop_distance=Decimal("10"),
-                created_at=NOW,
-            )
-        )
-    async with get_session(engine) as s:
-        s.add(
-            Order(
-                id=uuid4(),
-                kite_order_id="K_LOSS_PAPER",
-                signal_id=sig_id,
-                status=OrderStatus.FILLED.value,
-                qty=10,
-                avg_price=Decimal("1000"),
-                created_at=NOW,
-            )
-        )
 
-    config = make_config(equity=100_000.0, paper_trading=True)
-    reg = make_registry(engine, config=config)
+async def test_daily_loss_gate_disabled_always_passes(engine: AsyncEngine) -> None:
+    """DailyLossGate(enabled=False) never rejects regardless of realized PnL."""
+    reg, factory = make_registry(engine, daily_loss_enabled=False)
+    # Pre-seed a massive loss — gate should still pass
+    factory.pnl().increment_sync(TODAY, Side.SELL, avg_price=100_000.0, qty=100)
     result = await reg.handle(make_signal())
-    # Paper mode skips the daily loss check — signal should pass
     assert result is not None
 
 
@@ -277,7 +253,7 @@ async def test_entry_with_existing_position_rejected(engine: AsyncEngine) -> Non
             )
         )
 
-    reg = make_registry(engine)
+    reg, factory = make_registry(engine)
     result = await reg.handle(make_signal(signal_type=SignalType.ENTRY))
     assert result is None
 
@@ -296,7 +272,7 @@ async def test_exit_with_existing_position_passes(engine: AsyncEngine) -> None:
             )
         )
 
-    reg = make_registry(engine)
+    reg, factory = make_registry(engine)
     result = await reg.handle(make_signal(signal_type=SignalType.EXIT, side=Side.SELL))
     assert result is not None
 
@@ -309,7 +285,7 @@ async def test_exit_with_existing_position_passes(engine: AsyncEngine) -> None:
 async def test_zero_quantity_rejects_signal(engine: AsyncEngine) -> None:
     """stop_distance so large that no shares can be afforded."""
     config = make_config(equity=100.0)  # tiny equity
-    reg = make_registry(engine, config=config)
+    reg, factory = make_registry(engine, config=config)
 
     # risk=1% of 100 = 1, stop=50 → qty=0
     result = await reg.handle(make_signal(stop_distance=50.0))
@@ -328,7 +304,7 @@ async def test_rejected_signal_logged_to_audit(engine: AsyncEngine) -> None:
     from trading.core.models import AuditLog
 
     config = make_config(intraday_cutoff_hour=0, intraday_cutoff_minute=0)
-    reg = make_registry(engine, config=config)
+    reg, factory = make_registry(engine, config=config)
 
     await reg.handle(make_signal())
 
@@ -347,14 +323,14 @@ async def test_rejected_signal_logged_to_audit(engine: AsyncEngine) -> None:
 
 async def test_log_decision_skips_when_tick_log_id_zero(engine: AsyncEngine) -> None:
     """_log_decision returns early when tick_log_id == 0 (line 183)."""
-    reg = make_registry(engine)
+    reg, factory = make_registry(engine)
     sig = make_signal(tick_log_id=0)
     await reg._log_decision("SIGNAL_ACCEPTED", sig, {"qty": 10})  # should not write to DB
 
 
 async def test_reject_direct_covers_audit_log_path(engine: AsyncEngine) -> None:
     """Calling _reject directly covers the audit log write path (lines 178-179)."""
-    reg = make_registry(engine)
+    reg, factory = make_registry(engine)
     sig = make_signal(tick_log_id=1)
     await reg._reject(sig, "TEST_REASON")  # should not raise
 
@@ -382,14 +358,23 @@ async def test_audit_log_failure_in_accept_is_swallowed() -> None:
 
     mock_trading = AsyncMock()
     mock_trading.get_daily_realized_pnl = AsyncMock(return_value=0.0)
-    mock_trading.get_position = AsyncMock(return_value=None)
     mock_trading.save_signal = AsyncMock()
+    mock_position = AsyncMock()
+    mock_position.get_position = AsyncMock(return_value=None)
 
+    cb = CircuitBreaker()
     reg = RiskFilter(
         config=make_config(),
-        circuit=CircuitBreaker(),
+        gates=[
+            TimeCutoffGate(),
+            CircuitBreakerGate(cb),
+            DailyLossGate(enabled=True),
+            DuplicatePositionGate(),
+        ],
         trading=mock_trading,
         audit=_FailAuditStore(),
+        position=mock_position,
+        factory=_make_factory(),
     )
     sig = make_signal(tick_log_id=1)
     # The audit.log_audit failure should be swallowed, result should still return
@@ -420,14 +405,23 @@ async def test_save_signal_failure_is_swallowed() -> None:
 
     mock_trading = AsyncMock()
     mock_trading.get_daily_realized_pnl = AsyncMock(return_value=0.0)
-    mock_trading.get_position = AsyncMock(return_value=None)
     mock_trading.save_signal = AsyncMock(side_effect=RuntimeError("DB down"))
+    mock_position = AsyncMock()
+    mock_position.get_position = AsyncMock(return_value=None)
 
+    cb = CircuitBreaker()
     reg = RiskFilter(
         config=make_config(),
-        circuit=CircuitBreaker(),
+        gates=[
+            TimeCutoffGate(),
+            CircuitBreakerGate(cb),
+            DailyLossGate(enabled=True),
+            DuplicatePositionGate(),
+        ],
         trading=mock_trading,
         audit=_NoopAuditStore(),
+        position=mock_position,
+        factory=_make_factory(),
     )
     sig = make_signal(tick_log_id=1)
     # save_signal failure should be swallowed
@@ -457,12 +451,22 @@ async def test_reject_audit_log_failure_is_swallowed() -> None:
             raise RuntimeError("audit DB down in reject")
 
     mock_trading = AsyncMock()
+    mock_position = AsyncMock()
+    mock_position.get_position = AsyncMock(return_value=None)
 
+    cb = CircuitBreaker()
     reg = RiskFilter(
         config=make_config(),
-        circuit=CircuitBreaker(),
+        gates=[
+            TimeCutoffGate(),
+            CircuitBreakerGate(cb),
+            DailyLossGate(enabled=True),
+            DuplicatePositionGate(),
+        ],
         trading=mock_trading,
         audit=_FailAuditStore(),
+        position=mock_position,
+        factory=_make_factory(),
     )
     sig = make_signal(tick_log_id=5)
     # _reject with failing audit store should not raise
@@ -481,7 +485,7 @@ async def test_log_decision_writes_when_tick_log_id_positive(engine: AsyncEngine
     from trading.core.database import get_session
     from trading.core.models import DecisionLog
 
-    reg = make_registry(engine)
+    reg, factory = make_registry(engine)
     sig = make_signal(tick_log_id=99)
     from trading.risk.risk_filter import SignalAcceptedContext
     await reg._log_decision("SIGNAL_ACCEPTED", sig, SignalAcceptedContext(qty=5, order_type="MARKET"))
@@ -494,3 +498,118 @@ async def test_log_decision_writes_when_tick_log_id_positive(engine: AsyncEngine
         result = await s.execute(select(DecisionLog))
         logs = result.scalars().all()
     assert any(log.step == "SIGNAL_ACCEPTED" for log in logs)
+
+
+# ---------------------------------------------------------------------------
+# Isolated gate unit tests
+# ---------------------------------------------------------------------------
+
+
+async def test_time_cutoff_gate_rejects_after_cutoff() -> None:
+    from datetime import UTC, datetime, time
+
+    from trading.risk.gates.time_cutoff import TimeCutoffGate
+    from trading.risk.policy import RiskContext
+
+    gate = TimeCutoffGate()
+    ctx = RiskContext(
+        now=datetime(2024, 1, 1, 16, 0, tzinfo=UTC),  # 16:00 > cutoff 15:30
+        today=datetime(2024, 1, 1).date(),
+        equity=100_000.0,
+        max_daily_loss_pct=2.0,
+        risk_per_trade_pct=1.0,
+        cutoff=time(15, 30),
+        realized_pnl=0.0,
+        position=None,
+    )
+    assert await gate.check(make_signal(), ctx) == "AFTER_CUTOFF"
+
+
+async def test_time_cutoff_gate_passes_before_cutoff() -> None:
+    from datetime import UTC, datetime, time
+
+    from trading.risk.gates.time_cutoff import TimeCutoffGate
+    from trading.risk.policy import RiskContext
+
+    gate = TimeCutoffGate()
+    ctx = RiskContext(
+        now=datetime(2024, 1, 1, 10, 0, tzinfo=UTC),
+        today=datetime(2024, 1, 1).date(),
+        equity=100_000.0,
+        max_daily_loss_pct=2.0,
+        risk_per_trade_pct=1.0,
+        cutoff=time(15, 30),
+        realized_pnl=0.0,
+        position=None,
+    )
+    assert await gate.check(make_signal(), ctx) is None
+
+
+async def test_circuit_breaker_gate_rejects_when_open() -> None:
+    from trading.risk.gates.circuit_breaker import CircuitBreakerGate
+
+    circuit = CircuitBreaker()
+    circuit.open()
+    gate = CircuitBreakerGate(circuit)
+
+    from datetime import UTC, datetime, time
+
+    from trading.risk.policy import RiskContext
+
+    ctx = RiskContext(
+        now=datetime(2024, 1, 1, 10, 0, tzinfo=UTC),
+        today=datetime(2024, 1, 1).date(),
+        equity=100_000.0,
+        max_daily_loss_pct=2.0,
+        risk_per_trade_pct=1.0,
+        cutoff=time(15, 30),
+        realized_pnl=0.0,
+        position=None,
+    )
+    assert await gate.check(make_signal(), ctx) == "CIRCUIT_OPEN"
+
+
+async def test_daily_loss_gate_rejects_when_limit_exceeded() -> None:
+    from datetime import UTC, datetime, time
+
+    from trading.risk.gates.daily_loss import DailyLossGate
+    from trading.risk.policy import RiskContext
+
+    gate = DailyLossGate(enabled=True)
+    ctx = RiskContext(
+        now=datetime(2024, 1, 1, 10, 0, tzinfo=UTC),
+        today=datetime(2024, 1, 1).date(),
+        equity=100_000.0,
+        max_daily_loss_pct=2.0,  # limit = 2_000
+        risk_per_trade_pct=1.0,
+        cutoff=time(15, 30),
+        realized_pnl=5_000.0,   # > 2_000
+        position=None,
+    )
+    assert await gate.check(make_signal(), ctx) == "DAILY_LOSS_LIMIT"
+
+
+async def test_duplicate_position_gate_rejects_same_direction() -> None:
+    from datetime import UTC, datetime, time
+    from decimal import Decimal
+
+    from trading.core.models import Position
+    from trading.risk.gates.duplicate_position import DuplicatePositionGate
+    from trading.risk.policy import RiskContext
+
+    gate = DuplicatePositionGate()
+    pos = Position(symbol="INFY", instrument_type="EQUITY", net_qty=10, avg_price=Decimal("100"), updated_at=NOW)
+    ctx = RiskContext(
+        now=datetime(2024, 1, 1, 10, 0, tzinfo=UTC),
+        today=datetime(2024, 1, 1).date(),
+        equity=100_000.0,
+        max_daily_loss_pct=2.0,
+        risk_per_trade_pct=1.0,
+        cutoff=time(15, 30),
+        realized_pnl=0.0,
+        position=pos,
+    )
+    # BUY entry while already long → rejected
+    assert await gate.check(make_signal(side=Side.BUY, signal_type=SignalType.ENTRY), ctx) == "ALREADY_IN_POSITION"
+    # SELL entry while long → allowed (exit or short)
+    assert await gate.check(make_signal(side=Side.SELL, signal_type=SignalType.ENTRY), ctx) is None

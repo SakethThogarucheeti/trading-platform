@@ -18,10 +18,15 @@ from trading.core.schemas import (
     SignalType,
     ValidatedOrderEvent,
 )
+from trading.risk.gates.circuit_breaker import CircuitBreakerGate
+from trading.risk.gates.daily_loss import DailyLossGate
+from trading.risk.gates.duplicate_position import DuplicatePositionGate
+from trading.risk.gates.time_cutoff import TimeCutoffGate
 from trading.risk.risk_filter import RiskConfig, RiskFilter
-from trading.engine.tick_ingestor import CircuitBreaker
-from trading.storage.stores.trading import TradingStore
+from trading.tick_ingest.tick_ingestor import CircuitBreaker
 from trading.storage.stores.audit import AuditStore
+from trading.storage.stores.position import PositionStore
+from trading.storage.stores.trading import TradingStore
 
 
 def _signal(
@@ -50,19 +55,25 @@ def _make_risk_reg(
 ) -> RiskFilter:
     trading = TradingStore(session_factory)
     audit = AuditStore(session_factory)
+    position = PositionStore(session_factory)
     return RiskFilter(
         config=RiskConfig(
             equity=equity,
             max_daily_loss_pct=2.0,
             risk_per_trade_pct=1.0,
             rc_id="default",
-            paper_trading=True,
             intraday_cutoff_hour=cutoff_hour,
             intraday_cutoff_minute=cutoff_minute,
         ),
-        circuit=CircuitBreaker(),
+        gates=[
+            TimeCutoffGate(),
+            CircuitBreakerGate(CircuitBreaker()),
+            DailyLossGate(enabled=False),  # paper mode: skip daily loss check
+            DuplicatePositionGate(),
+        ],
         trading=trading,
         audit=audit,
+        position=position,
         clock=clock,
     )
 
@@ -128,16 +139,22 @@ async def test_circuit_open_rejects_signal(engine, session_factory):
 
     trading = TradingStore(session_factory)
     audit = AuditStore(session_factory)
+    position = PositionStore(session_factory)
     risk_reg = RiskFilter(
         config=RiskConfig(
             equity=1_000_000.0,
-            paper_trading=True,
             intraday_cutoff_hour=15,
             intraday_cutoff_minute=30,
         ),
-        circuit=circuit,
+        gates=[
+            TimeCutoffGate(),
+            CircuitBreakerGate(circuit),
+            DailyLossGate(enabled=False),
+            DuplicatePositionGate(),
+        ],
         trading=trading,
         audit=audit,
+        position=position,
         clock=clock,
     )
     result = await risk_reg.handle(_signal())
