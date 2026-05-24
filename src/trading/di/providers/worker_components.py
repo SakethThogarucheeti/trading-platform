@@ -9,24 +9,20 @@ from trading.broker.base.broker import Broker
 from trading.broker.paper_broker import AbstractPriceStore
 from trading.config.settings import AlgoSettings, Settings
 from trading.core.models import Instrument
-from trading.core.pipeline import AlgoPipeline, TickPipeline
-from trading.di.providers.strategy import make_strategy
-from trading.candles.candle_aggregator import CandleAggregator, CandleAggregatorComponent, CandleConfig
+from trading.di.providers.algo_pipeline import AlgoPipelineFactory, SharedAlgoDeps
+from trading.storage.cache import CacherFactory
+from trading.candles.candle_aggregator import CandleAggregator, CandleAggregatorComponent, CandleConfig, CandlePersister
 from trading.worker.circuit_breaker_redis import RedisCircuitBreaker
 from trading.monitoring.heartbeat import HeartbeatMonitor
 from trading.core.lifecycle.runtime import AbstractRuntime, Runtime
 from trading.monitoring.scheduler import Scheduler
-from trading.tick_ingest.tick_ingestor import TickConfig
 from trading.worker.tick_subscriber import TickSubscriber
-from trading.execution.order_executor import ExecConfig, OrderExecutor
-from trading.risk.risk_filter import RiskConfig, RiskFilter
 from trading.storage.stores.audit import AuditStore
 from trading.storage.stores.candle import CandleDataStore
 from trading.storage.stores.chart import ChartStore
 from trading.storage.stores.config import ConfigStore
 from trading.storage.stores.heartbeat import HeartbeatStore
 from trading.storage.stores.trading import TradingStore
-from trading.strategy.signal_generator import AlgoInstance, AlgoRunConfig, SignalGenerator
 from quantindicators.polars_store import PolarsStore
 
 logger = logging.getLogger(__name__)
@@ -63,6 +59,7 @@ class WorkerComponentProvider(Provider):
         price_store: AbstractPriceStore,
         settings: Settings,
         redis: object,
+        cacher_factory: CacherFactory,
     ) -> AbstractRuntime:
         from sqlalchemy import select
 
@@ -90,9 +87,7 @@ class WorkerComponentProvider(Provider):
         )
         candle_aggregator = CandleAggregator(
             config=candle_config,
-            broker=broker,
-            candle=candle_data_store,
-            audit=audit,
+            candle_logger=CandlePersister(candle_data_store, audit),
         )
         candle_aggregator_component = CandleAggregatorComponent(candle_aggregator)
 
@@ -109,78 +104,28 @@ class WorkerComponentProvider(Provider):
             price_store=paper_price_store,
         )
 
-        # Build algo pipeline (same logic as ComponentProvider._build_algo_pipeline)
-        exec_id = "paper" if settings.paper_trading else algo.execution_engine_id
-        algo_instances = {
-            s: AlgoInstance(
-                strategy=make_strategy(algo.strategy_id),
-                instrument_type=self._instrument_type(s, instrument_type_map),
-            )
-            for s in algo.instruments
-        }
-        signal_generator = SignalGenerator(
-            config=AlgoRunConfig(
-                instrument_strategy_map={s: algo.strategy_id for s in algo.instruments},
-                instrument_types={s: instrument_type_map.get(s, "EQUITY") for s in algo.instruments},
-                equity=algo.equity,
-                warmup_candles=settings.warmup_candles,
-                algo_name=algo.name,
-            ),
+        factory = AlgoPipelineFactory(SharedAlgoDeps(
             chart=chart,
             config_store=config_store,
             audit=audit,
-            algos=algo_instances,
-            store=polars_store,
-        )
-        risk_filter = RiskFilter(
-            config=RiskConfig(
-                equity=algo.equity,
-                max_daily_loss_pct=settings.max_daily_loss_pct,
-                risk_per_trade_pct=settings.risk_per_trade_pct,
-                rc_id=algo.risk_controller_id,
-                paper_trading=settings.paper_trading,
-                intraday_cutoff_hour=settings.intraday_cutoff_hour,
-                intraday_cutoff_minute=settings.intraday_cutoff_minute,
-            ),
-            circuit=circuit_breaker,
             trading=trading,
-            audit=audit,
-        )
-        order_executor = OrderExecutor(
-            config=ExecConfig(exec_id=exec_id),
             broker=broker,
             session_factory=sf,
-            trading=trading,
-            price_store=paper_price_store,
-        )
+            polars_store=polars_store,
+            settings=settings,
+            factory=cacher_factory,
+        ))
 
-        strategy = make_strategy(algo.strategy_id)
-        await config_store.seed_algo_config(
-            name=algo.name,
-            strategy_id=algo.strategy_id,
-            warmup_candles=settings.warmup_candles,
-            candle_intervals=intervals,
-            equity=algo.equity,
-            params=strategy.get_params() if hasattr(strategy, "get_params") else {},
-        )
-        await config_store.upsert_algo_state(
-            algo.name,
-            {
-                "bars_seen": 0,
-                "warmup_candles": settings.warmup_candles,
-                "warmup_complete": False,
-                "bars_remaining": settings.warmup_candles,
-                "last_signal_at": None,
-            },
-        )
-
-        candle_aggregator_component.add_algo_registry(signal_generator)
-        algo_pipeline = AlgoPipeline(risk_filter=risk_filter, executor=order_executor)
-        tick_pipeline = TickPipeline(
+        tick_pipeline = factory.build_pipeline(
+            algo=algo,
+            intervals=intervals,
+            instrument_type_map=instrument_type_map,
+            circuit=circuit_breaker,
             candle_registry=candle_aggregator,
-            signal_generator=signal_generator,
-            algo_pipeline=algo_pipeline,
         )
+        await factory.seed_state(algo, intervals)
+
+        candle_aggregator_component.add_algo_registry(tick_pipeline.signal_generator)
         tick_subscriber.add_on_tick(tick_pipeline.run)
 
         heartbeat_monitor = self._build_heartbeat(
@@ -220,11 +165,6 @@ class WorkerComponentProvider(Provider):
             f"Worker: algo {self._algo_name!r} not found in settings. "
             f"Available: {[a.name for a in settings.algos]}"
         )
-
-    def _instrument_type(self, symbol: str, instrument_type_map: dict[str, str]) -> object:
-        from trading.core.schemas import InstrumentType
-
-        return InstrumentType(instrument_type_map.get(symbol, InstrumentType.EQUITY.value))
 
     def _build_heartbeat(
         self,

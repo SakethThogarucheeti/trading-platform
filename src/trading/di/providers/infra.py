@@ -8,12 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from trading.broker.paper_broker import AbstractPriceStore, PriceStore
 from trading.config.settings import Settings, get_settings
 from trading.core.database import build_engine, build_session_factory
+from trading.storage.cache import CacherFactory, ValueCache, setup_cache
 from trading.storage.stores.audit import AuditStore
 from trading.storage.stores.candle import CandleDataStore
 from trading.storage.stores.chart import ChartStore
 from trading.storage.stores.config import ConfigStore
 from trading.storage.stores.heartbeat import HeartbeatStore
 from trading.storage.stores.instrument import InstrumentStore
+from trading.storage.stores.position import PositionStore
 from trading.storage.stores.trading import TradingStore
 
 
@@ -72,6 +74,10 @@ class InfrastructureProvider(Provider):
         return TradingStore(sf)
 
     @provide
+    def position_store(self, sf: async_sessionmaker[AsyncSession]) -> PositionStore:
+        return PositionStore(sf)
+
+    @provide
     def audit_store(self, sf: async_sessionmaker[AsyncSession]) -> AuditStore:
         return AuditStore(sf)
 
@@ -90,3 +96,12 @@ class InfrastructureProvider(Provider):
     @provide
     def price_store(self, settings: Settings) -> AbstractPriceStore:
         return PriceStore(slippage_pct=settings.paper_slippage_pct / 100)
+
+    @provide
+    def value_cache(self, settings: Settings) -> ValueCache:
+        setup_cache(settings.redis_url)
+        return ValueCache()
+
+    @provide
+    def cacher_factory(self, cache: ValueCache) -> CacherFactory:
+        return CacherFactory(cache)
