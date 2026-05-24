@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from trading.broker.zerodha.kite_client import KiteClient
 from trading.core.clock import SYSTEM_CLOCK, Clock
 from trading.core.models import AlgoConfig, Candle, DecisionLog, Heartbeat, Order, Position, Signal
+from trading.execution.order_executor import OrderExecutor
+from trading.storage.cache import CacherFactory
 from trading.tick_ingest.kite_ingestor import KiteIngestor
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,8 @@ def build_app(
     token_secret_key: str = "",
     kite_client: KiteClient | None = None,
     kite_ingestor: KiteIngestor | None = None,
+    order_executor: OrderExecutor | None = None,
+    cacher_factory: CacherFactory | None = None,
 ) -> FastAPI:
     """
     Build the monitoring dashboard FastAPI application.
@@ -316,62 +320,72 @@ def build_app(
 
     @app.get("/api/pnl")
     async def get_pnl(session_id: str = "", algo_name: str = "") -> JSONResponse:
-        from trading.reports.fetch import fetch_nifty_benchmark
-        from trading.reports.pnl import DEFAULT_COSTS
+        async def _produce() -> str:
+            from trading.reports.fetch import fetch_nifty_benchmark
+            from trading.reports.pnl import DEFAULT_COSTS
 
-        today = _today_start()
+            today = _today_start()
 
-        async with session_factory() as session:
-            conditions: list[ColumnElement[bool]] = [
-                Order.status == "FILLED",
-                Order.created_at >= today,
-            ]
-            if algo_name:
-                conditions.append(Signal.algo_name == algo_name)
-            result = await session.execute(
-                select(Order, Signal)
-                .join(Signal, Order.signal_id == Signal.id)
-                .where(*conditions)
-                .order_by(Order.created_at)
+            async with session_factory() as session:
+                conditions: list[ColumnElement[bool]] = [
+                    Order.status == "FILLED",
+                    Order.created_at >= today,
+                ]
+                if algo_name:
+                    conditions.append(Signal.algo_name == algo_name)
+                result = await session.execute(
+                    select(Order, Signal)
+                    .join(Signal, Order.signal_id == Signal.id)
+                    .where(*conditions)
+                    .order_by(Order.created_at)
+                )
+                rows = result.all()
+                nifty = await fetch_nifty_benchmark(session, today, clock.now())
+
+            cum_gross = 0.0
+            cum_net = 0.0
+            points: list[dict[str, object]] = []
+            for order, signal in rows:
+                sign = 1.0 if signal.side == "SELL" else -1.0
+                notional = float(order.avg_price) * order.qty
+                cost = DEFAULT_COSTS.cost_for_fill(signal.side, order.qty, float(order.avg_price))
+                cum_gross += sign * notional
+                cum_net += sign * notional - cost
+                ts = order.created_at
+                points.append(
+                    {
+                        "ts": ts.isoformat() if ts else "",
+                        "cumulative_gross": round(cum_gross, 2),
+                        "cumulative_net": round(cum_net, 2),
+                        "side": signal.side,
+                        "qty": order.qty,
+                        "price": float(order.avg_price),
+                        "cost": round(cost, 2),
+                        "symbol": signal.symbol,
+                        "signal_type": signal.signal_type,
+                    }
+                )
+
+            total_costs = round(cum_gross - cum_net, 2)
+            summary: dict[str, object] = {
+                "gross": round(cum_gross, 2),
+                "costs": total_costs,
+                "net": round(cum_net, 2),
+                "nifty_pct": round(nifty["pct_return"], 2) if nifty else None,
+                "nifty_open": round(nifty["open"], 2) if nifty else None,
+                "nifty_close": round(nifty["close"], 2) if nifty else None,
+            }
+            return json.dumps({"points": points, "summary": summary})
+
+        if cacher_factory is not None:
+            today_iso = clock.now().date().isoformat()
+            body = await cacher_factory.api().get_or_set_response(
+                key_args=("pnl", today_iso, session_id, algo_name),
+                producer=_produce,
+                ttl=30,
             )
-            rows = result.all()
-            nifty = await fetch_nifty_benchmark(session, today, clock.now())
-
-        cum_gross = 0.0
-        cum_net = 0.0
-        points: list[dict[str, object]] = []
-        for order, signal in rows:
-            sign = 1.0 if signal.side == "SELL" else -1.0
-            notional = float(order.avg_price) * order.qty
-            cost = DEFAULT_COSTS.cost_for_fill(signal.side, order.qty, float(order.avg_price))
-            cum_gross += sign * notional
-            cum_net += sign * notional - cost
-            ts = order.created_at
-            points.append(
-                {
-                    "ts": ts.isoformat() if ts else "",
-                    "cumulative_gross": round(cum_gross, 2),
-                    "cumulative_net": round(cum_net, 2),
-                    "side": signal.side,
-                    "qty": order.qty,
-                    "price": float(order.avg_price),
-                    "cost": round(cost, 2),
-                    "symbol": signal.symbol,
-                    "signal_type": signal.signal_type,
-                }
-            )
-
-        total_costs = round(cum_gross - cum_net, 2)
-        summary: dict[str, object] = {
-            "gross": round(cum_gross, 2),
-            "costs": total_costs,
-            "net": round(cum_net, 2),
-            "nifty_pct": round(nifty["pct_return"], 2) if nifty else None,
-            "nifty_open": round(nifty["open"], 2) if nifty else None,
-            "nifty_close": round(nifty["close"], 2) if nifty else None,
-        }
-
-        return JSONResponse(content={"points": points, "summary": summary})
+            return JSONResponse(content=json.loads(body))
+        return JSONResponse(content=json.loads(await _produce()))
 
     # ------------------------------------------------------------------
     # GET /api/pnl/by-algo — per-algo P&L summary (JSON)
@@ -379,43 +393,53 @@ def build_app(
 
     @app.get("/api/pnl/by-algo")
     async def get_pnl_by_algo() -> JSONResponse:
-        from trading.reports.pnl import DEFAULT_COSTS
+        async def _produce() -> str:
+            from trading.reports.pnl import DEFAULT_COSTS
 
-        today = _today_start()
+            today = _today_start()
 
-        async with session_factory() as session:
-            result = await session.execute(
-                select(Order, Signal)
-                .join(Signal, Order.signal_id == Signal.id)
-                .where(
-                    Order.status == "FILLED",
-                    Order.created_at >= today,
+            async with session_factory() as session:
+                result = await session.execute(
+                    select(Order, Signal)
+                    .join(Signal, Order.signal_id == Signal.id)
+                    .where(
+                        Order.status == "FILLED",
+                        Order.created_at >= today,
+                    )
+                    .order_by(Order.created_at)
                 )
-                .order_by(Order.created_at)
+                rows = result.all()
+
+            by_algo: dict[str, dict[str, float]] = {}
+            for order, signal in rows:
+                name = signal.algo_name or "default"
+                if name not in by_algo:
+                    by_algo[name] = {"gross": 0.0, "costs": 0.0, "net": 0.0}
+                sign = 1.0 if signal.side == "SELL" else -1.0
+                notional = float(order.avg_price) * order.qty
+                cost = DEFAULT_COSTS.cost_for_fill(signal.side, order.qty, float(order.avg_price))
+                by_algo[name]["gross"] += sign * notional
+                by_algo[name]["net"] += sign * notional - cost
+                by_algo[name]["costs"] += cost
+
+            return json.dumps({
+                name: {
+                    "gross": round(v["gross"], 2),
+                    "costs": round(v["costs"], 2),
+                    "net": round(v["net"], 2),
+                }
+                for name, v in by_algo.items()
+            })
+
+        if cacher_factory is not None:
+            today_iso = clock.now().date().isoformat()
+            body = await cacher_factory.api().get_or_set_response(
+                key_args=("pnl:by_algo", today_iso),
+                producer=_produce,
+                ttl=30,
             )
-            rows = result.all()
-
-        by_algo: dict[str, dict[str, float]] = {}
-        for order, signal in rows:
-            name = signal.algo_name or "default"
-            if name not in by_algo:
-                by_algo[name] = {"gross": 0.0, "costs": 0.0, "net": 0.0}
-            sign = 1.0 if signal.side == "SELL" else -1.0
-            notional = float(order.avg_price) * order.qty
-            cost = DEFAULT_COSTS.cost_for_fill(signal.side, order.qty, float(order.avg_price))
-            by_algo[name]["gross"] += sign * notional
-            by_algo[name]["net"] += sign * notional - cost
-            by_algo[name]["costs"] += cost
-
-        result_payload = {
-            name: {
-                "gross": round(v["gross"], 2),
-                "costs": round(v["costs"], 2),
-                "net": round(v["net"], 2),
-            }
-            for name, v in by_algo.items()
-        }
-        return JSONResponse(content=result_payload)
+            return JSONResponse(content=json.loads(body))
+        return JSONResponse(content=json.loads(await _produce()))
 
     # ------------------------------------------------------------------
     # GET /api/charts?session_id=&limit= — indicator chart series (JSON)
@@ -539,8 +563,6 @@ def build_app(
         period: str = "day",
         date: str = "",
     ) -> JSONResponse:
-        from trading.reports.engine import fetch_report_data
-
         if date:
             target_date = datetime.fromisoformat(date).replace(tzinfo=UTC)
         else:
@@ -550,7 +572,6 @@ def build_app(
             start = target_date
             end = target_date.replace(hour=23, minute=59, second=59)
         elif period == "week":
-            # Monday of the target week
             start = target_date - __import__("datetime").timedelta(days=target_date.weekday())
             end = start + __import__("datetime").timedelta(days=6, hours=23, minutes=59, seconds=59)
         elif period == "month":
@@ -562,8 +583,20 @@ def build_app(
         else:
             raise HTTPException(status_code=400, detail=f"Unknown period: {period!r}")
 
-        data = await fetch_report_data(start, end, session_factory)
-        return JSONResponse(content=data)
+        async def _produce() -> str:
+            from trading.reports.engine import fetch_report_data
+
+            data = await fetch_report_data(start, end, session_factory)
+            return json.dumps(data)
+
+        if cacher_factory is not None:
+            body = await cacher_factory.api().get_or_set_response(
+                key_args=("report", period, target_date.date().isoformat()),
+                producer=_produce,
+                ttl=60,
+            )
+            return JSONResponse(content=json.loads(body))
+        return JSONResponse(content=json.loads(await _produce()))
 
     # ------------------------------------------------------------------
     # GET /api/reports/{session_id} — full report JSON for one session
@@ -577,6 +610,51 @@ def build_app(
             raise HTTPException(status_code=404, detail=f"Report not found: {session_id}")
         data = json.loads(report_file.read_text(encoding="utf-8"))
         return JSONResponse(content=data)
+
+    # ------------------------------------------------------------------
+    # POST /api/postback — Zerodha order-update webhook
+    #
+    # Zerodha sends a POST to this URL when an order status changes.
+    # On COMPLETE (filled), we call order_executor.handle_fill() to update
+    # the order status and position — the same path that PaperBroker
+    # triggers inline during paper trading.
+    # ------------------------------------------------------------------
+
+    @app.post("/api/postback")
+    async def postback(request: Request) -> JSONResponse:
+        if order_executor is None:
+            raise HTTPException(status_code=503, detail="OrderExecutor not wired to postback endpoint")
+
+        try:
+            payload = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+        status = payload.get("status", "")
+        if status != "COMPLETE":
+            return JSONResponse(content={"ok": True, "skipped": True, "status": status})
+
+        kite_order_id: str = payload.get("order_id", "")
+        avg_price: float = float(payload.get("average_price", 0))
+        filled_qty: int = int(payload.get("filled_quantity", 0))
+        symbol: str = payload.get("tradingsymbol", "")
+        instrument_type: str = payload.get("instrument_type", "EQUITY")
+        transaction_type: str = payload.get("transaction_type", "BUY")
+        tick_log_id: int = int(payload.get("tick_log_id", 0))
+
+        if not kite_order_id or not symbol or filled_qty <= 0 or avg_price <= 0:
+            raise HTTPException(status_code=400, detail="Missing required fill fields")
+
+        await order_executor.handle_fill(
+            kite_order_id=kite_order_id,
+            avg_price=avg_price,
+            filled_qty=filled_qty,
+            symbol=symbol,
+            instrument_type=instrument_type,
+            side=transaction_type,
+            tick_log_id=tick_log_id,
+        )
+        return JSONResponse(content={"ok": True})
 
     return app
 

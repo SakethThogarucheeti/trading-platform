@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from trading.broker.zerodha.kite_client import KiteClient
 from trading.core.clock import SYSTEM_CLOCK, Clock
 from trading.core.lifecycle.component import Component
+from trading.storage.cache import CacherFactory
 from trading.tick_ingest.kite_ingestor import KiteIngestor
 from trading.api.dashboard.app import build_app
 
@@ -36,6 +37,7 @@ class DashboardServer(Component):
         token_secret_key: str = "",
         kite_client: KiteClient | None = None,
         kite_ingestor: KiteIngestor | None = None,
+        cacher_factory: CacherFactory | None = None,
     ) -> None:
         super().__init__(name="dashboard")
         self._session_factory = session_factory
@@ -48,6 +50,7 @@ class DashboardServer(Component):
         self._token_secret_key = token_secret_key
         self._kite_client = kite_client
         self._kite_ingestor = kite_ingestor
+        self._cacher_factory = cacher_factory
         self._server: object | None = None  # uvicorn.Server, set in _setup
 
     async def _setup(self) -> None:
@@ -64,6 +67,7 @@ class DashboardServer(Component):
             token_secret_key=self._token_secret_key,
             kite_client=self._kite_client,
             kite_ingestor=self._kite_ingestor,
+            cacher_factory=self._cacher_factory,
         )
         config = uvicorn.Config(
             app=app,
