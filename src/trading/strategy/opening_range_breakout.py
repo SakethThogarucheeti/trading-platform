@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import time
+from datetime import date, time
 
 from trading.core.clock import SYSTEM_CLOCK, Clock
 from trading.core.schemas import CandleEvent, InstrumentType, Side, SignalType
@@ -80,6 +80,32 @@ class OpeningRangeBreakoutStrategy(Strategy):
             if self._last_or_low is not None and not math.isinf(self._last_or_low)
             else None,
         }
+
+    def rolling_state(self) -> dict[str, object]:
+        serialized_state = {
+            sym: [str(s[0]), s[1], s[2], s[3]]
+            for sym, s in self._state.items()
+        }
+        return {
+            "orb_state": serialized_state,
+            "last_atr": self._last_atr,
+            "last_or_high": self._last_or_high,
+            "last_or_low": self._last_or_low,
+        }
+
+    async def restore_from_state(self, state: dict[str, object]) -> bool:
+        try:
+            orb_state = state["orb_state"]
+            self._state = {
+                sym: (date.fromisoformat(s[0]), float(s[1]), float(s[2]), bool(s[3]))  # type: ignore[index]
+                for sym, s in orb_state.items()  # type: ignore[union-attr]
+            }
+            self._last_atr = state.get("last_atr")  # type: ignore[assignment]
+            self._last_or_high = state.get("last_or_high")  # type: ignore[assignment]
+            self._last_or_low = state.get("last_or_low")  # type: ignore[assignment]
+            return True
+        except (KeyError, TypeError, AttributeError, ValueError):
+            return False
 
     async def on_candle(
         self,

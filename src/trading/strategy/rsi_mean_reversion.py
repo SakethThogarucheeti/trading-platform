@@ -71,6 +71,22 @@ class RsiMeanReversionStrategy(Strategy):
             "overbought": self._overbought,
         }
 
+    def rolling_state(self) -> dict[str, object]:
+        return {
+            "prev_rsi": self._prev_rsi,
+            "last_rsi": self._last_rsi,
+            "last_atr": self._last_atr,
+        }
+
+    async def restore_from_state(self, state: dict[str, object]) -> bool:
+        try:
+            self._prev_rsi = {k: v for k, v in state["prev_rsi"].items()}  # type: ignore[union-attr]
+            self._last_rsi = state.get("last_rsi")  # type: ignore[assignment]
+            self._last_atr = state.get("last_atr")  # type: ignore[assignment]
+            return True
+        except (KeyError, TypeError, AttributeError):
+            return False
+
     async def on_candle(
         self,
         symbol: str,

@@ -54,6 +54,11 @@ class EmaCrossoverStrategy(Strategy):
     def set_store(self, store: AbstractCandleStore) -> None:
         self._store = store
 
+    def warmup(self, symbol: str, candles: list) -> None:
+        """Pre-construct indicator instances so on_candle() never hits the lazy path."""
+        if candles:
+            self._get_inds(symbol, candles[0].interval)
+
     def _get_inds(self, symbol: str, interval: str) -> tuple[EMA, EMA, ATR]:
         if symbol not in self._inds:
             assert self._store is not None, "set_store() must be called before on_candle()"
@@ -85,6 +90,28 @@ class EmaCrossoverStrategy(Strategy):
             else None,
             "last_close": round(self._last_close, 2) if self._last_close is not None else None,
         }
+
+    def rolling_state(self) -> dict[str, object]:
+        return {
+            "prev_fast": self._prev_fast,
+            "prev_slow": self._prev_slow,
+            "last_fast": self._last_fast,
+            "last_slow": self._last_slow,
+            "last_atr": self._last_atr,
+            "last_close": self._last_close,
+        }
+
+    async def restore_from_state(self, state: dict[str, object]) -> bool:
+        try:
+            self._prev_fast = {k: v for k, v in state["prev_fast"].items()}  # type: ignore[union-attr]
+            self._prev_slow = {k: v for k, v in state["prev_slow"].items()}  # type: ignore[union-attr]
+            self._last_fast = state.get("last_fast")  # type: ignore[assignment]
+            self._last_slow = state.get("last_slow")  # type: ignore[assignment]
+            self._last_atr = state.get("last_atr")  # type: ignore[assignment]
+            self._last_close = state.get("last_close")  # type: ignore[assignment]
+            return True
+        except (KeyError, TypeError, AttributeError):
+            return False
 
     async def on_candle(
         self,

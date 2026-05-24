@@ -69,6 +69,22 @@ class LinRegTrendStrategy(Strategy):
             "entry_threshold": self._entry_threshold,
         }
 
+    def rolling_state(self) -> dict[str, object]:
+        return {
+            "prev_slope": self._prev_slope,
+            "last_slope": self._last_slope,
+            "last_atr": self._last_atr,
+        }
+
+    async def restore_from_state(self, state: dict[str, object]) -> bool:
+        try:
+            self._prev_slope = {k: v for k, v in state["prev_slope"].items()}  # type: ignore[union-attr]
+            self._last_slope = state.get("last_slope")  # type: ignore[assignment]
+            self._last_atr = state.get("last_atr")  # type: ignore[assignment]
+            return True
+        except (KeyError, TypeError, AttributeError):
+            return False
+
     async def on_candle(
         self,
         symbol: str,

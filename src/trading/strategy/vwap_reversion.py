@@ -77,6 +77,26 @@ class VwapReversionStrategy(Strategy):
             "vwap_band": self._vwap_band,
         }
 
+    def rolling_state(self) -> dict[str, object]:
+        return {
+            "prev_close": self._prev_close,
+            "prev_vwap": self._prev_vwap,
+            "last_vwap": self._last_vwap,
+            "last_atr": self._last_atr,
+            "last_close": self._last_close,
+        }
+
+    async def restore_from_state(self, state: dict[str, object]) -> bool:
+        try:
+            self._prev_close = {k: v for k, v in state["prev_close"].items()}  # type: ignore[union-attr]
+            self._prev_vwap = {k: v for k, v in state["prev_vwap"].items()}  # type: ignore[union-attr]
+            self._last_vwap = state.get("last_vwap")  # type: ignore[assignment]
+            self._last_atr = state.get("last_atr")  # type: ignore[assignment]
+            self._last_close = state.get("last_close")  # type: ignore[assignment]
+            return True
+        except (KeyError, TypeError, AttributeError):
+            return False
+
     async def on_candle(
         self,
         symbol: str,

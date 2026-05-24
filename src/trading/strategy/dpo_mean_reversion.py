@@ -75,6 +75,22 @@ class DpoMeanReversionStrategy(Strategy):
             "dpo_threshold": self._dpo_threshold,
         }
 
+    def rolling_state(self) -> dict[str, object]:
+        return {
+            "prev_dpo": self._prev_dpo,
+            "last_dpo": self._last_dpo,
+            "last_atr": self._last_atr,
+        }
+
+    async def restore_from_state(self, state: dict[str, object]) -> bool:
+        try:
+            self._prev_dpo = {k: v for k, v in state["prev_dpo"].items()}  # type: ignore[union-attr]
+            self._last_dpo = state.get("last_dpo")  # type: ignore[assignment]
+            self._last_atr = state.get("last_atr")  # type: ignore[assignment]
+            return True
+        except (KeyError, TypeError, AttributeError):
+            return False
+
     async def on_candle(
         self,
         symbol: str,

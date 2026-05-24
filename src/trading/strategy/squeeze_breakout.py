@@ -81,6 +81,24 @@ class SqueezeBreakoutStrategy(Strategy):
             "squeeze_lookback": self._squeeze_lookback,
         }
 
+    def rolling_state(self) -> dict[str, object]:
+        return {
+            "prev_momentum": self._prev_momentum,
+            "bars_since_squeeze": self._bars_since_squeeze,
+            "last_momentum": self._last_momentum,
+            "last_atr": self._last_atr,
+        }
+
+    async def restore_from_state(self, state: dict[str, object]) -> bool:
+        try:
+            self._prev_momentum = {k: v for k, v in state["prev_momentum"].items()}  # type: ignore[union-attr]
+            self._bars_since_squeeze = {k: int(v) for k, v in state["bars_since_squeeze"].items()}  # type: ignore[union-attr]
+            self._last_momentum = state.get("last_momentum")  # type: ignore[assignment]
+            self._last_atr = state.get("last_atr")  # type: ignore[assignment]
+            return True
+        except (KeyError, TypeError, AttributeError):
+            return False
+
     async def on_candle(
         self,
         symbol: str,
