@@ -1227,7 +1227,7 @@ wheels = [
 [[package]]
 name = "quantindicators"
 version = "0.1.0"
-source = { git = "https://github.com/SakethThogarucheeti/quantindicators.git#9bce58dec40d8b0278fb1910ede1af276b50c5ed" }
+source = { git = "https://github.com/SakethThogarucheeti/quantindicators.git#88c8c37a5f5b04c44a0e694506d9192e71c6c52f" }
 dependencies = [
     { name = "numpy" },
     { name = "pydantic" },

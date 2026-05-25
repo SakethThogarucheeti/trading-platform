@@ -12,7 +12,7 @@ from trading.core.messaging import AbstractRegistry
 from trading.core.schemas import CandleEvent, InstrumentType, SignalEvent
 from trading.core.tasks import fire
 from quantindicators.polars_store import PolarsStore
-from quantindicators.store import AbstractCandleStore, BarCachingStore
+from quantindicators.store import AbstractCandleStore
 from trading.storage.cache import CacherFactory
 from trading.storage.stores.audit import AbstractAuditStore, AuditContext
 from trading.storage.stores.chart import AbstractChartStore
@@ -20,6 +20,34 @@ from trading.storage.stores.config import AbstractConfigStore
 from trading.strategy.base import Strategy
 
 logger = logging.getLogger(__name__)
+
+
+class BarCachingStore(AbstractCandleStore):
+    """Wraps any AbstractCandleStore and deduplicates fetch calls within a single bar.
+
+    Call invalidate() once per bar (after pushing the new candle) so all
+    indicators sharing this instance see the latest data with only one real
+    fetch to the underlying store.
+    """
+
+    def __init__(self, inner: AbstractCandleStore) -> None:
+        self._inner = inner
+        self._cache: dict[tuple[str, ...], list] = {}
+
+    def invalidate(self) -> None:
+        self._cache.clear()
+
+    async def fetch(self, symbol: str, interval: str, limit: int) -> list:
+        key = ("fetch", symbol, interval, str(limit))
+        if key not in self._cache:
+            self._cache[key] = await self._inner.fetch(symbol, interval, limit)
+        return self._cache[key]
+
+    async def fetch_since(self, symbol: str, interval: str, since: datetime) -> list:
+        key = ("fetch_since", symbol, interval, since.isoformat())
+        if key not in self._cache:
+            self._cache[key] = await self._inner.fetch_since(symbol, interval, since)
+        return self._cache[key]
 
 
 @dataclass
@@ -120,7 +148,7 @@ class SignalGenerator(AbstractRegistry):
         if isinstance(store, PolarsStore):
             self._indicator_store = store
         else:
-            self._indicator_store = BarCachingStore(store)
+            self._indicator_store = BarCachingStore(store)  # type: ignore[assignment]
 
     def setup(self, warmup_candles: dict[str, list[CandleEvent]] | None = None) -> None:
         """
@@ -188,7 +216,8 @@ class SignalGenerator(AbstractRegistry):
 
         instance.tick_bar(candle.interval, self._config.warmup_candles)
 
-        self._indicator_store.on_bar_close()
+        if isinstance(self._indicator_store, BarCachingStore):
+            self._indicator_store.invalidate()
 
         instance.strategy.set_chart_callback(self._make_chart_cb(candle.symbol, candle.interval))
 
