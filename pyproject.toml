@@ -46,6 +46,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "testcontainers[postgres]>=4.0",
     "scipy>=1.13",
+    "ty>=0.0.39",
 ]
 
 [tool.pytest.ini_options]
@@ -84,7 +85,7 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 # _teardown is an intentional opt-in no-op hook in an ABC — not missing @abstractmethod
-"src/trading/engine/component.py" = ["B027"]
+"src/trading/core/lifecycle/component.py" = ["B027"]
 
 [tool.ruff.format]
 quote-style = "double"

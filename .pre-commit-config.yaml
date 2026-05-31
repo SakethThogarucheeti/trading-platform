@@ -10,3 +10,12 @@ repos:
     hooks:
       - id: detect-private-key
       - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright
+        entry: pyright
+        language: system
+        types: [python]
+        pass_filenames: false

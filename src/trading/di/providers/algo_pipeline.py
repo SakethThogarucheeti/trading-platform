@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from quantindicators.polars_store import PolarsStore
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from quantindicators.polars_store import PolarsStore
 from trading.broker.base.broker import Broker
+from trading.candles.candle_aggregator import CandleAggregator
 from trading.config.settings import AlgoSettings, Settings
+from trading.core.messaging import AbstractCircuitBreaker
 from trading.core.pipeline import AlgoPipeline, TickPipeline
 from trading.core.schemas import InstrumentType
 from trading.di.providers.strategy import make_strategy
@@ -26,8 +28,6 @@ from trading.storage.stores.config import ConfigStore
 from trading.storage.stores.position import PositionStore
 from trading.storage.stores.trading import TradingStore
 from trading.strategy.signal_generator import AlgoInstance, AlgoRunConfig, SignalGenerator
-from trading.candles.candle_aggregator import CandleAggregator
-from trading.core.messaging import AbstractCircuitBreaker
 
 
 @dataclass
@@ -141,9 +141,8 @@ class AlgoPipelineFactory:
     async def seed_state(self, algo: AlgoSettings, intervals: list[str]) -> None:
         s = self._s
         strategy = make_strategy(algo.strategy_id)
-        from trading.strategy.base import Strategy
 
-        params = strategy.get_params() if isinstance(strategy, Strategy) else {}
+        params = strategy.get_params()
         await s.config_store.seed_algo_config(
             name=algo.name,
             strategy_id=algo.strategy_id,

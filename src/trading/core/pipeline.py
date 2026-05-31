@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from trading.core.schemas import SignalEvent, TickEvent
 from trading.candles.candle_aggregator import CandleAggregator
-from trading.strategy.signal_generator import SignalGenerator
+from trading.core.schemas import SignalEvent, TickEvent
 from trading.execution.order_executor import OrderExecutor
 from trading.risk.risk_filter import RiskFilter
+from trading.strategy.signal_generator import SignalGenerator
 
 
 class AlgoPipeline:

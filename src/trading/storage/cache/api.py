@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from datetime import date
 
-from trading.storage.cache.base import BaseCacher
 from trading.storage.cache.backend import ValueCache
+from trading.storage.cache.base import BaseCacher
 
 
 class ApiResponseCacher(BaseCacher[str]):
@@ -26,7 +26,7 @@ class ApiResponseCacher(BaseCacher[str]):
 
     async def get_or_set_response(
         self,
-        key_args: tuple,
+        key_args: tuple[object, ...],
         producer: Callable[[], Awaitable[str]],
         ttl: int,
     ) -> str:

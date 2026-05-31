@@ -3,27 +3,30 @@ from __future__ import annotations
 import logging
 
 from dishka import Provider, Scope, provide  # type: ignore[import-untyped]
+from quantindicators.polars_store import PolarsStore
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from trading.api.server import ApiServer
 from trading.broker.base.broker import Broker
 from trading.broker.base.broker_stream import BrokerStream
 from trading.broker.paper_broker import AbstractPriceStore
 from trading.broker.zerodha.kite_client import KiteClient
+from trading.candles.candle_aggregator import (
+    CandleAggregator,
+    CandleAggregatorComponent,
+    CandleConfig,
+    CandlePersister,
+)
+from trading.candles.historical_data_service import HistoricalDataService
 from trading.config.settings import AlgoSettings, Settings
-from trading.di.providers.algo_pipeline import AlgoPipelineFactory, SharedAlgoDeps
-from trading.storage.cache import CacherFactory
-from trading.di.providers.strategy import make_strategy
-from trading.candles.candle_aggregator import CandleAggregator, CandleAggregatorComponent, CandleConfig, CandlePersister
-from trading.candles.candle_warmer import CandleWarmer
-from trading.monitoring.heartbeat import HeartbeatMonitor
-from trading.api.dashboard.component import DashboardServer
-from trading.tick_ingest.kite_ingestor import KiteIngestor
 from trading.core.lifecycle.runtime import AbstractRuntime, Runtime
-from trading.tick_ingest.tick_publisher import TickPublisher
-from trading.monitoring.scheduler import Scheduler
-from quantindicators.polars_store import PolarsStore
 from trading.core.messaging import AbstractCircuitBreaker
-from trading.tick_ingest.tick_ingestor import CircuitBreaker, TickConfig, TickIngestor
+from trading.core.models import Instrument
+from trading.di.providers.algo_pipeline import AlgoPipelineFactory, SharedAlgoDeps
+from trading.monitoring.heartbeat import HeartbeatMonitor
+from trading.monitoring.scheduler import Scheduler
+from trading.core.clock import Clock
+from trading.storage.cache import CacherFactory
 from trading.storage.stores.audit import AuditStore
 from trading.storage.stores.candle import CandleDataStore
 from trading.storage.stores.chart import ChartStore
@@ -31,7 +34,9 @@ from trading.storage.stores.config import ConfigStore
 from trading.storage.stores.heartbeat import HeartbeatStore
 from trading.storage.stores.position import PositionStore
 from trading.storage.stores.trading import TradingStore
-from trading.core.models import Instrument
+from trading.tick_ingest.kite_ingestor import KiteIngestor
+from trading.tick_ingest.tick_ingestor import CircuitBreaker, TickConfig, TickIngestor
+from trading.tick_ingest.tick_publisher import TickPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -91,36 +96,12 @@ class ComponentProvider(Provider):
         return CandleAggregator(config=config, candle_logger=CandlePersister(candle, audit))
 
     @provide
-    async def candle_warmer(
+    def historical_data_service(
         self,
         broker: Broker,
         candle: CandleDataStore,
-        sf: async_sessionmaker[AsyncSession],
-        settings: Settings,
-    ) -> CandleWarmer:
-        from sqlalchemy import select
-
-        from trading.candles.bar_accumulator import SymbolConfig
-        from trading.core.schemas import InstrumentType
-
-        async with sf() as session:
-            instruments = list((await session.execute(select(Instrument))).scalars().all())
-
-        symbols = [
-            SymbolConfig(
-                symbol=inst.symbol,
-                instrument_token=inst.token,
-                instrument_type=InstrumentType(inst.instrument_type),
-            )
-            for inst in instruments
-        ]
-        return CandleWarmer(
-            symbols=symbols,
-            intervals=settings.candle_intervals,
-            warmup_count=settings.warmup_candles,
-            broker=broker,
-            candle_store=candle,
-        )
+    ) -> HistoricalDataService:
+        return HistoricalDataService(broker=broker, candle_store=candle)
 
     @provide
     def heartbeat_monitor(
@@ -153,7 +134,7 @@ class ComponentProvider(Provider):
         self,
         tick_registry: TickIngestor,
         candle_registry: CandleAggregator,
-        warmer: CandleWarmer,
+        historical_data_service: HistoricalDataService,
         heartbeat_monitor: HeartbeatMonitor,
         stream: BrokerStream,
         broker: Broker,
@@ -187,7 +168,25 @@ class ComponentProvider(Provider):
             tick_publisher=tick_publisher,
         )
         self._kite_ingestor = ingestor
-        candle_aggregator = CandleAggregatorComponent(candle_registry, warmer)
+
+        from trading.candles.bar_accumulator import SymbolConfig
+        from trading.core.schemas import InstrumentType
+
+        symbols = [
+            SymbolConfig(
+                symbol=inst.symbol,
+                instrument_token=inst.token,
+                instrument_type=InstrumentType(inst.instrument_type),
+            )
+            for inst in instruments
+        ]
+        candle_aggregator = CandleAggregatorComponent(
+            candle_aggregator=candle_registry,
+            historical_data_service=historical_data_service,
+            symbols=symbols,
+            intervals=settings.candle_intervals,
+            warmup_count=settings.warmup_candles,
+        )
 
         factory = AlgoPipelineFactory(SharedAlgoDeps(
             chart=chart,
@@ -262,15 +261,18 @@ class ComponentProvider(Provider):
         settings: Settings,
         client: KiteClient,
         cacher_factory: CacherFactory,
-    ) -> DashboardServer | None:
+        historical_data_service: HistoricalDataService,
+        clock: Clock,
+    ) -> ApiServer | None:
         if not settings.dashboard_enabled:
             return None
-        from trading.api.dashboard.component import DashboardServer
+        from trading.api.server import ApiServer
 
-        return DashboardServer(
+        return ApiServer(
             session_factory=sf,
             host=settings.dashboard_host,
             port=settings.dashboard_port,
+            clock=clock,
             candle_intervals=settings.candle_intervals,
             zerodha_api_key=settings.zerodha_api_key,
             zerodha_api_secret=settings.zerodha_api_secret,
@@ -278,6 +280,8 @@ class ComponentProvider(Provider):
             kite_client=client,
             kite_ingestor=self._kite_ingestor,
             cacher_factory=cacher_factory,
+            historical_data_service=historical_data_service,
+            heartbeat_stale_secs=settings.heartbeat_timeout_secs,
         )
 
     @provide
@@ -288,19 +292,16 @@ class ComponentProvider(Provider):
         trading: TradingStore,
         position_store: PositionStore,
         price_store: AbstractPriceStore,
+        clock: Clock,
     ) -> Scheduler:
         on_position_reset = None
         if settings.paper_trading:
-            from datetime import UTC, datetime
-
             from sqlalchemy import select
 
             from trading.core.models import Position
             from trading.core.schemas import FillEvent, Side
 
             async def eod_square_off() -> None:
-                from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
                 sf: async_sessionmaker[AsyncSession] = trading._sf  # type: ignore[attr-defined]
                 async with sf() as session:
                     result = await session.execute(select(Position).where(Position.net_qty != 0))
@@ -315,12 +316,14 @@ class ComponentProvider(Provider):
                     side = Side.SELL if pos.net_qty > 0 else Side.BUY
                     qty = abs(pos.net_qty)
                     fill = FillEvent(
-                        kite_order_id=f"EOD_{pos.symbol}_{datetime.now(UTC).date().isoformat()}",
+                        kite_order_id=f"EOD_{pos.symbol}_{clock.today().isoformat()}",
                         avg_price=last_price,
                         filled_qty=qty,
-                        timestamp=datetime.now(UTC),
+                        timestamp=clock.now(),
                     )
-                    await position_store.update_position(fill, side, pos.symbol, pos.instrument_type)
+                    await position_store.update_position(
+                        fill, side, pos.symbol, pos.instrument_type
+                    )
                     logger.info(
                         "EOD square-off: %s %s x%d @ %.2f",
                         side.value,

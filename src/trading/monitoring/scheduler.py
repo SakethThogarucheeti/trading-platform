@@ -69,7 +69,7 @@ class Scheduler:
 
     def _register_jobs(self) -> None:
         if self._on_market_open:
-            self._scheduler.add_job(
+            self._scheduler.add_job(  # type: ignore[reportUnknownMemberType]
                 self._on_market_open,
                 trigger="cron",
                 day_of_week="mon-fri",
@@ -80,7 +80,7 @@ class Scheduler:
             )
 
         if self._on_market_close:
-            self._scheduler.add_job(
+            self._scheduler.add_job(  # type: ignore[reportUnknownMemberType]
                 self._on_market_close,
                 trigger="cron",
                 day_of_week="mon-fri",
@@ -91,7 +91,7 @@ class Scheduler:
             )
 
         if self._on_eod:
-            self._scheduler.add_job(
+            self._scheduler.add_job(  # type: ignore[reportUnknownMemberType]
                 self._on_eod,
                 trigger="cron",
                 day_of_week="mon-fri",
@@ -102,7 +102,7 @@ class Scheduler:
             )
 
         if self._on_sync:
-            self._scheduler.add_job(
+            self._scheduler.add_job(  # type: ignore[reportUnknownMemberType]
                 self._on_sync,
                 trigger="cron",
                 day_of_week="sun",
@@ -113,7 +113,7 @@ class Scheduler:
             )
 
         if self._on_position_reset:
-            self._scheduler.add_job(
+            self._scheduler.add_job(  # type: ignore[reportUnknownMemberType]
                 self._on_position_reset,
                 trigger="cron",
                 day_of_week="mon-fri",
@@ -124,4 +124,4 @@ class Scheduler:
             )
 
     def get_job_ids(self) -> list[str]:
-        return [job.id for job in self._scheduler.get_jobs()]
+        return [job.id for job in self._scheduler.get_jobs()]  # type: ignore[reportUnknownMemberType]

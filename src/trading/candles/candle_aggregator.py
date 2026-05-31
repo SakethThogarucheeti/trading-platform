@@ -2,22 +2,23 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Protocol
 
 from anyio import sleep_forever
 from pydantic import BaseModel, Field
 
+from trading.candles.bar_accumulator import AbstractBarAccumulator, BarAccumulator, SymbolConfig
+from trading.candles.historical_data_service import HistoricalDataService, warmup_start
 from trading.core.clock import Clock, SystemClock
+from trading.core.lifecycle.component import Component
 from trading.core.messaging import AbstractRegistry
 from trading.core.models import Instrument
 from trading.core.schemas import CandleEvent, InstrumentType, TickEvent
 from trading.core.tasks import fire
-from trading.candles.bar_accumulator import AbstractBarAccumulator, BarAccumulator, SymbolConfig
-from trading.candles.candle_warmer import CandleWarmer
-from trading.core.lifecycle.component import Component
-from trading.strategy.signal_generator import SignalGenerator
 from trading.storage.stores.audit import AbstractAuditStore, AuditContext
 from trading.storage.stores.candle import AbstractCandleDataStore
+from trading.strategy.signal_generator import SignalGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ class CandleAggregator(AbstractRegistry):
     Returns a CandleEvent when a bar closes, None while the bar is still building.
     Persistence is delegated to the injected AbstractCandleLogger so bar logic
     can be tested independently of DB state.
-    Historical warmup is handled separately by CandleWarmer.
+    Historical warmup is handled separately by HistoricalDataService.
     """
 
     def __init__(
@@ -132,7 +133,9 @@ class CandleAggregator(AbstractRegistry):
             for inst in config.instruments
         ]
         self._token_sc: dict[int, SymbolConfig] = {sc.instrument_token: sc for sc in self._symbols}
-        self._accumulator: AbstractBarAccumulator = accumulator if accumulator is not None else BarAccumulator()
+        self._accumulator: AbstractBarAccumulator = (
+            accumulator if accumulator is not None else BarAccumulator()
+        )
 
     # ------------------------------------------------------------------
     # AbstractRegistry
@@ -160,17 +163,29 @@ class CandleAggregatorComponent(Component):
     """
     Lifecycle component wrapping CandleAggregator.
 
-    _setup runs the warm-up via CandleWarmer (fetches historical candles from the
-    broker) and replays them through any registered algo registries so strategies
-    are pre-seeded before live ticks arrive.
+    _setup fetches historical candles via HistoricalDataService and replays
+    them through registered SignalGenerators so strategies are pre-seeded
+    before live ticks arrive.
 
     _run sleeps forever — live ticks are fed via KiteIngestor's on_tick callbacks.
     """
 
-    def __init__(self, candle_aggregator: CandleAggregator, warmer: CandleWarmer) -> None:
+    def __init__(
+        self,
+        candle_aggregator: CandleAggregator,
+        historical_data_service: HistoricalDataService,
+        symbols: list[SymbolConfig],
+        intervals: list[str],
+        warmup_count: int,
+        clock: Clock | None = None,
+    ) -> None:
         super().__init__(name="candle_aggregator")
         self._aggregator = candle_aggregator
-        self._warmer = warmer
+        self._historical_data_service = historical_data_service
+        self._symbols = symbols
+        self._intervals = intervals
+        self._warmup_count = warmup_count
+        self._clock: Clock = clock or SystemClock()
         self._algo_callbacks: list[SignalGenerator] = []
 
     def add_algo_registry(self, algo_registry: SignalGenerator) -> None:
@@ -178,25 +193,57 @@ class CandleAggregatorComponent(Component):
         self._algo_callbacks.append(algo_registry)
 
     async def _setup(self) -> None:
-        result = await self._warmer.fetch()
-        warmup_candles = result.candles
+        now = self._clock.now()
+        start = warmup_start(now, self._intervals, self._warmup_count)
 
-        # Group warmup candles by symbol for setup() calls
+        all_candles: list[CandleEvent] = []
+        for sc in self._symbols:
+            for interval in self._intervals:
+                try:
+                    result = await self._historical_data_service.fetch(
+                        sc.symbol, interval, start, now
+                    )
+                    df = result.df.tail(self._warmup_count)
+                    for row in df.iter_rows(named=True):
+                        ts: datetime = row["date"]
+                        if ts.tzinfo is None:
+                            ts = ts.replace(tzinfo=UTC)
+                        all_candles.append(
+                            CandleEvent(
+                                symbol=sc.symbol,
+                                instrument_type=sc.instrument_type,
+                                interval=interval,
+                                open=float(row["open"]),
+                                high=float(row["high"]),
+                                low=float(row["low"]),
+                                close=float(row["close"]),
+                                volume=int(row.get("volume", 0)),
+                                timestamp=ts,
+                                tick_log_id=0,
+                            )
+                        )
+                except Exception:
+                    logger.warning(
+                        "CandleAggregatorComponent: warmup fetch failed for %s %s",
+                        sc.symbol, interval, exc_info=True,
+                    )
+
+        all_candles.sort(key=lambda c: c.timestamp)
+
         candles_by_symbol: dict[str, list[CandleEvent]] = {}
-        for candle in warmup_candles:
+        for candle in all_candles:
             candles_by_symbol.setdefault(candle.symbol, []).append(candle)
 
-        # Initialize strategies (set_store + warmup) before replaying any candles
         for algo_reg in self._algo_callbacks:
             algo_reg.setup(candles_by_symbol)
 
-        if warmup_candles and self._algo_callbacks:
+        if all_candles and self._algo_callbacks:
             logger.info(
-                "CandleAggregatorComponent: replaying %d warmup candles through %d algo registry(s)",
-                len(warmup_candles),
+                "CandleAggregatorComponent: replaying %d warmup candles through %d algo registry(s)",  # noqa: E501
+                len(all_candles),
                 len(self._algo_callbacks),
             )
-            for candle in warmup_candles:
+            for candle in all_candles:
                 for algo_reg in self._algo_callbacks:
                     try:
                         await algo_reg.handle(candle)
@@ -204,7 +251,8 @@ class CandleAggregatorComponent(Component):
                         logger.exception(
                             "CandleAggregatorComponent: warmup replay error for %s", candle.symbol
                         )
-        logger.info("CandleAggregatorComponent: warm-up complete")
+
+        logger.info("CandleAggregatorComponent: warm-up complete (%d candles)", len(all_candles))
 
     async def _run(self) -> None:
         await sleep_forever()

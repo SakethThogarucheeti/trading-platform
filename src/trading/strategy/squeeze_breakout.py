@@ -9,12 +9,21 @@ after a squeeze has been detected.
 from __future__ import annotations
 
 import logging
+from typing import TypedDict, cast
 
-from trading.core.schemas import CandleEvent, InstrumentType, Side, SignalType
 from quantindicators.library.atr import ATR
 from quantindicators.library.squeeze_momentum import SqueezeMomentum
 from quantindicators.store import AbstractCandleStore
+
+from trading.core.schemas import CandleEvent, InstrumentType, Side, SignalType
 from trading.strategy.base import Signal, Strategy
+
+
+class _State(TypedDict, total=False):
+    prev_momentum: dict[str, float | None]
+    bars_since_squeeze: dict[str, int]
+    last_momentum: float | None
+    last_atr: float | None
 
 logger = logging.getLogger(__name__)
 
@@ -91,10 +100,11 @@ class SqueezeBreakoutStrategy(Strategy):
 
     async def restore_from_state(self, state: dict[str, object]) -> bool:
         try:
-            self._prev_momentum = {k: v for k, v in state["prev_momentum"].items()}  # type: ignore[union-attr]
-            self._bars_since_squeeze = {k: int(v) for k, v in state["bars_since_squeeze"].items()}  # type: ignore[union-attr]
-            self._last_momentum = state.get("last_momentum")  # type: ignore[assignment]
-            self._last_atr = state.get("last_atr")  # type: ignore[assignment]
+            s = cast(_State, state)
+            self._prev_momentum = dict(s["prev_momentum"])
+            self._bars_since_squeeze = {k: int(v) for k, v in s["bars_since_squeeze"].items()}
+            self._last_momentum = s.get("last_momentum")
+            self._last_atr = s.get("last_atr")
             return True
         except (KeyError, TypeError, AttributeError):
             return False
@@ -152,6 +162,7 @@ class SqueezeBreakoutStrategy(Strategy):
                 strategy_id=self.id,
                 signal_type=SignalType.ENTRY,
                 stop_distance=stop_distance,
+                entry_price=candle.close,
                 timestamp=candle.timestamp,
             )
 
@@ -167,6 +178,7 @@ class SqueezeBreakoutStrategy(Strategy):
                 strategy_id=self.id,
                 signal_type=SignalType.ENTRY,
                 stop_distance=stop_distance,
+                entry_price=candle.close,
                 timestamp=candle.timestamp,
             )
 

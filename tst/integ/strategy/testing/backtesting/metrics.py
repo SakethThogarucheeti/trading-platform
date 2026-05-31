@@ -28,9 +28,13 @@ def _daily_equity(equity_curve: pl.DataFrame) -> pl.DataFrame:
     if len(equity_curve) == 0:
         return equity_curve
 
-    df = equity_curve.with_columns(pl.col("date").dt.date().alias("day"))
-    # Last equity value per calendar day
-    daily = df.group_by("day").agg(pl.col("equity").last()).sort("day")
+    df = equity_curve.sort("date").with_columns(pl.col("date").dt.date().alias("day"))
+    # Sort within each group so .last() reliably picks the chronologically last value.
+    daily = (
+        df.group_by("day")
+        .agg(pl.col("equity").sort_by(pl.col("date")).last())
+        .sort("day")
+    )
     return daily.rename({"day": "date"})
 
 
@@ -75,14 +79,21 @@ def max_drawdown(equity_curve: pl.DataFrame) -> float:
     Maximum drawdown as a fraction in [0.0, 1.0].
 
     0.0 means no drawdown ever occurred; 1.0 means total ruin.
+
+    Computed on the daily-resampled equity curve so intraday fill noise
+    doesn't inflate the result (consistent with sharpe_ratio).
     """
-    if len(equity_curve) < 2:
+    daily = _daily_equity(equity_curve)
+    if len(daily) < 2:
         return 0.0
 
-    eq = equity_curve["equity"]
+    eq = daily["equity"]
     running_max = eq.cum_max()
-    drawdowns = (running_max - eq) / running_max
-    return float(drawdowns.max() or 0.0)
+    # Guard against division by zero if equity ever hits 0 or goes negative.
+    safe_max = running_max.map_elements(lambda v: v if v > 0 else float("nan"), return_dtype=pl.Float64)
+    drawdowns = (safe_max - eq) / safe_max
+    result = drawdowns.drop_nans().max()
+    return float(result or 0.0)
 
 
 def max_drawdown_duration(equity_curve: pl.DataFrame) -> timedelta:
@@ -91,30 +102,38 @@ def max_drawdown_duration(equity_curve: pl.DataFrame) -> timedelta:
 
     Returns timedelta(0) if there are fewer than 2 rows or no drawdown.
     """
-    if len(equity_curve) < 2:
+    daily = _daily_equity(equity_curve)
+    if len(daily) < 2:
         return timedelta(0)
 
-    dates = equity_curve["date"].to_list()
-    equities = equity_curve["equity"].to_list()
+    dates = daily["date"].to_list()
+    equities = daily["equity"].to_list()
 
     peak_eq = equities[0]
-    in_drawdown_since: int | None = None
+    peak_date = dates[0]
+    in_drawdown = False
     max_dur = timedelta(0)
 
-    for i, (ts, eq) in enumerate(zip(dates, equities, strict=False)):
-        if eq > peak_eq:
-            if in_drawdown_since is not None:
-                dur = ts - dates[in_drawdown_since]
-                if dur > max_dur:
-                    max_dur = dur
-                in_drawdown_since = None
+    for ts, eq in zip(dates, equities, strict=False):
+        if eq < peak_eq:
+            in_drawdown = True
+        elif in_drawdown and eq >= peak_eq:
+            # Recovery: measure from peak to this recovery bar (inclusive).
+            dur = ts - peak_date
+            if dur > max_dur:
+                max_dur = dur
+            in_drawdown = False
             peak_eq = eq
-        elif eq < peak_eq and in_drawdown_since is None:
-            in_drawdown_since = i
+            peak_date = ts
+        else:
+            # New high without prior drawdown — just advance the peak.
+            if eq > peak_eq:
+                peak_eq = eq
+            peak_date = ts
 
-    # If still in drawdown at the end
-    if in_drawdown_since is not None:
-        dur = dates[-1] - dates[in_drawdown_since]
+    # If still in drawdown at the end, measure to the final bar.
+    if in_drawdown:
+        dur = dates[-1] - peak_date
         if dur > max_dur:
             max_dur = dur
 

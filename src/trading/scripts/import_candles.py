@@ -15,14 +15,13 @@ Usage
 from __future__ import annotations
 
 import argparse
-import anyio
 import logging
+from collections.abc import Generator
 from datetime import UTC
 from pathlib import Path
-from typing import Generator
 
+import anyio
 import polars as pl
-
 from quantindicators.types import CandleRow
 
 logger = logging.getLogger(__name__)
@@ -57,7 +56,9 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def _discover(data_dir: Path, symbols: list[str] | None, intervals: list[str] | None) -> Generator[tuple[str, str, Path], None, None]:
+def _discover(
+    data_dir: Path, symbols: list[str] | None, intervals: list[str] | None
+) -> Generator[tuple[str, str, Path]]:
     """Yield (symbol, interval, path) for every matching Parquet file."""
     if not data_dir.exists():
         logger.error("data-dir %s does not exist", data_dir)

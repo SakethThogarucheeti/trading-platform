@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +10,7 @@ import polars as pl
 
 if TYPE_CHECKING:
     from trading.broker.base.broker import Broker
+    from trading.candles.historical_data_service import HistoricalDataService
 
 # Required columns and their expected Polars dtypes (for validation)
 _REQUIRED_COLUMNS: set[str] = {"date", "open", "high", "low", "close", "volume"}
@@ -196,3 +198,33 @@ class FileDataLoader(DataLoader):
 
         df = df.filter((pl.col("date") >= start) & (pl.col("date") <= end))
         return df.sort("date")
+
+
+# ---------------------------------------------------------------------------
+# ServiceDataLoader
+# ---------------------------------------------------------------------------
+
+
+class ServiceDataLoader(DataLoader):
+    """
+    Backtest data loader backed by HistoricalDataService.
+
+    Checks the DB first; calls the broker only when bars are not yet
+    persisted. Suitable for backtests that should reuse candles already
+    stored during live trading rather than re-fetching from the broker.
+    """
+
+    def __init__(self, service: HistoricalDataService) -> None:
+        self._service = service
+
+    def load(
+        self,
+        symbol: str,
+        interval: str,
+        start: datetime,
+        end: datetime,
+    ) -> pl.DataFrame:
+        result = asyncio.get_event_loop().run_until_complete(
+            self._service.fetch(symbol, interval, start, end)
+        )
+        return result.df

@@ -28,7 +28,9 @@ class PositionStore(AbstractPositionStore):
 
     async def get_position(self, symbol: str, instrument_type: str) -> Position | None:
         async with self._sf() as session:
-            return await session.get(Position, {"symbol": symbol, "instrument_type": instrument_type})
+            return await session.get(
+                Position, {"symbol": symbol, "instrument_type": instrument_type}
+            )
 
     async def update_position(
         self, fill: FillEvent, side: Side, symbol: str, instrument_type: str

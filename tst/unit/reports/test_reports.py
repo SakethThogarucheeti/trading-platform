@@ -20,6 +20,8 @@ from trading.core.models import (
 )
 from trading.core.schemas import OrderStatus
 from trading.reports.fetch import (
+    AlgoConfigSnapshot,
+    NiftyBenchmark,
     fetch_algo_configs,
     fetch_audit_logs,
     fetch_decisions,
@@ -253,8 +255,8 @@ async def test_fetch_algo_configs_returns_config_with_state(engine: AsyncEngine)
         result = await fetch_algo_configs(session)
 
     assert len(result) == 1
-    assert result[0]["name"] == "default"
-    assert result[0]["state"]["bars_seen"] == 50
+    assert result[0].name == "default"
+    assert result[0].state["bars_seen"] == 50
 
 
 async def test_fetch_algo_configs_without_state(engine: AsyncEngine) -> None:
@@ -274,7 +276,7 @@ async def test_fetch_algo_configs_without_state(engine: AsyncEngine) -> None:
     async with sf() as session:
         result = await fetch_algo_configs(session)
 
-    assert result[0]["state"] == {}
+    assert result[0].state == {}
 
 
 # ---------------------------------------------------------------------------
@@ -347,15 +349,15 @@ def test_print_strategy_section_with_data(capsys) -> None:
     d_rej.step = "SIGNAL_REJECTED"
     d_rej.context = json.dumps({"reason": "AFTER_CUTOFF"})
 
-    algo_cfg = {
-        "name": "default",
-        "strategy_id": "ema_crossover",
-        "equity": 10000.0,
-        "enabled": True,
-        "warmup_candles": 200,
-        "params": {"fast": 9, "slow": 21},
-        "state": {"bars_seen": 50, "warmup_complete": True},
-    }
+    algo_cfg = AlgoConfigSnapshot(
+        name="default",
+        strategy_id="ema_crossover",
+        equity=10000.0,
+        enabled=True,
+        warmup_candles=200,
+        params={"fast": 9, "slow": 21},
+        state={"bars_seen": 50, "warmup_complete": True},
+    )
 
     print_strategy_section(
         signals=[sig],
@@ -613,11 +615,9 @@ async def test_fetch_nifty_benchmark_returns_dict_when_candles_exist(engine: Asy
         result = await fetch_nifty_benchmark(session, START, END)
 
     assert result is not None
-    assert "open" in result
-    assert "close" in result
-    assert "pct_return" in result
-    assert result["open"] == pytest.approx(21000.0)
-    assert result["close"] == pytest.approx(21150.0)
+    assert result.open == pytest.approx(21000.0)
+    assert result.close == pytest.approx(21150.0)
+    assert result.pct_return is not None
 
 
 # ---------------------------------------------------------------------------
@@ -647,17 +647,17 @@ def test_render_safe_json_with_none() -> None:
 
 def test_print_strategy_section_with_nifty_benchmark(capsys) -> None:
     """Covers lines 192-208: Nifty 50 benchmark section in print_strategy_section."""
-    nifty = {"open": 21000.0, "close": 21210.0, "pct_return": 1.0}
+    nifty = NiftyBenchmark(open=21000.0, close=21210.0, pct_return=1.0)
 
-    algo_cfg = {
-        "name": "default",
-        "strategy_id": "ema_crossover",
-        "equity": 100_000.0,
-        "enabled": True,
-        "warmup_candles": 200,
-        "params": {},
-        "state": {"bars_seen": 50, "warmup_complete": True},
-    }
+    algo_cfg = AlgoConfigSnapshot(
+        name="default",
+        strategy_id="ema_crossover",
+        equity=100_000.0,
+        enabled=True,
+        warmup_candles=200,
+        params={},
+        state={"bars_seen": 50, "warmup_complete": True},
+    )
 
     print_strategy_section(
         signals=[],
@@ -673,21 +673,21 @@ def test_print_strategy_section_with_nifty_benchmark(capsys) -> None:
 
 def test_print_strategy_section_nifty_benchmark_with_pnl(capsys) -> None:
     """Covers the alpha comparison path (lines 199-212) when pnl_map is non-empty."""
-    nifty = {"open": 21000.0, "close": 21210.0, "pct_return": 1.0}
+    nifty = NiftyBenchmark(open=21000.0, close=21210.0, pct_return=1.0)
 
     # Create a signal that produces realized P&L
     sig = _mock_signal("ema", "INFY", "BUY", 10, 100.0)
     sell_sig = _mock_signal("ema", "INFY", "SELL", 10, 120.0)
 
-    algo_cfg = {
-        "name": "default",
-        "strategy_id": "ema_crossover",
-        "equity": 100_000.0,
-        "enabled": True,
-        "warmup_candles": 200,
-        "params": {},
-        "state": {"bars_seen": 50, "warmup_complete": True},
-    }
+    algo_cfg = AlgoConfigSnapshot(
+        name="default",
+        strategy_id="ema_crossover",
+        equity=100_000.0,
+        enabled=True,
+        warmup_candles=200,
+        params={},
+        state={"bars_seen": 50, "warmup_complete": True},
+    )
 
     print_strategy_section(
         signals=[sig, sell_sig],

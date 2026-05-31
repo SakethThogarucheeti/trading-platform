@@ -8,9 +8,9 @@ from datetime import UTC, datetime
 import polars as pl
 
 from trading.core.schemas import CandleEvent
-from trading.engine.component import Component
-from trading.engine.runtime import Runtime
-from trading.engine.bar_accumulator import SymbolConfig
+from trading.core.lifecycle.component import Component
+from trading.core.lifecycle.runtime import Runtime
+from trading.candles.bar_accumulator import SymbolConfig
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +108,14 @@ class CandlePlayer(Component):
     async def _run(self) -> None:
         bars_done = 0
         for bar_ts, symbol, _interval, event in self._event_queue:
+            # Advance the clock BEFORE dispatching so risk gates and indicators
+            # (VWAP session_open_utc, intraday cutoff) see this bar's timestamp.
+            bars_done += 1
+            try:
+                await self._on_progress(bars_done, bar_ts)
+            except Exception:
+                logger.debug("CandlePlayer: on_progress callback raised", exc_info=True)
+
             if self._on_bar_price is not None:
                 self._on_bar_price(symbol, event.close)
 
@@ -115,12 +123,6 @@ class CandlePlayer(Component):
 
             if self._replay_delay_secs > 0:
                 await asyncio.sleep(self._replay_delay_secs)
-
-            bars_done += 1
-            try:
-                await self._on_progress(bars_done, bar_ts)
-            except Exception:
-                logger.debug("CandlePlayer: on_progress callback raised", exc_info=True)
 
         logger.info("CandlePlayer: replay complete — %d bars published", bars_done)
         await asyncio.sleep(0.05)

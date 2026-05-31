@@ -5,51 +5,122 @@ from __future__ import annotations
 import os
 import sys
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from dotenv import load_dotenv
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from trading.reports.fetch import (
+    AlgoConfigSnapshot,
     fetch_algo_configs,
     fetch_audit_logs,
     fetch_decisions,
     fetch_heartbeats,
     fetch_nifty_benchmark,
-    fetch_signals,
+    fetch_signals,  # used by run_report terminal output only
 )
 from trading.reports.render import hr, print_strategy_section, print_system_section
+
+
+@dataclass
+class _SymbolRow:
+    buys: int = 0
+    sells: int = 0
+    volume: int = 0
+    cash_flow: float = 0.0
+
+
+class SignalFunnel(BaseModel):
+    candles_emitted: int
+    signals_generated: int
+    signals_accepted: int
+    signals_rejected: int
+    acceptance_rate: float
+    rejection_reasons: dict[str, int]
+
+
+class OrderFunnel(BaseModel):
+    placed: int
+    filled: int
+    rejected: int
+    cancelled: int
+    fill_rate: float
+
+
+class PnlSummary(BaseModel):
+    gross: float
+    costs: float
+    net: float
+    algo_pct: float | None
+
+
+class TradesBySymbol(BaseModel):
+    symbol: str
+    buys: int
+    sells: int
+    volume: int
+    cash_flow: float
+
+
+class SystemHealth(BaseModel):
+    module: str
+    last_seen: str
+    stale: bool
+
+
+class BenchmarkResult(BaseModel):
+    nifty_open: float
+    nifty_close: float
+    pct_return: float
+    algo_pct: float | None
+    alpha: float | None
+
+
+class LiveReportData(BaseModel):
+    period: str | None
+    start: str
+    end: str
+    signal_funnel: SignalFunnel
+    order_funnel: OrderFunnel
+    pnl_summary: PnlSummary
+    trades_by_symbol: list[TradesBySymbol]
+    benchmark: BenchmarkResult | None
+    algo_configs: list[AlgoConfigSnapshot]
+    system_health: list[SystemHealth]
 
 
 async def fetch_report_data(
     start: datetime,
     end: datetime,
     session_factory: async_sessionmaker[AsyncSession],
-) -> dict[str, object]:
+) -> LiveReportData:
     """
     Fetch all live report data for [start, end) and return as a structured dict.
 
     Used by the dashboard API endpoint /api/reports/live so the React frontend
     can render an interactive version of the terminal report.
     """
-    from trading.core.schemas import OrderStatus
-    from trading.reports.pnl import compute_pnl
+    import json as _json
+
+    from trading.reports.trades import fetch_filled_trades, summarize
 
     async with session_factory() as session:
-        signals = await fetch_signals(session, start, end)
         decisions = await fetch_decisions(session, start, end)
-        audit_logs = await fetch_audit_logs(session, start, end)
+        await fetch_audit_logs(session, start, end)
         heartbeats = await fetch_heartbeats(session)
         algo_configs = await fetch_algo_configs(session)
         nifty_benchmark = await fetch_nifty_benchmark(session, start, end)
 
-    # Signal funnel
+    trades = await fetch_filled_trades(session_factory, start=start, end=end)
+
+    # Signal funnel (from decision log — not from signals table)
     step_counts: dict[str, int] = defaultdict(int)
     rejection_reasons: dict[str, int] = defaultdict(int)
     for d in decisions:
         step_counts[d.step] += 1
         if d.step == "SIGNAL_REJECTED":
-            import json as _json
             ctx: dict[str, object] = {}
             try:
                 ctx = _json.loads(d.context) if d.context else {}
@@ -61,103 +132,97 @@ async def fetch_report_data(
     accepted = step_counts.get("SIGNAL_ACCEPTED", 0)
     rejected = step_counts.get("SIGNAL_REJECTED", 0)
 
-    # Order funnel
-    all_orders = [o for s in signals for o in s.orders]
-    by_status: dict[str, int] = defaultdict(int)
-    for o in all_orders:
-        by_status[o.status] += 1
-    total_orders = len(all_orders)
-    filled = by_status.get(OrderStatus.FILLED.value, 0)
+    # Order funnel — count from decision log steps
+    total_orders = step_counts.get("SIGNAL_ACCEPTED", 0)
+    filled = len(trades)
 
-    # Trades by symbol
-    symbol_data: dict[str, dict[str, object]] = defaultdict(
-        lambda: {"buys": 0, "sells": 0, "volume": 0, "cash_flow": 0.0}
-    )
-    for sig in signals:
-        for order in sig.orders:
-            if order.status != OrderStatus.FILLED.value:
-                continue
-            d = symbol_data[sig.symbol]
-            if sig.side == "BUY":
-                d["buys"] = int(d["buys"]) + 1  # type: ignore[arg-type]
-                d["cash_flow"] = float(d["cash_flow"]) - order.qty * float(order.avg_price)  # type: ignore[arg-type]
-            else:
-                d["sells"] = int(d["sells"]) + 1  # type: ignore[arg-type]
-                d["cash_flow"] = float(d["cash_flow"]) + order.qty * float(order.avg_price)  # type: ignore[arg-type]
-            d["volume"] = int(d["volume"]) + order.qty  # type: ignore[arg-type]
+    # Trades by symbol — derived from filled trades
+    symbol_rows: dict[str, _SymbolRow] = defaultdict(_SymbolRow)
+    for t in trades:
+        r = symbol_rows[t.symbol]
+        if t.side == "BUY":
+            r.buys += 1
+            r.cash_flow -= t.qty * t.avg_price
+        else:
+            r.sells += 1
+            r.cash_flow += t.qty * t.avg_price
+        r.volume += t.qty
 
     trades_by_symbol = [
-        {"symbol": sym, **data}
-        for sym, data in sorted(symbol_data.items())
+        TradesBySymbol(
+            symbol=sym,
+            buys=r.buys,
+            sells=r.sells,
+            volume=r.volume,
+            cash_flow=r.cash_flow,
+        )
+        for sym, r in sorted(symbol_rows.items())
     ]
 
-    # P&L
-    pnl_map = compute_pnl(signals)
-    total_gross = sum(float(v["realized"]) for v in pnl_map.values())
-    total_costs = sum(float(v["total_costs"]) for v in pnl_map.values())
-    total_net = sum(float(v["net_realized"]) for v in pnl_map.values())
+    # P&L — from TradesQueryService
+    pnl = summarize(trades)
+    total_gross = pnl.gross
+    total_costs = pnl.costs
+    total_net = pnl.net
 
-    total_capital = sum(
-        float(cfg["equity"]) for cfg in algo_configs if cfg.get("enabled")  # type: ignore[arg-type]
-    )
+    total_capital = sum(cfg.equity for cfg in algo_configs if cfg.enabled)
     algo_pct = (total_net / total_capital * 100) if total_capital else None
 
-    # Heartbeat status
+    # Heartbeat status — 5-min threshold for historical reports (longer window than live API)
+    _REPORT_STALE_SECS = 300
     now_utc = datetime.now(UTC)
     system_health = []
     for hb in heartbeats:
         last = hb.last_seen
         if last.tzinfo is None:
             last = last.replace(tzinfo=UTC)
-        system_health.append(
-            {
-                "module": hb.module,
-                "last_seen": last.isoformat(),
-                "stale": (now_utc - last).total_seconds() > 300,
-            }
+        system_health.append(SystemHealth(
+            module=hb.module,
+            last_seen=last.isoformat(),
+            stale=(now_utc - last).total_seconds() > _REPORT_STALE_SECS,
+        ))
+
+    benchmark: BenchmarkResult | None = None
+    if nifty_benchmark:
+        b_pct = nifty_benchmark.pct_return
+        benchmark = BenchmarkResult(
+            nifty_open=nifty_benchmark.open,
+            nifty_close=nifty_benchmark.close,
+            pct_return=b_pct,
+            algo_pct=algo_pct,
+            alpha=(algo_pct - b_pct) if algo_pct is not None else None,
         )
 
-    benchmark: dict[str, object] | None = None
-    if nifty_benchmark:
-        b_pct = nifty_benchmark["pct_return"]
-        benchmark = {
-            "nifty_open": nifty_benchmark["open"],
-            "nifty_close": nifty_benchmark["close"],
-            "pct_return": b_pct,
-            "algo_pct": algo_pct,
-            "alpha": (algo_pct - b_pct) if algo_pct is not None else None,
-        }
-
-    return {
-        "period": None,
-        "start": start.isoformat(),
-        "end": end.isoformat(),
-        "signal_funnel": {
-            "candles_emitted": step_counts.get("CANDLE_EMITTED", 0),
-            "signals_generated": generated,
-            "signals_accepted": accepted,
-            "signals_rejected": rejected,
-            "acceptance_rate": accepted / generated if generated else 0.0,
-            "rejection_reasons": dict(rejection_reasons),
-        },
-        "order_funnel": {
-            "placed": total_orders,
-            "filled": filled,
-            "rejected": by_status.get(OrderStatus.REJECTED.value, 0),
-            "cancelled": by_status.get(OrderStatus.CANCELLED.value, 0),
-            "fill_rate": filled / total_orders if total_orders else 0.0,
-        },
-        "pnl_summary": {
-            "gross": round(total_gross, 2),
-            "costs": round(total_costs, 2),
-            "net": round(total_net, 2),
-            "algo_pct": algo_pct,
-        },
-        "trades_by_symbol": trades_by_symbol,
-        "benchmark": benchmark,
-        "algo_configs": algo_configs,
-        "system_health": system_health,
-    }
+    return LiveReportData(
+        period=None,
+        start=start.isoformat(),
+        end=end.isoformat(),
+        signal_funnel=SignalFunnel(
+            candles_emitted=step_counts.get("CANDLE_EMITTED", 0),
+            signals_generated=generated,
+            signals_accepted=accepted,
+            signals_rejected=rejected,
+            acceptance_rate=accepted / generated if generated else 0.0,
+            rejection_reasons=dict(rejection_reasons),
+        ),
+        order_funnel=OrderFunnel(
+            placed=total_orders,
+            filled=filled,
+            rejected=step_counts.get("SIGNAL_REJECTED", 0),
+            cancelled=0,
+            fill_rate=filled / total_orders if total_orders else 0.0,
+        ),
+        pnl_summary=PnlSummary(
+            gross=round(total_gross, 2),
+            costs=round(total_costs, 2),
+            net=round(total_net, 2),
+            algo_pct=algo_pct,
+        ),
+        trades_by_symbol=trades_by_symbol,
+        benchmark=benchmark,
+        algo_configs=algo_configs,
+        system_health=system_health,
+    )
 
 
 def _find_db_url() -> str:

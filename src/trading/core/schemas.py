@@ -98,11 +98,14 @@ class SignalEvent(BaseModel):
     algo_name: str | None = None
     signal_type: SignalType
     stop_distance: float = Field(gt=0)
+    entry_price: float = Field(default=0.0, ge=0)  # indicative price at signal time; 0 = unknown
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     tick_log_id: int  # copied from the candle that triggered this signal
 
     @classmethod
-    def from_signal(cls, signal: Signal, tick_log_id: int, algo_name: str | None = None) -> SignalEvent:
+    def from_signal(
+        cls, signal: Signal, tick_log_id: int, algo_name: str | None = None
+    ) -> SignalEvent:
         return cls(
             signal_id=signal.signal_id,
             symbol=signal.symbol,
@@ -112,6 +115,7 @@ class SignalEvent(BaseModel):
             algo_name=algo_name,
             signal_type=signal.signal_type,
             stop_distance=signal.stop_distance,
+            entry_price=signal.entry_price,
             timestamp=signal.timestamp,
             tick_log_id=tick_log_id,
         )

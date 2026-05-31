@@ -32,7 +32,7 @@ class ValueCache:
         raw = self._mem.get(key)
         if raw is None:
             try:
-                raw = await _backend.get(key)
+                raw = await _backend.get(key)  # type: ignore[reportUnknownMemberType]
                 if raw is not None:
                     self._mem[key] = raw  # populate memory from Redis on first read
             except Exception as exc:
@@ -43,14 +43,14 @@ class ValueCache:
         raw = json.dumps(value)
         self._mem[key] = raw
         try:
-            await _backend.set(key, raw, expire=ttl)
+            await _backend.set(key, raw, expire=ttl)  # type: ignore[reportUnknownMemberType]
         except Exception as exc:
             _log.debug("ValueCache.set Redis error key=%r: %s", key, exc)
 
     async def delete(self, key: str) -> None:
         self._mem.pop(key, None)
         try:
-            await _backend.delete(key)
+            await _backend.delete(key)  # type: ignore[reportUnknownMemberType]
         except Exception as exc:
             _log.debug("ValueCache.delete Redis error key=%r: %s", key, exc)
 

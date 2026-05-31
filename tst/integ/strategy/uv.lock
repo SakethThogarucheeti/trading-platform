@@ -173,6 +173,20 @@ wheels = [
 ]
 
 [[package]]
+name = "cashews"
+version = "7.5.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/44/73/31598b352165cd0f0b777df1eb67e33f334e29fcd7eb4f4bb48a41b9affe/cashews-7.5.0.tar.gz", hash = "sha256:3f88b8c5ced0ea4826915a1ff67055b647252dd65ef25f4813316a6341f00b37", size = 97699, upload-time = "2026-03-02T22:28:52.462Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0d/14/06cca741567a2ec458fb1db9d053e72477d9da2be387c1d705cb1060b2c6/cashews-7.5.0-py3-none-any.whl", hash = "sha256:e79cb4e5cc164d8f2d2856b166d45dcc2dd8d53b95874d2c6d07dfdb1c9ac3c4", size = 82413, upload-time = "2026-03-02T22:28:50.98Z" },
+]
+
+[package.optional-dependencies]
+redis = [
+    { name = "redis" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.2.25"
 source = { registry = "https://pypi.org/simple" }
@@ -1134,6 +1148,20 @@ wheels = [
 ]
 
 [[package]]
+name = "quantindicators"
+version = "0.1.0"
+source = { git = "https://github.com/SakethThogarucheeti/quantindicators.git#88c8c37a5f5b04c44a0e694506d9192e71c6c52f" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pydantic" },
+]
+
+[package.optional-dependencies]
+scipy = [
+    { name = "scipy" },
+]
+
+[[package]]
 name = "redis"
 version = "7.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1397,6 +1425,7 @@ dependencies = [
     { name = "anyio" },
     { name = "apscheduler" },
     { name = "asyncpg" },
+    { name = "cashews", extra = ["redis"] },
     { name = "dishka" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -1410,6 +1439,7 @@ dependencies = [
     { name = "pyright" },
     { name = "python-dotenv" },
     { name = "pytz" },
+    { name = "quantindicators", extra = ["scipy"] },
     { name = "redis", extra = ["hiredis"] },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "tenacity" },
@@ -1423,6 +1453,7 @@ requires-dist = [
     { name = "anyio", specifier = ">=4.12.1" },
     { name = "apscheduler", specifier = ">=3.10" },
     { name = "asyncpg", specifier = ">=0.29" },
+    { name = "cashews", extras = ["redis"], specifier = ">=7.4" },
     { name = "dishka", specifier = ">=1.0" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "httpx", specifier = ">=0.27" },
@@ -1436,6 +1467,7 @@ requires-dist = [
     { name = "pyright", specifier = ">=1.1.408" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "pytz", specifier = ">=2025.2" },
+    { name = "quantindicators", extras = ["scipy"], git = "https://github.com/SakethThogarucheeti/quantindicators.git" },
     { name = "redis", extras = ["hiredis"], specifier = ">=5.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "tenacity", specifier = ">=9.1.4" },
@@ -1455,6 +1487,7 @@ dev = [
     { name = "ruff", specifier = ">=0.15.1" },
     { name = "scipy", specifier = ">=1.13" },
     { name = "testcontainers", extras = ["postgres"], specifier = ">=4.0" },
+    { name = "ty", specifier = ">=0.0.39" },
 ]
 
 [[package]]

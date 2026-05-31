@@ -1,12 +1,23 @@
 from __future__ import annotations
 
 import logging
+from typing import TypedDict, cast
 
-from trading.core.schemas import CandleEvent, InstrumentType, Side, SignalType
 from quantindicators.library.atr import ATR
 from quantindicators.library.ema import EMA
 from quantindicators.store import AbstractCandleStore
+
+from trading.core.schemas import CandleEvent, InstrumentType, Side, SignalType
 from trading.strategy.base import Signal, Strategy
+
+
+class _State(TypedDict, total=False):
+    prev_fast: dict[str, float | None]
+    prev_slow: dict[str, float | None]
+    last_fast: float | None
+    last_slow: float | None
+    last_atr: float | None
+    last_close: float | None
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +65,7 @@ class EmaCrossoverStrategy(Strategy):
     def set_store(self, store: AbstractCandleStore) -> None:
         self._store = store
 
-    def warmup(self, symbol: str, candles: list) -> None:
+    def warmup(self, symbol: str, candles: list[CandleEvent]) -> None:
         """Pre-construct indicator instances so on_candle() never hits the lazy path."""
         if candles:
             self._get_inds(symbol, candles[0].interval)
@@ -103,12 +114,13 @@ class EmaCrossoverStrategy(Strategy):
 
     async def restore_from_state(self, state: dict[str, object]) -> bool:
         try:
-            self._prev_fast = {k: v for k, v in state["prev_fast"].items()}  # type: ignore[union-attr]
-            self._prev_slow = {k: v for k, v in state["prev_slow"].items()}  # type: ignore[union-attr]
-            self._last_fast = state.get("last_fast")  # type: ignore[assignment]
-            self._last_slow = state.get("last_slow")  # type: ignore[assignment]
-            self._last_atr = state.get("last_atr")  # type: ignore[assignment]
-            self._last_close = state.get("last_close")  # type: ignore[assignment]
+            s = cast(_State, state)
+            self._prev_fast = dict(s["prev_fast"])
+            self._prev_slow = dict(s["prev_slow"])
+            self._last_fast = s.get("last_fast")
+            self._last_slow = s.get("last_slow")
+            self._last_atr = s.get("last_atr")
+            self._last_close = s.get("last_close")
             return True
         except (KeyError, TypeError, AttributeError):
             return False
@@ -169,6 +181,7 @@ class EmaCrossoverStrategy(Strategy):
                 strategy_id=self.id,
                 signal_type=SignalType.ENTRY,
                 stop_distance=stop_distance,
+                entry_price=candle.close,
                 timestamp=candle.timestamp,
             )
 
@@ -189,6 +202,7 @@ class EmaCrossoverStrategy(Strategy):
                 strategy_id=self.id,
                 signal_type=SignalType.ENTRY,
                 stop_distance=stop_distance,
+                entry_price=candle.close,
                 timestamp=candle.timestamp,
             )
 

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from trading.storage.stores.candle_store import CandleStore, RedisClientProtocol
 from trading.storage.stores.candle import AbstractCandleDataStore
+from trading.storage.stores.candle_store import CandleStore, RedisClientProtocol
 
 
 def make_candle_store(

@@ -31,7 +31,7 @@ class RedisCircuitBreaker(CircuitBreaker):
         while True:
             try:
                 val = await self._redis.get("circuit:state")  # type: ignore[attr-defined]
-                self._open = val == b"open"
+                self._open = val == b"open"  # type: ignore[reportUnknownMemberType]
             except Exception:
                 pass  # keep last known state on Redis error
             await sleep(self._poll_interval)

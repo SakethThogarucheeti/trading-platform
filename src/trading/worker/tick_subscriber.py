@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from anyio import create_task_group
 
 from trading.broker.paper_broker import AbstractPriceStore
+from trading.core.lifecycle.component import Component
 from trading.core.schemas import TickEvent
 from trading.core.types import OnTickCallback
 from trading.worker.circuit_breaker_redis import RedisCircuitBreaker
-from trading.core.lifecycle.component import Component
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ class TickSubscriber(Component):
         self._token_symbol = token_symbol
         self._price_store = price_store
         self._on_tick_callbacks: list[OnTickCallback] = []
-        self._pubsub: object | None = None
+        self._pubsub: Any = None
 
     def add_on_tick(self, callback: OnTickCallback) -> None:
         self._on_tick_callbacks.append(callback)
@@ -66,7 +67,7 @@ class TickSubscriber(Component):
     async def _listen(self) -> None:
         pubsub = self._pubsub
         assert pubsub is not None
-        async for message in pubsub.listen():  # type: ignore[attr-defined]
+        async for message in pubsub.listen():
             if message.get("type") != "message":
                 continue
             data = message.get("data")
@@ -81,7 +82,7 @@ class TickSubscriber(Component):
             if self._price_store is not None:
                 symbol = self._token_symbol.get(tick.instrument_token, "")
                 if symbol:
-                    self._price_store.update(symbol, tick.last_price)  # type: ignore[attr-defined]
+                    self._price_store.update(symbol, tick.last_price)
 
             for callback in self._on_tick_callbacks:
                 try:
@@ -92,8 +93,8 @@ class TickSubscriber(Component):
     async def _teardown(self) -> None:
         if self._pubsub is not None:
             try:
-                await self._pubsub.unsubscribe()  # type: ignore[attr-defined]
-                await self._pubsub.aclose()  # type: ignore[attr-defined]
+                await self._pubsub.unsubscribe()
+                await self._pubsub.aclose()
             except Exception:
                 pass
             self._pubsub = None

@@ -11,10 +11,9 @@ from trading.broker.base.broker_stream import BrokerStream
 from trading.broker.paper_broker import AbstractPriceStore
 from trading.broker.types import Tick
 from trading.core.context import thread_id
-from trading.core.messaging import AbstractCircuitBreaker
-from trading.core.schemas import TickEvent
-from trading.core.types import OnTickCallback
 from trading.core.lifecycle.component import Component
+from trading.core.messaging import AbstractCircuitBreaker
+from trading.core.types import OnTickCallback
 from trading.tick_ingest.tick_ingestor import TickIngestor
 from trading.tick_ingest.tick_publisher import TickPublisher
 

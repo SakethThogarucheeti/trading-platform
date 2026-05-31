@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
-from typing import Generic, TypeVar
 
 from trading.storage.cache.backend import ValueCache
 
-T = TypeVar("T")
 
-
-class BaseCacher(ABC, Generic[T]):
+class BaseCacher[T](ABC):
     """
     Abstract base for a typed cache domain.
 
@@ -37,7 +34,7 @@ class BaseCacher(ABC, Generic[T]):
 
     async def get_or_set(
         self,
-        key_args: tuple,
+        key_args: tuple[object, ...],
         producer: Callable[[], Awaitable[T]],
         ttl: int | None = None,
     ) -> T:

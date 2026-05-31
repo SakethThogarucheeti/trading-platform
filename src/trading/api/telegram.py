@@ -4,9 +4,8 @@ import logging
 import time
 from typing import Any
 
-from anyio import sleep
-
 import httpx
+from anyio import sleep
 
 from trading.config.settings import Settings
 

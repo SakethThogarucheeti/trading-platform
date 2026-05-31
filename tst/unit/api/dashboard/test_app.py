@@ -11,7 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.core.clock import SimulatedClock
-from trading.api.dashboard.app import build_app
+from trading.api.app import build_app
 
 # ---------------------------------------------------------------------------
 # Helpers — build a mock session_factory
@@ -299,7 +299,7 @@ async def test_algos_with_data():
 
 
 # ---------------------------------------------------------------------------
-# DashboardServer component — mock uvicorn.Server
+# ApiServer component — mock uvicorn.Server
 # ---------------------------------------------------------------------------
 
 
@@ -307,10 +307,10 @@ async def test_algos_with_data():
 async def test_dashboard_server_setup_creates_uvicorn_server():
     from unittest.mock import patch
 
-    from trading.api.dashboard.component import DashboardServer
+    from trading.api.server import ApiServer
 
     sf = _mock_sf(scalars_return=[])
-    server = DashboardServer(session_factory=sf, host="127.0.0.1", port=8999)
+    server = ApiServer(session_factory=sf, host="127.0.0.1", port=8999)
 
     mock_uvicorn_server = AsyncMock()
     mock_uvicorn_server.serve = AsyncMock(return_value=None)
@@ -324,10 +324,10 @@ async def test_dashboard_server_setup_creates_uvicorn_server():
 
 @pytest.mark.asyncio
 async def test_dashboard_server_teardown_sets_should_exit():
-    from trading.api.dashboard.component import DashboardServer
+    from trading.api.server import ApiServer
 
     sf = _mock_sf(scalars_return=[])
-    server = DashboardServer(session_factory=sf)
+    server = ApiServer(session_factory=sf)
 
     mock_uvicorn_server = MagicMock()
     mock_uvicorn_server.should_exit = False
@@ -340,10 +340,10 @@ async def test_dashboard_server_teardown_sets_should_exit():
 
 @pytest.mark.asyncio
 async def test_dashboard_server_teardown_noop_when_no_server():
-    from trading.api.dashboard.component import DashboardServer
+    from trading.api.server import ApiServer
 
     sf = _mock_sf(scalars_return=[])
-    server = DashboardServer(session_factory=sf)
+    server = ApiServer(session_factory=sf)
     server._server = None
 
     # Should not raise

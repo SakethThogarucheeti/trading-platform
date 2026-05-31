@@ -659,8 +659,22 @@ trading-platform/
 │   │   ├── base.py                      # AbstractRepository
 │   │   └── repository.py                # Repository (all DB operations)
 │   ├── monitoring/
-│   │   ├── telegram.py                  # TelegramAlerter
-│   │   └── dashboard/                   # Live portfolio dashboard (aiohttp)
+│   │   └── heartbeat.py                 # HeartbeatMonitor — module liveness + Telegram alerts
+│   ├── api/
+│   │   ├── telegram.py                  # TelegramAlerter — Telegram Bot API client
+│   │   ├── routers/                     # FastAPI route modules (one per domain)
+│   │   │   ├── auth.py                  # /api/auth/*
+│   │   │   ├── market.py                # /api/ping, /api/health, /api/positions, /api/signals, /api/candles, /api/ticks
+│   │   │   ├── algos.py                 # /api/algos*
+│   │   │   ├── pnl.py                   # /api/pnl, /api/pnl/by-algo
+│   │   │   ├── reports.py               # /api/reports/*
+│   │   │   ├── charts.py                # /api/charts
+│   │   │   ├── stream.py                # /api/decisions/stream (SSE)
+│   │   │   ├── broker.py                # /api/postback (Zerodha webhook)
+│   │   │   └── data.py                  # /api/sessions, /api/settings, /api/instruments, /api/trades
+│   │   └── dashboard/
+│   │       ├── app.py                   # build_app() — assembles routers into a FastAPI app
+│   │       └── component.py             # DashboardServer — Component wrapper (starts uvicorn)
 │   ├── di/
 │   │   ├── container.py                 # Dishka container builder
 │   │   └── providers/

@@ -31,7 +31,7 @@ from anyio import sleep_forever
 from trading.di.container import build_container
 from trading.core.lifecycle.runtime import AbstractRuntime
 from trading.monitoring.scheduler import Scheduler
-from trading.api.dashboard.component import DashboardServer
+from trading.api.server import ApiServer
 
 if TYPE_CHECKING:
     from trading.config.settings import Settings
@@ -218,7 +218,7 @@ async def _main() -> None:
 
         runtime: AbstractRuntime = await container.get(AbstractRuntime)
         scheduler: Scheduler = await container.get(Scheduler)
-        dashboard: DashboardServer | None = await container.get(DashboardServer | None)
+        dashboard: ApiServer | None = await container.get(ApiServer | None)
 
         scheduler.start()
         logger.info("Scheduler started.")

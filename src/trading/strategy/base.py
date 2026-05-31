@@ -5,11 +5,13 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import ClassVar
 from uuid import UUID, uuid4
+
+from quantindicators.store import AbstractCandleStore
 
 from trading.core.clock import SYSTEM_CLOCK, Clock
 from trading.core.schemas import CandleEvent, InstrumentType, Side, SignalType
-from quantindicators.store import AbstractCandleStore
 
 _log = logging.getLogger(__name__)
 
@@ -29,6 +31,9 @@ class Signal:
     ``stop_distance`` is used by the risk sizer to compute position size
     (e.g. ATR × multiplier). Must be > 0.
 
+    ``entry_price`` is the indicative price at signal time (e.g. candle.close).
+    Used by the risk sizer to cap position notional. Set to 0.0 if unknown.
+
     For backtest reproducibility, pass ``timestamp=candle.timestamp`` explicitly
     when constructing a Signal. The default (``datetime.now(UTC)``) is correct
     for live trading but will vary across runs in backtests.
@@ -43,6 +48,7 @@ class Signal:
     strategy_id: str
     signal_type: SignalType
     stop_distance: float  # always > 0
+    entry_price: float = 0.0  # indicative price at signal time; 0.0 = unknown
 
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     signal_id: UUID = field(default_factory=uuid4)
@@ -56,6 +62,8 @@ class Strategy(ABC):
     no network I/O. Side effects belong in the registry layer.
     """
 
+    alias: ClassVar[str]
+    _store: AbstractCandleStore | None = None
     _chart_cb: Callable[[str, str, float, datetime], None] | None = None
 
     def __init_subclass__(cls, **kwargs: object) -> None:
@@ -89,7 +97,7 @@ class Strategy(ABC):
     @property
     def id(self) -> str:
         """Alias of this strategy instance (delegates to the class attribute)."""
-        return self.__class__.alias  # type: ignore[attr-defined]
+        return self.__class__.alias
 
     def set_runtime_context(self, ctx: RuntimeContext) -> None:  # noqa: B027
         """

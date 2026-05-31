@@ -3,7 +3,13 @@ from __future__ import annotations
 from dishka import AsyncContainer, make_async_container
 from dishka.provider.base_provider import BaseProvider
 
-from trading.di.providers import BrokerProvider, ComponentProvider, InfrastructureProvider, RedisProvider, WorkerComponentProvider
+from trading.di.providers import (
+    BrokerProvider,
+    ComponentProvider,
+    InfrastructureProvider,
+    RedisProvider,
+    WorkerComponentProvider,
+)
 
 
 def build_container(*extra_providers: BaseProvider) -> AsyncContainer:

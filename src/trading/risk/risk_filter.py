@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import time
+from typing import Callable
 
 from pydantic import BaseModel, Field
 
@@ -69,6 +69,7 @@ class RiskFilter(AbstractRegistry):
         factory: CacherFactory,
         clock: Clock | None = None,
         sizer: RiskSizer | None = None,
+        equity_provider: Callable[[], float] | None = None,
     ) -> None:
         self._config = config
         self._gates = gates
@@ -78,6 +79,7 @@ class RiskFilter(AbstractRegistry):
         self._factory = factory
         self._clock: Clock = clock or SystemClock()
         self._sizer: RiskSizer = sizer or VolatilitySizer()
+        self._equity_provider = equity_provider
 
     @property
     def config(self) -> RiskConfig:
@@ -120,7 +122,9 @@ class RiskFilter(AbstractRegistry):
                 event.signal_id,
             )
 
-        fire(self._log_decision("SIGNAL_ACCEPTED", event, SignalAcceptedContext(qty=qty, order_type="MARKET")))
+        fire(self._log_decision(
+            "SIGNAL_ACCEPTED", event, SignalAcceptedContext(qty=qty, order_type="MARKET")
+        ))
         logger.info(
             "RiskFilter: ACCEPTED signal=%s symbol=%s side=%s qty=%d",
             event.signal_id,
@@ -137,17 +141,19 @@ class RiskFilter(AbstractRegistry):
     async def _build_context(self, event: SignalEvent) -> RiskContext:
         now = self._clock.now()
         today = now.date()
-        realized_pnl = await self._factory.pnl().get_or_set(
+        realized_pnl = await self._factory.pnl().get_or_set(  # type: ignore[reportUnknownMemberType]
             (today,),
             producer=lambda: self._trading.get_daily_realized_pnl(today),
         )
         position = None
         if event.signal_type == SignalType.ENTRY:
             position = await self._position.get_position(event.symbol, event.instrument_type.value)
+        equity = self._equity_provider() if self._equity_provider is not None else self._config.equity
+        equity = max(equity, 0.0)
         return RiskContext(
             now=now,
             today=today,
-            equity=self._config.equity,
+            equity=equity,
             max_daily_loss_pct=self._config.max_daily_loss_pct,
             risk_per_trade_pct=self._config.risk_per_trade_pct,
             cutoff=time(self._config.intraday_cutoff_hour, self._config.intraday_cutoff_minute),

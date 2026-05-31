@@ -13,7 +13,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.core.clock import SimulatedClock
-from trading.api.dashboard.app import build_app
+from trading.api.app import build_app
 
 
 def _mock_sf(scalars_return=None, all_return=None):
@@ -132,13 +132,25 @@ async def test_get_report_returns_404_when_missing():
 
 def _all_mocked():
     return {
-        "trading.reports.engine.fetch_signals": AsyncMock(return_value=[]),
         "trading.reports.engine.fetch_decisions": AsyncMock(return_value=[]),
         "trading.reports.engine.fetch_audit_logs": AsyncMock(return_value=[]),
         "trading.reports.engine.fetch_heartbeats": AsyncMock(return_value=[]),
         "trading.reports.engine.fetch_algo_configs": AsyncMock(return_value=[]),
         "trading.reports.engine.fetch_nifty_benchmark": AsyncMock(return_value=None),
+        "trading.reports.trades.fetch_filled_trades": AsyncMock(return_value=[]),
     }
+
+
+def _apply_engine_patches(mocks):
+    """Return a context manager that patches all engine + trades mocks."""
+    return patch.multiple(
+        "trading.reports.engine",
+        fetch_decisions=mocks["trading.reports.engine.fetch_decisions"],
+        fetch_audit_logs=mocks["trading.reports.engine.fetch_audit_logs"],
+        fetch_heartbeats=mocks["trading.reports.engine.fetch_heartbeats"],
+        fetch_algo_configs=mocks["trading.reports.engine.fetch_algo_configs"],
+        fetch_nifty_benchmark=mocks["trading.reports.engine.fetch_nifty_benchmark"],
+    )
 
 
 @pytest.mark.asyncio
@@ -147,12 +159,8 @@ async def test_get_live_report_day_period():
     clock = SimulatedClock()
     clock.advance(datetime(2025, 1, 6, 10, 0, tzinfo=UTC))
     mocks = _all_mocked()
-    with patch("trading.reports.engine.fetch_signals", new=mocks["trading.reports.engine.fetch_signals"]), \
-         patch("trading.reports.engine.fetch_decisions", new=mocks["trading.reports.engine.fetch_decisions"]), \
-         patch("trading.reports.engine.fetch_audit_logs", new=mocks["trading.reports.engine.fetch_audit_logs"]), \
-         patch("trading.reports.engine.fetch_heartbeats", new=mocks["trading.reports.engine.fetch_heartbeats"]), \
-         patch("trading.reports.engine.fetch_algo_configs", new=mocks["trading.reports.engine.fetch_algo_configs"]), \
-         patch("trading.reports.engine.fetch_nifty_benchmark", new=mocks["trading.reports.engine.fetch_nifty_benchmark"]):
+    with _apply_engine_patches(mocks), \
+         patch("trading.reports.trades.fetch_filled_trades", mocks["trading.reports.trades.fetch_filled_trades"]):
         app = build_app(sf, clock=clock)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/api/reports/live?period=day")
@@ -170,12 +178,8 @@ async def test_get_live_report_week_period():
     clock = SimulatedClock()
     clock.advance(datetime(2025, 1, 6, 10, 0, tzinfo=UTC))
     mocks = _all_mocked()
-    with patch("trading.reports.engine.fetch_signals", new=mocks["trading.reports.engine.fetch_signals"]), \
-         patch("trading.reports.engine.fetch_decisions", new=mocks["trading.reports.engine.fetch_decisions"]), \
-         patch("trading.reports.engine.fetch_audit_logs", new=mocks["trading.reports.engine.fetch_audit_logs"]), \
-         patch("trading.reports.engine.fetch_heartbeats", new=mocks["trading.reports.engine.fetch_heartbeats"]), \
-         patch("trading.reports.engine.fetch_algo_configs", new=mocks["trading.reports.engine.fetch_algo_configs"]), \
-         patch("trading.reports.engine.fetch_nifty_benchmark", new=mocks["trading.reports.engine.fetch_nifty_benchmark"]):
+    with _apply_engine_patches(mocks), \
+         patch("trading.reports.trades.fetch_filled_trades", mocks["trading.reports.trades.fetch_filled_trades"]):
         app = build_app(sf, clock=clock)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/api/reports/live?period=week")
@@ -188,12 +192,8 @@ async def test_get_live_report_month_period():
     clock = SimulatedClock()
     clock.advance(datetime(2025, 1, 6, 10, 0, tzinfo=UTC))
     mocks = _all_mocked()
-    with patch("trading.reports.engine.fetch_signals", new=mocks["trading.reports.engine.fetch_signals"]), \
-         patch("trading.reports.engine.fetch_decisions", new=mocks["trading.reports.engine.fetch_decisions"]), \
-         patch("trading.reports.engine.fetch_audit_logs", new=mocks["trading.reports.engine.fetch_audit_logs"]), \
-         patch("trading.reports.engine.fetch_heartbeats", new=mocks["trading.reports.engine.fetch_heartbeats"]), \
-         patch("trading.reports.engine.fetch_algo_configs", new=mocks["trading.reports.engine.fetch_algo_configs"]), \
-         patch("trading.reports.engine.fetch_nifty_benchmark", new=mocks["trading.reports.engine.fetch_nifty_benchmark"]):
+    with _apply_engine_patches(mocks), \
+         patch("trading.reports.trades.fetch_filled_trades", mocks["trading.reports.trades.fetch_filled_trades"]):
         app = build_app(sf, clock=clock)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/api/reports/live?period=month")
@@ -204,12 +204,8 @@ async def test_get_live_report_month_period():
 async def test_get_live_report_with_explicit_date():
     sf = _mock_sf(scalars_return=[])
     mocks = _all_mocked()
-    with patch("trading.reports.engine.fetch_signals", new=mocks["trading.reports.engine.fetch_signals"]), \
-         patch("trading.reports.engine.fetch_decisions", new=mocks["trading.reports.engine.fetch_decisions"]), \
-         patch("trading.reports.engine.fetch_audit_logs", new=mocks["trading.reports.engine.fetch_audit_logs"]), \
-         patch("trading.reports.engine.fetch_heartbeats", new=mocks["trading.reports.engine.fetch_heartbeats"]), \
-         patch("trading.reports.engine.fetch_algo_configs", new=mocks["trading.reports.engine.fetch_algo_configs"]), \
-         patch("trading.reports.engine.fetch_nifty_benchmark", new=mocks["trading.reports.engine.fetch_nifty_benchmark"]):
+    with _apply_engine_patches(mocks), \
+         patch("trading.reports.trades.fetch_filled_trades", mocks["trading.reports.trades.fetch_filled_trades"]):
         app = build_app(sf)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/api/reports/live?period=day&date=2025-01-06")

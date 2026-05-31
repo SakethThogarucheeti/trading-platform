@@ -66,7 +66,7 @@ class AbstractBarAccumulator(ABC):
 
     @abstractmethod
     def process(self, sc: SymbolConfig, interval: str, tick: TickEvent) -> CandleEvent | None:
-        """Update bar state for one tick. Returns a CandleEvent when a bar closes, None otherwise."""
+        """Update bar state for one tick. Returns a CandleEvent on bar close, else None."""
 
 
 class BarAccumulator(AbstractBarAccumulator):
@@ -76,7 +76,7 @@ class BarAccumulator(AbstractBarAccumulator):
         self._bars: dict[tuple[str, str], PartialBar] = {}
 
     def process(self, sc: SymbolConfig, interval: str, tick: TickEvent) -> CandleEvent | None:
-        """Update bar state for one tick. Returns a completed CandleEvent when a bar closes, None otherwise."""
+        """Update bar state for one tick. Returns a CandleEvent on bar close, else None."""
         key = (sc.symbol, interval)
         bar_open = bar_open_time(tick.timestamp, interval)
         existing = self._bars.get(key)

@@ -10,7 +10,7 @@ _log = logging.getLogger(__name__)
 
 def fire(
     coro: Coroutine[Any, Any, object],
-    on_error: Callable[[Exception], None] | None = None,
+    on_error: Callable[[BaseException], None] | None = None,
 ) -> asyncio.Task[object]:
     """
     Schedule a coroutine as a background task and log any unhandled exception.
@@ -35,7 +35,7 @@ def _on_done(task: asyncio.Task[object]) -> None:
 
 
 def _make_done_callback(
-    on_error: Callable[[Exception], None] | None,
+    on_error: Callable[[BaseException], None] | None,
 ) -> Callable[[asyncio.Task[object]], None]:
     if on_error is None:
         return _on_done

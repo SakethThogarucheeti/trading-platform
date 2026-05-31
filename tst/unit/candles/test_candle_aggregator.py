@@ -12,39 +12,67 @@ from anyio import create_task_group, sleep
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from trading.broker.base.broker import Broker
+from trading.candles.bar_accumulator import SymbolConfig
+from trading.candles.historical_data_service import HistoricalDataResult, HistoricalDataService
 from trading.core.database import build_session_factory, init_db
 from trading.core.models import Instrument
 from trading.core.schemas import CandleEvent, InstrumentType, TickEvent
 from trading.candles.candle_aggregator import CandleAggregator, CandleAggregatorComponent, CandleConfig
-from trading.candles.candle_warmer import CandleWarmer, WarmupResult
 from trading.core.lifecycle.component import ComponentState
 from trading.storage.stores.audit import AuditStore
 from trading.storage.stores.candle import CandleDataStore
 
 
-class _StubBroker(Broker):
-    def get_instruments(self) -> pl.DataFrame:
-        return pl.DataFrame()
-
-    def get_ohlc(self, symbol, interval, start, end) -> pl.DataFrame:  # type: ignore[override]
-        return pl.DataFrame()
-
-    async def place_order(self, symbol, side, qty, order_type, limit_price=None) -> str:  # type: ignore[override]
-        return "STUB_001"
+_INFY_SYMBOL = SymbolConfig(
+    symbol="INFY",
+    instrument_token=1,
+    instrument_type=InstrumentType.EQUITY,
+)
 
 
-def _stub_warmer(candles: list[CandleEvent] | None = None) -> CandleWarmer:
-    """Build a CandleWarmer mock that returns the given candle list."""
-    warmer = MagicMock(spec=CandleWarmer)
-    warmer.fetch = AsyncMock(
-        return_value=WarmupResult(
-            candles=candles or [],
-            fetch_failures=0,
-            parse_failures=0,
-            persist_failures=0,
+def _stub_service(candles: list[CandleEvent] | None = None) -> HistoricalDataService:
+    """Build a HistoricalDataService mock that returns the given candles as a DataFrame."""
+    service = MagicMock(spec=HistoricalDataService)
+
+    if candles:
+        df = pl.DataFrame(
+            {
+                "date": [c.timestamp for c in candles],
+                "open": [c.open for c in candles],
+                "high": [c.high for c in candles],
+                "low": [c.low for c in candles],
+                "close": [c.close for c in candles],
+                "volume": [c.volume for c in candles],
+            }
         )
+    else:
+        df = pl.DataFrame(
+            schema={
+                "date": pl.Datetime("us", "UTC"),
+                "open": pl.Float64,
+                "high": pl.Float64,
+                "low": pl.Float64,
+                "close": pl.Float64,
+                "volume": pl.Int64,
+            }
+        )
+
+    service.fetch = AsyncMock(return_value=HistoricalDataResult(df=df, fetched_from_broker=False))
+    return service
+
+
+def _make_component(
+    service: HistoricalDataService,
+    candle_registry: object | None = None,
+    warmup_count: int = 5,
+) -> CandleAggregatorComponent:
+    return CandleAggregatorComponent(
+        candle_aggregator=candle_registry or MagicMock(),
+        historical_data_service=service,
+        symbols=[_INFY_SYMBOL],
+        intervals=["1min"],
+        warmup_count=warmup_count,
     )
-    return warmer
 
 
 @pytest.fixture
@@ -56,7 +84,7 @@ async def engine() -> AsyncEngine:  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
-# CandleAggregator
+# CandleAggregatorComponent lifecycle
 # ---------------------------------------------------------------------------
 
 
@@ -77,7 +105,7 @@ async def test_candle_aggregator_starts_and_reaches_running(engine: AsyncEngine)
         config=config,
         candle_logger=MagicMock(),
     )
-    agg = CandleAggregatorComponent(reg, _stub_warmer())
+    agg = _make_component(_stub_service(), reg)
 
     async with create_task_group() as tg:
         await tg.start(agg.start)
@@ -103,16 +131,19 @@ async def test_candle_aggregator_add_algo_registry_and_warmup_replay(
         tick_log_id=0,
     )
 
-    mock_candle_reg = MagicMock()
     mock_algo_reg = MagicMock()
+    mock_algo_reg.setup = MagicMock()
     mock_algo_reg.handle = AsyncMock(return_value=[])
 
-    agg = CandleAggregatorComponent(mock_candle_reg, _stub_warmer([candle]))
+    agg = _make_component(_stub_service([candle]))
     agg.add_algo_registry(mock_algo_reg)
 
     await agg._setup()
 
-    mock_algo_reg.handle.assert_called_once_with(candle)
+    mock_algo_reg.handle.assert_called_once()
+    called_candle = mock_algo_reg.handle.call_args[0][0]
+    assert called_candle.symbol == "INFY"
+    assert called_candle.close == pytest.approx(103.0)
 
 
 async def test_candle_aggregator_warmup_error_does_not_abort(
@@ -132,25 +163,25 @@ async def test_candle_aggregator_warmup_error_does_not_abort(
         tick_log_id=0,
     )
 
-    mock_candle_reg = MagicMock()
     mock_algo_reg = MagicMock()
+    mock_algo_reg.setup = MagicMock()
     mock_algo_reg.handle = AsyncMock(side_effect=RuntimeError("boom"))
 
-    agg = CandleAggregatorComponent(mock_candle_reg, _stub_warmer([candle]))
+    agg = _make_component(_stub_service([candle]))
     agg.add_algo_registry(mock_algo_reg)
 
-    await agg._setup()
+    await agg._setup()  # must not raise
 
 
 async def test_candle_aggregator_no_warmup_candles_no_replay(
     engine: AsyncEngine,
 ) -> None:
-    """When warmer returns an empty list, no algo handles are called."""
-    mock_candle_reg = MagicMock()
+    """When service returns an empty DataFrame, no algo handles are called."""
     mock_algo_reg = MagicMock()
+    mock_algo_reg.setup = MagicMock()
     mock_algo_reg.handle = AsyncMock(return_value=[])
 
-    agg = CandleAggregatorComponent(mock_candle_reg, _stub_warmer([]))
+    agg = _make_component(_stub_service([]))
     agg.add_algo_registry(mock_algo_reg)
 
     await agg._setup()

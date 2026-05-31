@@ -28,13 +28,17 @@ class BrokerProvider(Provider):
         return KiteClient(settings.zerodha_api_key)
 
     @provide
-    def broker(self, client: KiteClient, settings: Settings, price_store: AbstractPriceStore) -> Broker:
+    def broker(
+        self, client: KiteClient, settings: Settings, price_store: AbstractPriceStore
+    ) -> Broker:
         real_broker = ZerodhaBroker(client, order_timeout_secs=settings.order_timeout_secs)
         if settings.paper_trading:
             logger.info("BrokerProvider: paper trading mode enabled")
             postback_url = f"http://{settings.dashboard_host}:{settings.dashboard_port}/api/postback"
             http_client = httpx.AsyncClient()
-            return PaperBroker(real_broker, price_store, postback_url=postback_url, http_client=http_client)
+            return PaperBroker(
+                real_broker, price_store, postback_url=postback_url, http_client=http_client
+            )
         return real_broker
 
     @provide

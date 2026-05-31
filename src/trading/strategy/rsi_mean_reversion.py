@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import logging
+from typing import TypedDict, cast
 
-from trading.core.schemas import CandleEvent, InstrumentType, Side, SignalType
 from quantindicators.library.atr import ATR
 from quantindicators.library.rsi import RSI
 from quantindicators.store import AbstractCandleStore
+
+from trading.core.schemas import CandleEvent, InstrumentType, Side, SignalType
 from trading.strategy.base import Signal, Strategy
+
+
+class _State(TypedDict, total=False):
+    prev_rsi: dict[str, float | None]
+    last_rsi: float | None
+    last_atr: float | None
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +88,10 @@ class RsiMeanReversionStrategy(Strategy):
 
     async def restore_from_state(self, state: dict[str, object]) -> bool:
         try:
-            self._prev_rsi = {k: v for k, v in state["prev_rsi"].items()}  # type: ignore[union-attr]
-            self._last_rsi = state.get("last_rsi")  # type: ignore[assignment]
-            self._last_atr = state.get("last_atr")  # type: ignore[assignment]
+            s = cast(_State, state)
+            self._prev_rsi = dict(s["prev_rsi"])
+            self._last_rsi = s.get("last_rsi")
+            self._last_atr = s.get("last_atr")
             return True
         except (KeyError, TypeError, AttributeError):
             return False
@@ -129,6 +138,7 @@ class RsiMeanReversionStrategy(Strategy):
                 strategy_id=self.id,
                 signal_type=SignalType.ENTRY,
                 stop_distance=stop_distance,
+                entry_price=candle.close,
                 timestamp=candle.timestamp,
             )
 
@@ -147,6 +157,7 @@ class RsiMeanReversionStrategy(Strategy):
                 strategy_id=self.id,
                 signal_type=SignalType.ENTRY,
                 stop_distance=stop_distance,
+                entry_price=candle.close,
                 timestamp=candle.timestamp,
             )
 

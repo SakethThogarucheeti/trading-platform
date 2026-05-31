@@ -85,7 +85,8 @@ class EquityTracker:
         existing = self._open.get(symbol)
 
         if existing is None:
-            # Opening a new position
+            # Opening a new position — debit notional from equity immediately
+            self._equity -= qty * price
             self._open[symbol] = _OpenPosition(
                 symbol=symbol,
                 side=side,
@@ -97,7 +98,8 @@ class EquityTracker:
         else:
             # Closing (or partially closing) the position
             if existing.side == side:
-                # Same direction — add to position
+                # Same direction — add to position, debit additional notional
+                self._equity -= qty * price
                 total_qty = existing.qty + qty
                 avg_price = (existing.entry_price * existing.qty + price * qty) / total_qty
                 self._open[symbol] = _OpenPosition(
@@ -109,12 +111,26 @@ class EquityTracker:
                 )
             else:
                 # Opposite direction — close position
+                closed_qty = min(qty, existing.qty)
                 if side == Side.SELL:
-                    pnl = (price - existing.entry_price) * min(qty, existing.qty)
+                    pnl = (price - existing.entry_price) * closed_qty
                 else:
-                    pnl = (existing.entry_price - price) * min(qty, existing.qty)
+                    pnl = (existing.entry_price - price) * closed_qty
 
-                self._equity += pnl
+                # Credit back the entry notional + PnL (entry cost was debited on open)
+                self._equity += existing.entry_price * closed_qty + pnl
+
+                # Update open position first so snapshot reflects correct remaining positions
+                if qty >= existing.qty:
+                    del self._open[symbol]
+                else:
+                    self._open[symbol] = _OpenPosition(
+                        symbol=symbol,
+                        side=existing.side,
+                        qty=existing.qty - qty,
+                        entry_price=existing.entry_price,
+                        entry_time=existing.entry_time,
+                    )
                 self.snapshot(ts)
 
                 trade = TradeRecord(
@@ -135,20 +151,21 @@ class EquityTracker:
                     self._equity,
                 )
 
-                if qty >= existing.qty:
-                    del self._open[symbol]
-                else:
-                    self._open[symbol] = _OpenPosition(
-                        symbol=symbol,
-                        side=existing.side,
-                        qty=existing.qty - qty,
-                        entry_price=existing.entry_price,
-                        entry_time=existing.entry_time,
-                    )
+    def snapshot(self, ts: datetime, current_prices: dict[str, float] | None = None) -> None:
+        """Record total portfolio value (cash + mark-to-market open positions) at *ts*.
 
-    def snapshot(self, ts: datetime) -> None:
-        """Record current equity at timestamp *ts*."""
-        self._equity_snapshots.append((ts, self._equity))
+        When *current_prices* is supplied the open positions are valued at those
+        prices (unrealised P&L is reflected). When omitted the cost basis is
+        used as a fallback so the signature stays backwards-compatible.
+        """
+        if current_prices:
+            open_value = sum(
+                (current_prices.get(p.symbol, p.entry_price)) * p.qty
+                for p in self._open.values()
+            )
+        else:
+            open_value = sum(p.entry_price * p.qty for p in self._open.values())
+        self._equity_snapshots.append((ts, self._equity + open_value))
 
     def close_open_positions(self, last_prices: dict[str, float]) -> None:
         """
@@ -171,9 +188,8 @@ class EquityTracker:
             else:
                 pnl = (pos.entry_price - price) * pos.qty
 
-            self._equity += pnl
-            self.snapshot(now)
-
+            # Credit back entry notional + PnL (entry cost was debited on open)
+            self._equity += pos.entry_price * pos.qty + pnl
             trade = TradeRecord(
                 symbol=symbol,
                 side=pos.side.value,
@@ -186,6 +202,11 @@ class EquityTracker:
             )
             self._trades.append(trade)
         self._open.clear()
+        self.snapshot(now)  # all positions closed — no open notional remaining
+
+    def mark_snapshot(self, ts: datetime, current_prices: dict[str, float]) -> None:
+        """Record a per-bar mark-to-market snapshot (called by the engine after each candle)."""
+        self.snapshot(ts, current_prices=current_prices)
 
     # ------------------------------------------------------------------
     # Properties

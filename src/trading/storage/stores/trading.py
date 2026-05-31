@@ -8,7 +8,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.core.models import Order, Signal
-from trading.core.schemas import OrderStatus, SignalEvent, Side
+from trading.core.schemas import OrderStatus, Side, SignalEvent
 
 
 class NotFoundError(Exception):

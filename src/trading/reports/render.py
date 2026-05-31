@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 from trading.core.models import AuditLog, DecisionLog, Heartbeat, Signal
 from trading.core.schemas import OrderStatus
+from trading.reports.fetch import AlgoConfigSnapshot, NiftyBenchmark
 from trading.reports.pnl import compute_pnl
 
 logger = logging.getLogger(__name__)
@@ -66,8 +67,8 @@ def pnl_str(value: float) -> str:
 def print_strategy_section(
     signals: list[Signal],
     decisions: list[DecisionLog],
-    algo_configs: list[dict[str, object]],
-    nifty_benchmark: dict[str, float] | None = None,
+    algo_configs: list[AlgoConfigSnapshot],
+    nifty_benchmark: NiftyBenchmark | None = None,
 ) -> None:
     section("STRATEGY PERFORMANCE")
 
@@ -120,29 +121,36 @@ def print_strategy_section(
     # --- Per-symbol trade summary ---
     subsection("Trades by Symbol")
 
-    symbol_data: dict[str, dict[str, object]] = defaultdict(
-        lambda: {"buys": 0, "sells": 0, "volume": 0, "gross": 0.0}
-    )
+    from dataclasses import dataclass
+
+    @dataclass
+    class _SymbolRow:
+        buys: int = 0
+        sells: int = 0
+        volume: int = 0
+        gross: float = 0.0
+
+    symbol_data: dict[str, _SymbolRow] = defaultdict(_SymbolRow)
     for sig in signals:
         for order in sig.orders:
             if order.status != OrderStatus.FILLED.value:
                 continue
-            d = symbol_data[sig.symbol]
+            r = symbol_data[sig.symbol]
             if sig.side == "BUY":
-                d["buys"] = int(d["buys"]) + 1  # type: ignore[arg-type]
-                d["gross"] = float(d["gross"]) - order.qty * float(order.avg_price)  # type: ignore[arg-type]
+                r.buys += 1
+                r.gross -= order.qty * float(order.avg_price)
             else:
-                d["sells"] = int(d["sells"]) + 1  # type: ignore[arg-type]
-                d["gross"] = float(d["gross"]) + order.qty * float(order.avg_price)  # type: ignore[arg-type]
-            d["volume"] = int(d["volume"]) + order.qty  # type: ignore[arg-type]
+                r.sells += 1
+                r.gross += order.qty * float(order.avg_price)
+            r.volume += order.qty
 
     if symbol_data:
         print(f"    {'Symbol':<16}{'Buys':>6}{'Sells':>6}{'Volume':>10}{'Cash Flow':>14}")
         hr()
-        for symbol, d in sorted(symbol_data.items()):
+        for symbol, r in sorted(symbol_data.items()):
             print(
-                f"    {symbol:<16}{d['buys']:>6}{d['sells']:>6}"
-                f"{d['volume']:>10}{pnl_str(float(d['gross'])):>14}"  # type: ignore[arg-type]
+                f"    {symbol:<16}{r.buys:>6}{r.sells:>6}"
+                f"{r.volume:>10}{pnl_str(r.gross):>14}"
             )
     else:
         print("    No filled orders in this period.")
@@ -190,16 +198,12 @@ def print_strategy_section(
     # --- Nifty 50 benchmark ---
     if nifty_benchmark is not None:
         subsection("Benchmark: Nifty 50 Buy-and-Hold")
-        b_open = nifty_benchmark["open"]
-        b_close = nifty_benchmark["close"]
-        b_pct = nifty_benchmark["pct_return"]
-        row("Nifty 50 open", f"{b_open:,.2f}")
-        row("Nifty 50 close", f"{b_close:,.2f}")
+        row("Nifty 50 open", f"{nifty_benchmark.open:,.2f}")
+        row("Nifty 50 close", f"{nifty_benchmark.close:,.2f}")
+        b_pct = nifty_benchmark.pct_return
         row("Buy-and-hold return", f"{'+' if b_pct >= 0 else ''}{b_pct:.2f}%")
         if pnl_map:
-            total_capital = sum(
-                float(cfg["equity"]) for cfg in algo_configs if cfg.get("enabled")  # type: ignore[arg-type]
-            )
+            total_capital = sum(cfg.equity for cfg in algo_configs if cfg.enabled)
             if total_capital:
                 algo_pct = total_net / total_capital * 100
                 sign = "+" if algo_pct >= 0 else ""
@@ -216,16 +220,15 @@ def print_strategy_section(
 
     if algo_configs:
         for cfg in algo_configs:
-            status = "enabled" if cfg["enabled"] else "DISABLED"
-            state = cfg["state"]
-            bars_seen = state.get("bars_seen", "?")  # type: ignore[union-attr]
-            warmup_complete = state.get("warmup_complete", False)  # type: ignore[union-attr]
+            status = "enabled" if cfg.enabled else "DISABLED"
+            bars_seen = cfg.state.get("bars_seen", "?")
+            warmup_complete = cfg.state.get("warmup_complete", False)
             warmup_str = (
-                "complete" if warmup_complete else f"{bars_seen}/{cfg['warmup_candles']} bars"
+                "complete" if warmup_complete else f"{bars_seen}/{cfg.warmup_candles} bars"
             )
-            params_str = ", ".join(f"{k}={v}" for k, v in cfg["params"].items())  # type: ignore[union-attr]
-            print(f"    {cfg['name']} [{status}]")
-            print(f"      strategy: {cfg['strategy_id']}  equity: {cfg['equity']:,.0f}")
+            params_str = ", ".join(f"{k}={v}" for k, v in cfg.params.items())
+            print(f"    {cfg.name} [{status}]")
+            print(f"      strategy: {cfg.strategy_id}  equity: {cfg.equity:,.0f}")
             print(f"      warmup: {warmup_str}")
             if params_str:
                 print(f"      params: {params_str}")

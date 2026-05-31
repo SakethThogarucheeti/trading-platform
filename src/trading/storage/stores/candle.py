@@ -4,11 +4,10 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from decimal import Decimal
 
+from quantindicators.types import CandleRow
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-from quantindicators.types import CandleRow
 
 from trading.core.models import Candle
 
@@ -34,7 +33,9 @@ class AbstractCandleDataStore(ABC):
     async def get_candles(self, symbol: str, interval: str, limit: int) -> list[CandleRow]: ...
 
     @abstractmethod
-    async def get_candles_since(self, symbol: str, interval: str, since: datetime) -> list[CandleRow]: ...
+    async def get_candles_since(
+        self, symbol: str, interval: str, since: datetime
+    ) -> list[CandleRow]: ...
 
 
 class CandleDataStore(AbstractCandleDataStore):
@@ -78,7 +79,9 @@ class CandleDataStore(AbstractCandleDataStore):
             rows = list(reversed(result.scalars().all()))
         return [_candle_to_dict(c) for c in rows]
 
-    async def get_candles_since(self, symbol: str, interval: str, since: datetime) -> list[CandleRow]:
+    async def get_candles_since(
+        self, symbol: str, interval: str, since: datetime
+    ) -> list[CandleRow]:
         async with self._sf() as session:
             result = await session.execute(
                 select(Candle)

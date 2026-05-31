@@ -8,12 +8,20 @@ when DPO is at an extreme, confirmed by a momentum turn on the next bar.
 from __future__ import annotations
 
 import logging
+from typing import TypedDict, cast
 
-from trading.core.schemas import CandleEvent, InstrumentType, Side, SignalType
 from quantindicators.library.atr import ATR
 from quantindicators.library.dpo import DPO
 from quantindicators.store import AbstractCandleStore
+
+from trading.core.schemas import CandleEvent, InstrumentType, Side, SignalType
 from trading.strategy.base import Signal, Strategy
+
+
+class _State(TypedDict, total=False):
+    prev_dpo: dict[str, float | None]
+    last_dpo: float | None
+    last_atr: float | None
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +33,13 @@ class DpoMeanReversionStrategy(Strategy):
     DPO = close - SMA(close) shifted (period // 2 + 1) bars back.
     Positive DPO = overbought (above detrended mean), Negative = oversold.
 
-    BUY  when DPO was below *-dpo_threshold* and the current DPO > previous DPO
+    BUY  when DPO was below -(dpo_atr_mult × ATR) and current DPO > previous DPO
          (cycle starting to turn up from oversold).
-    SELL when DPO was above *dpo_threshold* and the current DPO < previous DPO
+    SELL when DPO was above +(dpo_atr_mult × ATR) and current DPO < previous DPO
          (cycle starting to turn down from overbought).
 
-    Stop distance = ATR × atr_multiplier.
+    The threshold is expressed as a multiple of ATR so it scales with
+    instrument volatility. Stop distance = ATR × atr_multiplier.
     """
 
     alias = "dpo_mean_reversion"
@@ -38,12 +47,12 @@ class DpoMeanReversionStrategy(Strategy):
     def __init__(
         self,
         period: int = 20,
-        dpo_threshold: float = 0.0,
+        dpo_atr_mult: float = 1.0,
         atr_period: int = 14,
         atr_multiplier: float = 1.5,
     ) -> None:
         self._period = period
-        self._dpo_threshold = dpo_threshold
+        self._dpo_atr_mult = dpo_atr_mult
         self._atr_period = atr_period
         self._atr_multiplier = atr_multiplier
         self._store: AbstractCandleStore | None = None
@@ -72,7 +81,7 @@ class DpoMeanReversionStrategy(Strategy):
             f"atr_{self._atr_period}": round(self._last_atr, 4)
             if self._last_atr is not None
             else None,
-            "dpo_threshold": self._dpo_threshold,
+            "dpo_atr_mult": self._dpo_atr_mult,
         }
 
     def rolling_state(self) -> dict[str, object]:
@@ -84,9 +93,10 @@ class DpoMeanReversionStrategy(Strategy):
 
     async def restore_from_state(self, state: dict[str, object]) -> bool:
         try:
-            self._prev_dpo = {k: v for k, v in state["prev_dpo"].items()}  # type: ignore[union-attr]
-            self._last_dpo = state.get("last_dpo")  # type: ignore[assignment]
-            self._last_atr = state.get("last_atr")  # type: ignore[assignment]
+            s = cast(_State, state)
+            self._prev_dpo = dict(s["prev_dpo"])
+            self._last_dpo = s.get("last_dpo")
+            self._last_atr = s.get("last_atr")
             return True
         except (KeyError, TypeError, AttributeError):
             return False
@@ -114,12 +124,14 @@ class DpoMeanReversionStrategy(Strategy):
             return None
 
         stop_distance = self._atr_multiplier * atr
+        # ATR-scaled threshold prevents firing on every bar when DPO is near zero
+        threshold = self._dpo_atr_mult * atr
 
         # Oversold: DPO was below -threshold and is now turning up
-        if prev_dpo < -self._dpo_threshold and dpo > prev_dpo:
+        if prev_dpo < -threshold and dpo > prev_dpo:
             logger.info(
-                "DpoMeanReversion[%s]: BUY  dpo=%.4f→%.4f stop=%.4f",
-                symbol, prev_dpo, dpo, stop_distance,
+                "DpoMeanReversion[%s]: BUY  dpo=%.4f→%.4f atr=%.4f stop=%.4f",
+                symbol, prev_dpo, dpo, atr, stop_distance,
             )
             return Signal(
                 symbol=symbol,
@@ -128,14 +140,15 @@ class DpoMeanReversionStrategy(Strategy):
                 strategy_id=self.id,
                 signal_type=SignalType.ENTRY,
                 stop_distance=stop_distance,
+                entry_price=candle.close,
                 timestamp=candle.timestamp,
             )
 
         # Overbought: DPO was above +threshold and is now turning down
-        if prev_dpo > self._dpo_threshold and dpo < prev_dpo:
+        if prev_dpo > threshold and dpo < prev_dpo:
             logger.info(
-                "DpoMeanReversion[%s]: SELL dpo=%.4f→%.4f stop=%.4f",
-                symbol, prev_dpo, dpo, stop_distance,
+                "DpoMeanReversion[%s]: SELL dpo=%.4f→%.4f atr=%.4f stop=%.4f",
+                symbol, prev_dpo, dpo, atr, stop_distance,
             )
             return Signal(
                 symbol=symbol,
@@ -144,6 +157,7 @@ class DpoMeanReversionStrategy(Strategy):
                 strategy_id=self.id,
                 signal_type=SignalType.ENTRY,
                 stop_distance=stop_distance,
+                entry_price=candle.close,
                 timestamp=candle.timestamp,
             )
 

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from trading.storage.cache.base import BaseCacher
+from typing import cast
+
 from trading.storage.cache.backend import ValueCache
+from trading.storage.cache.base import BaseCacher
 
 _WINDOW_SIZE = 50
 
 
-class RollingStateCacher(BaseCacher[dict]):  # type: ignore[type-arg]
+class RollingStateCacher(BaseCacher[dict[str, object]]):
     """
     Caches per-tick rolling strategy state (previous indicator values, bar counters).
 
@@ -37,7 +39,7 @@ class RollingStateCacher(BaseCacher[dict]):  # type: ignore[type-arg]
         symbol: str,
         interval: str,
         tick_log_id: int,
-        data: dict,  # type: ignore[type-arg]
+        data: dict[str, object],
     ) -> None:
         """Write the state snapshot and update the sliding window index."""
         state_key = self.make_key(symbol, interval, tick_log_id)
@@ -45,8 +47,8 @@ class RollingStateCacher(BaseCacher[dict]):  # type: ignore[type-arg]
 
         await self._cache.set(state_key, data)
 
-        raw_win = await self._cache.get(win_key)
-        window: list[int] = raw_win if isinstance(raw_win, list) else []
+        raw_win = await self._cache.get(win_key)  # type: ignore[reportUnknownMemberType]
+        window: list[int] = cast(list[int], raw_win) if isinstance(raw_win, list) else []
         window.append(tick_log_id)
         if len(window) > _WINDOW_SIZE:
             window = window[-_WINDOW_SIZE:]
@@ -54,13 +56,13 @@ class RollingStateCacher(BaseCacher[dict]):  # type: ignore[type-arg]
 
     async def load_latest(
         self, algo: str, symbol: str, interval: str
-    ) -> tuple[int, dict] | None:  # type: ignore[type-arg]
+    ) -> tuple[int, dict[str, object]] | None:
         """Return (tick_log_id, state_dict) for the most recent bar, or None on miss."""
-        window = await self._cache.get(self._win_key(algo, symbol, interval))
+        window = await self._cache.get(self._win_key(algo, symbol, interval))  # type: ignore[reportUnknownMemberType]
         if not window:
             return None
         latest_id: int = window[-1]
-        state = await self._cache.get(self.make_key(symbol, interval, latest_id))
+        state = await self._cache.get(self.make_key(symbol, interval, latest_id))  # type: ignore[reportUnknownMemberType]
         return (latest_id, state) if state is not None else None
 
     async def clear(self, algo: str, symbol: str, interval: str) -> None:

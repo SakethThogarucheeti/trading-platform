@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
-from typing import Awaitable
+from collections.abc import Awaitable, Callable
 
 from anyio import create_task_group, sleep
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from trading.core.models import Heartbeat
 from trading.core.lifecycle.component import Component
+from trading.core.models import Heartbeat
 from trading.storage.stores.heartbeat import AbstractHeartbeatStore
 
 logger = logging.getLogger(__name__)

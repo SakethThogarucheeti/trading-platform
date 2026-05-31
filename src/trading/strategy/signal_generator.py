@@ -6,13 +6,14 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from pydantic import BaseModel, Field
+from quantindicators.polars_store import PolarsStore
+from quantindicators.store import AbstractCandleStore
+from quantindicators.types import CandleRow
 
 from trading.core.clock import Clock, SystemClock
 from trading.core.messaging import AbstractRegistry
 from trading.core.schemas import CandleEvent, InstrumentType, SignalEvent
 from trading.core.tasks import fire
-from quantindicators.polars_store import PolarsStore
-from quantindicators.store import AbstractCandleStore
 from trading.storage.cache import CacherFactory
 from trading.storage.stores.audit import AbstractAuditStore, AuditContext
 from trading.storage.stores.chart import AbstractChartStore
@@ -32,18 +33,18 @@ class BarCachingStore(AbstractCandleStore):
 
     def __init__(self, inner: AbstractCandleStore) -> None:
         self._inner = inner
-        self._cache: dict[tuple[str, ...], list] = {}
+        self._cache: dict[tuple[str, ...], list[CandleRow]] = {}
 
     def invalidate(self) -> None:
         self._cache.clear()
 
-    async def fetch(self, symbol: str, interval: str, limit: int) -> list:
+    async def fetch(self, symbol: str, interval: str, limit: int) -> list[CandleRow]:
         key = ("fetch", symbol, interval, str(limit))
         if key not in self._cache:
             self._cache[key] = await self._inner.fetch(symbol, interval, limit)
         return self._cache[key]
 
-    async def fetch_since(self, symbol: str, interval: str, since: datetime) -> list:
+    async def fetch_since(self, symbol: str, interval: str, since: datetime) -> list[CandleRow]:
         key = ("fetch_since", symbol, interval, since.isoformat())
         if key not in self._cache:
             self._cache[key] = await self._inner.fetch_since(symbol, interval, since)
@@ -87,7 +88,7 @@ class AlgoInstance:
         self.last_signal_at = now.isoformat()
 
     def is_ready(self) -> bool:
-        return self.strategy._store is not None  # type: ignore[union-attr]
+        return self.strategy._store is not None
 
     def state_dict(self, warmup_candles: int) -> dict[str, object]:
         return {
@@ -243,7 +244,9 @@ class SignalGenerator(AbstractRegistry):
         if signal is None:
             return []
 
-        signal_event = SignalEvent.from_signal(signal, candle.tick_log_id, algo_name=self._config.algo_name)
+        signal_event = SignalEvent.from_signal(
+            signal, candle.tick_log_id, algo_name=self._config.algo_name
+        )
 
         fire(self._log_signal(signal_event, self._config.algo_name))
 
@@ -299,7 +302,9 @@ class SignalGenerator(AbstractRegistry):
                 self._config.algo_name, instance.state_dict(self._config.warmup_candles)
             )
         except Exception:
-            logger.warning("SignalGenerator: state upsert failed for %s", self._config.algo_name, exc_info=True)
+            logger.warning(
+                "SignalGenerator: state upsert failed for %s", self._config.algo_name, exc_info=True
+            )
 
     async def _log_signal(self, event: SignalEvent, algo_name: str) -> None:
         if event.tick_log_id <= 0:

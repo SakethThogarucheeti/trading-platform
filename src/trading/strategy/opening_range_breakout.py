@@ -5,12 +5,29 @@ from __future__ import annotations
 import logging
 import math
 from datetime import date, time
+from typing import TypedDict, cast
+
+from quantindicators.library.atr import ATR
+from quantindicators.store import AbstractCandleStore
 
 from trading.core.clock import SYSTEM_CLOCK, Clock
 from trading.core.schemas import CandleEvent, InstrumentType, Side, SignalType
-from quantindicators.library.atr import ATR
-from quantindicators.store import AbstractCandleStore
 from trading.strategy.base import RuntimeContext, Signal, Strategy
+
+
+class _OrbEntry(TypedDict):
+    """Serialized form of one symbol's ORB state (JSON-safe)."""
+    session_date: str   # ISO date string
+    or_high: float
+    or_low: float
+    signal_taken: bool
+
+
+class _State(TypedDict, total=False):
+    orb_state: dict[str, _OrbEntry]
+    last_atr: float | None
+    last_or_high: float | None
+    last_or_low: float | None
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +99,17 @@ class OpeningRangeBreakoutStrategy(Strategy):
         }
 
     def rolling_state(self) -> dict[str, object]:
-        serialized_state = {
-            sym: [str(s[0]), s[1], s[2], s[3]]
+        orb_state: dict[str, _OrbEntry] = {
+            sym: _OrbEntry(
+                session_date=str(s[0]),
+                or_high=s[1],
+                or_low=s[2],
+                signal_taken=s[3],
+            )
             for sym, s in self._state.items()
         }
         return {
-            "orb_state": serialized_state,
+            "orb_state": orb_state,
             "last_atr": self._last_atr,
             "last_or_high": self._last_or_high,
             "last_or_low": self._last_or_low,
@@ -95,14 +117,19 @@ class OpeningRangeBreakoutStrategy(Strategy):
 
     async def restore_from_state(self, state: dict[str, object]) -> bool:
         try:
-            orb_state = state["orb_state"]
+            s = cast(_State, state)
             self._state = {
-                sym: (date.fromisoformat(s[0]), float(s[1]), float(s[2]), bool(s[3]))  # type: ignore[index]
-                for sym, s in orb_state.items()  # type: ignore[union-attr]
+                sym: (
+                    date.fromisoformat(e["session_date"]),
+                    float(e["or_high"]),
+                    float(e["or_low"]),
+                    bool(e["signal_taken"]),
+                )
+                for sym, e in s["orb_state"].items()
             }
-            self._last_atr = state.get("last_atr")  # type: ignore[assignment]
-            self._last_or_high = state.get("last_or_high")  # type: ignore[assignment]
-            self._last_or_low = state.get("last_or_low")  # type: ignore[assignment]
+            self._last_atr = s.get("last_atr")
+            self._last_or_high = s.get("last_or_high")
+            self._last_or_low = s.get("last_or_low")
             return True
         except (KeyError, TypeError, AttributeError, ValueError):
             return False
@@ -164,6 +191,7 @@ class OpeningRangeBreakoutStrategy(Strategy):
                 strategy_id=self.id,
                 signal_type=SignalType.ENTRY,
                 stop_distance=stop_distance,
+                entry_price=candle.close,
                 timestamp=candle.timestamp,
             )
 
@@ -183,6 +211,7 @@ class OpeningRangeBreakoutStrategy(Strategy):
                 strategy_id=self.id,
                 signal_type=SignalType.ENTRY,
                 stop_distance=stop_distance,
+                entry_price=candle.close,
                 timestamp=candle.timestamp,
             )
 
