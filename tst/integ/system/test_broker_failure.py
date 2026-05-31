@@ -15,6 +15,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
+from trading.core.clock import SYSTEM_CLOCK
 from trading.core.models import Order
 from trading.core.schemas import (
     InstrumentType,
@@ -23,11 +24,21 @@ from trading.core.schemas import (
     Side,
     ValidatedOrderEvent,
 )
+from trading.execution.fill_handler import FillHandler
 from trading.execution.order_executor import ExecConfig, OrderExecutor
+from trading.execution.position_accountant import PositionAccountant
+from trading.storage.cache import CacherFactory, ValueCache, setup_cache
+from trading.storage.stores.position import PositionStore
 from trading.storage.stores.trading import TradingStore
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 from helpers import seed_signal
+
+
+def _make_fill_handler(session_factory):
+    setup_cache(None)
+    accountant = PositionAccountant(PositionStore(session_factory), CacherFactory(ValueCache(), SYSTEM_CLOCK))
+    return FillHandler(TradingStore(session_factory), accountant)
 
 
 def _event(symbol: str = "INFY") -> ValidatedOrderEvent:
@@ -55,6 +66,7 @@ async def test_broker_timeout_produces_rejected_order(engine, session_factory):
         broker=_TimeoutBroker(),
         session_factory=session_factory,
         trading=trading,
+        fill_handler=_make_fill_handler(session_factory),
     )
 
     event = _event()
@@ -87,6 +99,7 @@ async def test_consecutive_broker_failures_no_deadlock(engine, session_factory):
         broker=_AlwaysFailBroker(),
         session_factory=session_factory,
         trading=trading,
+        fill_handler=_make_fill_handler(session_factory),
     )
 
     for _ in range(5):
@@ -110,6 +123,7 @@ async def test_broker_api_error_leaves_db_consistent(engine, session_factory):
         broker=_ErrorBroker(),
         session_factory=session_factory,
         trading=trading,
+        fill_handler=_make_fill_handler(session_factory),
     )
 
     event = _event()

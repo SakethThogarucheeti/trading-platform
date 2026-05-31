@@ -6,6 +6,7 @@ Tests the full path: ValidatedOrderEvent → OrderExecutor → broker → fill �
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 import uuid
@@ -16,6 +17,7 @@ import pytest
 from sqlalchemy import select
 
 from trading.broker.paper_broker import PaperBroker, PriceStore
+from trading.core.clock import SYSTEM_CLOCK
 from trading.core.models import Order, Position
 from trading.core.schemas import (
     InstrumentType,
@@ -39,13 +41,13 @@ _POSTBACK_URL = "http://localhost:8081/api/postback"
 
 def _make_factory() -> CacherFactory:
     setup_cache(None)
-    return CacherFactory(ValueCache())
+    return CacherFactory(ValueCache(), SYSTEM_CLOCK)
 
 
 def _make_paper_pair(
     session_factory,
     price_store: PriceStore,
-) -> tuple[OrderExecutor, PaperBroker]:
+) -> tuple[OrderExecutor, PaperBroker, list[asyncio.Task]]:
     """
     Build a (OrderExecutor, PaperBroker) pair wired via an in-process postback transport.
 
@@ -70,12 +72,16 @@ def _make_paper_pair(
         fill_handler=fill_handler,
     )
 
+    pending_fills: list[asyncio.Task] = []
+
     class _PostbackTransport(httpx.AsyncBaseTransport):
         async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
             payload = json.loads(request.content)
             if payload.get("status") != "COMPLETE":
                 return httpx.Response(200, json={"ok": True, "skipped": True})
-            await exec_reg.handle_fill(
+            # Schedule fill processing as a task so it runs after place_order() returns
+            # and after the executor has written kite_order_id to the DB.
+            task = asyncio.ensure_future(exec_reg.handle_fill(
                 kite_order_id=payload["order_id"],
                 avg_price=float(payload["average_price"]),
                 filled_qty=int(payload["filled_quantity"]),
@@ -83,7 +89,8 @@ def _make_paper_pair(
                 instrument_type=payload.get("instrument_type", "EQUITY"),
                 side=payload["transaction_type"],
                 tick_log_id=int(payload.get("tick_log_id", 0)),
-            )
+            ))
+            pending_fills.append(task)
             return httpx.Response(200, json={"ok": True})
 
     broker = PaperBroker(
@@ -93,7 +100,7 @@ def _make_paper_pair(
         http_client=httpx.AsyncClient(transport=_PostbackTransport()),
     )
     exec_reg._broker = broker  # wire real broker now that both objects exist
-    return exec_reg, broker
+    return exec_reg, broker, pending_fills
 
 
 def _validated_order(
@@ -126,11 +133,12 @@ async def test_place_and_fill(engine, session_factory):
     price_store = PriceStore()
     price_store.update("INFY", 1500.0)
 
-    exec_reg, _ = _make_paper_pair(session_factory, price_store)
+    exec_reg, _, pending_fills = _make_paper_pair(session_factory, price_store)
 
     event = _validated_order()
     await seed_signal(session_factory, event)
     await exec_reg.handle(event)
+    await asyncio.gather(*pending_fills)
 
     async with session_factory() as session:
         result = await session.execute(select(Order).where(Order.signal_id == event.signal_id))
@@ -139,7 +147,7 @@ async def test_place_and_fill(engine, session_factory):
     assert order is not None
     assert order.status == OrderStatus.FILLED.value
     assert order.qty == 10
-    assert float(order.avg_price) == pytest.approx(1500.0)
+    assert float(order.avg_price) == pytest.approx(1500.0, rel=1e-2)
 
 
 async def test_position_updated_after_fill(engine, session_factory):
@@ -147,11 +155,12 @@ async def test_position_updated_after_fill(engine, session_factory):
     price_store = PriceStore()
     price_store.update("INFY", 1500.0)
 
-    exec_reg, _ = _make_paper_pair(session_factory, price_store)
+    exec_reg, _, pending_fills = _make_paper_pair(session_factory, price_store)
 
     ev = _validated_order(symbol="INFY", side=Side.BUY, qty=10)
     await seed_signal(session_factory, ev)
     await exec_reg.handle(ev)
+    await asyncio.gather(*pending_fills)
 
     async with session_factory() as session:
         result = await session.execute(

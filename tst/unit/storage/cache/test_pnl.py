@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from trading.core.clock import SYSTEM_CLOCK
 from trading.core.schemas import Side
 from trading.storage.cache.backend import ValueCache, setup_cache, _backend
 from trading.storage.cache.pnl import PnlCacher
@@ -29,7 +30,7 @@ def cache() -> ValueCache:
 
 @pytest.fixture
 def pnl(cache: ValueCache) -> PnlCacher:
-    return PnlCacher(cache)
+    return PnlCacher(cache, SYSTEM_CLOCK)
 
 
 TODAY = date(2026, 1, 15)

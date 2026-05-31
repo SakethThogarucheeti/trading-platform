@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from trading.core.clock import SYSTEM_CLOCK
 from trading.core.database import build_session_factory, init_db
 from trading.core.schemas import CandleEvent, InstrumentType, SignalEvent
 from trading.di.providers.strategy import make_strategy
@@ -23,7 +24,7 @@ BASE_TIME = datetime(2025, 1, 6, 9, 15, tzinfo=UTC)
 
 def _make_factory() -> CacherFactory:
     setup_cache(None)
-    return CacherFactory(ValueCache())
+    return CacherFactory(ValueCache(), SYSTEM_CLOCK)
 
 
 @pytest.fixture

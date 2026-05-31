@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from trading.core.clock import SYSTEM_CLOCK
 from trading.core.database import build_session_factory, init_db
 from trading.core.models import Order, Position, Signal
 from trading.core.schemas import (
@@ -105,7 +106,7 @@ def make_config(**overrides) -> RiskConfig:
 
 def _make_factory() -> CacherFactory:
     setup_cache(None)
-    return CacherFactory(ValueCache())
+    return CacherFactory(ValueCache(), SYSTEM_CLOCK)
 
 
 def make_registry(

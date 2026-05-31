@@ -10,7 +10,7 @@ Verifies that RiskFilter correctly enforces:
 
 from __future__ import annotations
 
-from trading.core.clock import SimulatedClock
+from trading.core.clock import SYSTEM_CLOCK, SimulatedClock
 from trading.core.schemas import (
     InstrumentType,
     Side,
@@ -24,6 +24,7 @@ from trading.risk.gates.duplicate_position import DuplicatePositionGate
 from trading.risk.gates.time_cutoff import TimeCutoffGate
 from trading.risk.risk_filter import RiskConfig, RiskFilter
 from trading.tick_ingest.tick_ingestor import CircuitBreaker
+from trading.storage.cache import CacherFactory, ValueCache, setup_cache
 from trading.storage.stores.audit import AuditStore
 from trading.storage.stores.position import PositionStore
 from trading.storage.stores.trading import TradingStore
@@ -53,6 +54,7 @@ def _make_risk_reg(
     equity: float = 1_000_000.0,
     clock=None,
 ) -> RiskFilter:
+    setup_cache(None)
     trading = TradingStore(session_factory)
     audit = AuditStore(session_factory)
     position = PositionStore(session_factory)
@@ -74,6 +76,7 @@ def _make_risk_reg(
         trading=trading,
         audit=audit,
         position=position,
+        factory=CacherFactory(ValueCache(), clock or SYSTEM_CLOCK),
         clock=clock,
     )
 
@@ -137,6 +140,7 @@ async def test_circuit_open_rejects_signal(engine, session_factory):
     circuit = CircuitBreaker()
     circuit.open()
 
+    setup_cache(None)
     trading = TradingStore(session_factory)
     audit = AuditStore(session_factory)
     position = PositionStore(session_factory)
@@ -155,6 +159,7 @@ async def test_circuit_open_rejects_signal(engine, session_factory):
         trading=trading,
         audit=audit,
         position=position,
+        factory=CacherFactory(ValueCache(), clock or SYSTEM_CLOCK),
         clock=clock,
     )
     result = await risk_reg.handle(_signal())

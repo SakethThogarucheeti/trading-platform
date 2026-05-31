@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from trading.core.clock import Clock
+from trading.core.clock import Clock, SYSTEM_CLOCK
 from trading.core.schemas import FillEvent, Side
 from trading.execution.position_accountant import PositionAccountant
 from trading.storage.cache import CacherFactory, ValueCache, setup_cache
@@ -52,7 +52,7 @@ def _make_accountant(
 
     if factory is None:
         setup_cache(None)
-        factory = CacherFactory(ValueCache())
+        factory = CacherFactory(ValueCache(), SYSTEM_CLOCK)
 
     return PositionAccountant(
         position=mock_position,
@@ -71,7 +71,7 @@ async def test_apply_fill_calls_update_position() -> None:
     mock_position.update_position = AsyncMock()
 
     setup_cache(None)
-    factory = CacherFactory(ValueCache())
+    factory = CacherFactory(ValueCache(), SYSTEM_CLOCK)
     accountant = PositionAccountant(position=mock_position, factory=factory)
 
     fill = _make_fill()
@@ -85,7 +85,7 @@ async def test_apply_fill_increments_pnl_cache() -> None:
     mock_position.update_position = AsyncMock()
 
     setup_cache(None)
-    factory = CacherFactory(ValueCache())
+    factory = CacherFactory(ValueCache(), SYSTEM_CLOCK)
     fixed_date = date(2025, 1, 6)
     clock = _FixedClock(datetime(2025, 1, 6, 9, 15, tzinfo=UTC))
     accountant = PositionAccountant(position=mock_position, factory=factory, clock=clock)

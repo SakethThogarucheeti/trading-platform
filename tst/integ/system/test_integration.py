@@ -30,16 +30,25 @@ from trading.core.schemas import (
     SignalEvent,
     SignalType,
 )
+from trading.execution.fill_handler import FillHandler
 from trading.execution.order_executor import ExecConfig, OrderExecutor
+from trading.execution.position_accountant import PositionAccountant
 from trading.risk.gates.circuit_breaker import CircuitBreakerGate
 from trading.risk.gates.daily_loss import DailyLossGate
 from trading.risk.gates.duplicate_position import DuplicatePositionGate
 from trading.risk.gates.time_cutoff import TimeCutoffGate
 from trading.risk.risk_filter import RiskConfig, RiskFilter
 from trading.tick_ingest.tick_ingestor import CircuitBreaker
+from trading.storage.cache import CacherFactory, ValueCache, setup_cache
 from trading.storage.stores.audit import AuditStore
 from trading.storage.stores.position import PositionStore
 from trading.storage.stores.trading import TradingStore
+
+
+def _make_fill_handler(session_factory):
+    setup_cache(None)
+    accountant = PositionAccountant(PositionStore(session_factory), CacherFactory(ValueCache()))
+    return FillHandler(TradingStore(session_factory), accountant)
 
 
 def _candle(
@@ -55,7 +64,7 @@ def _candle(
         close=1505.0,
         volume=10000,
         timestamp=ts or datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
-        tick_log_id=1,
+        tick_log_id=0,
     )
 
 
@@ -67,7 +76,7 @@ def _signal(symbol: str = "INFY", stop_distance: float = 1.0) -> SignalEvent:
         strategy_id="test",
         signal_type=SignalType.ENTRY,
         stop_distance=stop_distance,
-        tick_log_id=1,
+        tick_log_id=0,
     )
 
 
@@ -79,6 +88,8 @@ def _make_pipeline(session_factory, broker):
     audit = AuditStore(session_factory)
     position = PositionStore(session_factory)
 
+    setup_cache(None)
+    factory = CacherFactory(ValueCache(), clock)
     risk_reg = RiskFilter(
         config=RiskConfig(
             equity=1_000_000.0,
@@ -94,6 +105,7 @@ def _make_pipeline(session_factory, broker):
         trading=trading,
         audit=audit,
         position=position,
+        factory=factory,
         clock=clock,
     )
     price_store = PriceStore()
@@ -104,7 +116,7 @@ def _make_pipeline(session_factory, broker):
         broker=broker,
         session_factory=session_factory,
         trading=trading,
-        position=position,
+        fill_handler=_make_fill_handler(session_factory),
     )
     return risk_reg, exec_reg
 
@@ -129,7 +141,7 @@ async def test_pipeline_happy_path(engine, session_factory):
         order = result.scalar_one_or_none()
 
     assert order is not None
-    assert order.status == OrderStatus.FILLED.value
+    assert order.status == OrderStatus.PLACED.value
 
 
 async def test_fault_injector_timeout_marks_rejected(engine, session_factory):
@@ -195,12 +207,12 @@ async def test_idempotency_duplicate_signal_end_to_end(engine, session_factory):
             return oid
 
     trading = TradingStore(session_factory)
-    audit = AuditStore(session_factory)
     exec_reg = OrderExecutor(
         config=ExecConfig(exec_id="direct"),
         broker=_CountingBroker(),
         session_factory=session_factory,
         trading=trading,
+        fill_handler=_make_fill_handler(session_factory),
     )
 
     from trading.core.schemas import OrderType, ValidatedOrderEvent

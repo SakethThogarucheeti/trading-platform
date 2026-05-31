@@ -32,13 +32,16 @@ from trading.di.providers.strategy import make_strategy
 from quantindicators.polars_store import PolarsStore
 from trading.strategy.signal_generator import AlgoInstance, AlgoRunConfig, SignalGenerator
 from trading.candles.bar_accumulator import SymbolConfig
+from trading.execution.fill_handler import FillHandler
 from trading.execution.order_executor import ExecConfig, OrderExecutor
+from trading.execution.position_accountant import PositionAccountant
 from trading.risk.gates.circuit_breaker import CircuitBreakerGate
 from trading.risk.gates.daily_loss import DailyLossGate
 from trading.risk.gates.duplicate_position import DuplicatePositionGate
 from trading.risk.gates.time_cutoff import TimeCutoffGate
 from trading.risk.risk_filter import RiskConfig, RiskFilter
 from trading.tick_ingest.tick_ingestor import CircuitBreaker
+from trading.storage.cache import CacherFactory, ValueCache, setup_cache
 from trading.storage.stores.audit import AuditStore
 from trading.storage.stores.chart import ChartStore
 from trading.storage.stores.config import ConfigStore
@@ -158,9 +161,14 @@ class BacktestSession(TestingSession):
 
             polars_store = PolarsStore()
 
+            setup_cache(None)
+            factory = CacherFactory(ValueCache(), sim_clock)
+
             audit = AuditStore(sf)
             trading = TradingStore(sf)
             position = PositionStore(sf)
+            accountant = PositionAccountant(position, factory)
+            fill_handler = FillHandler(trading, accountant)
 
             algo_reg = SignalGenerator(
                 config=AlgoRunConfig(
@@ -173,6 +181,7 @@ class BacktestSession(TestingSession):
                 chart=ChartStore(sf),
                 config_store=ConfigStore(sf),
                 audit=audit,
+                factory=factory,
                 algos=algo_instances,
                 store=polars_store,
                 clock=sim_clock,
@@ -194,7 +203,9 @@ class BacktestSession(TestingSession):
                 trading=trading,
                 audit=audit,
                 position=position,
+                factory=factory,
                 clock=sim_clock,
+                equity_provider=lambda: tracker.current_equity,
             )
 
             exec_reg = OrderExecutor(
@@ -202,16 +213,13 @@ class BacktestSession(TestingSession):
                 broker=simulator,
                 session_factory=sf,
                 trading=trading,
-                position=position,
+                fill_handler=fill_handler,
                 clock=sim_clock,
-                fill_observers=[risk_reg],
             )
 
             # ------------------------------------------------------------------
             # 6. on_candle drives the full pipeline for each bar
             # ------------------------------------------------------------------
-            _last_snapshot_ts: list[datetime | None] = [None]
-
             async def _on_candle(candle: CandleEvent) -> None:
                 signals = await algo_reg.handle(candle)
                 for signal in signals:
@@ -229,6 +237,10 @@ class BacktestSession(TestingSession):
                             price=fill_price,
                             ts=candle.timestamp,
                         )
+                # Per-bar mark-to-market snapshot so the equity curve captures
+                # unrealised P&L on open positions between fills.
+                current_prices = {s: price_store.get(s) or candle.close for s in algo.instruments}
+                tracker.mark_snapshot(candle.timestamp, current_prices)
 
             # ------------------------------------------------------------------
             # 7. CandlePlayer
@@ -238,12 +250,9 @@ class BacktestSession(TestingSession):
             async def _on_progress(n: int, bar_ts: datetime) -> None:
                 bars_done[0] = n
                 sim_clock.advance(bar_ts)
-                if bar_ts != _last_snapshot_ts[0]:
-                    tracker.snapshot(bar_ts)
-                    _last_snapshot_ts[0] = bar_ts
 
             from testing.simulators.candle_player import CandlePlayer
-            from trading.engine.runtime import Runtime
+            from trading.core.lifecycle.runtime import Runtime
 
             runtime = Runtime([])  # no components — pipeline is driven inline
 

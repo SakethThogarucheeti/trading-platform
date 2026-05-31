@@ -15,11 +15,21 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from trading.broker.paper_broker import PriceStore
+from trading.core.clock import SYSTEM_CLOCK
 from trading.core.models import Order
 from trading.core.schemas import InstrumentType, OrderType, Side, ValidatedOrderEvent
+from trading.execution.fill_handler import FillHandler
 from trading.execution.order_executor import ExecConfig, OrderExecutor
+from trading.execution.position_accountant import PositionAccountant
+from trading.storage.cache import CacherFactory, ValueCache, setup_cache
+from trading.storage.stores.position import PositionStore
 from trading.storage.stores.trading import TradingStore
+
+
+def _make_fill_handler(session_factory):
+    setup_cache(None)
+    accountant = PositionAccountant(PositionStore(session_factory), CacherFactory(ValueCache(), SYSTEM_CLOCK))
+    return FillHandler(TradingStore(session_factory), accountant)
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 from helpers import seed_signal
@@ -52,16 +62,13 @@ async def test_no_duplicate_order_on_restart(engine, session_factory):
     The second execution must be silently dropped (idempotency).
     """
     broker = _CountingBroker()
-    price_store = PriceStore()
-    price_store.update("RELIANCE", 2000.0)
-
     trading = TradingStore(session_factory)
     exec_reg = OrderExecutor(
         config=ExecConfig(exec_id="paper"),
         broker=broker,
         session_factory=session_factory,
         trading=trading,
-        price_store=price_store,
+        fill_handler=_make_fill_handler(session_factory),
     )
 
     event = _validated_order()
@@ -80,9 +87,6 @@ async def test_no_duplicate_order_on_restart(engine, session_factory):
 
 async def test_order_persisted_in_db(engine, session_factory):
     """Placed orders must be readable back from the database."""
-    price_store = PriceStore()
-    price_store.update("RELIANCE", 2000.0)
-
     class _SimpleBroker:
         async def place_order(self, *a, **kw):
             return f"ORDER_{uuid.uuid4().hex[:8]}"
@@ -93,7 +97,7 @@ async def test_order_persisted_in_db(engine, session_factory):
         broker=_SimpleBroker(),
         session_factory=session_factory,
         trading=trading,
-        price_store=price_store,
+        fill_handler=_make_fill_handler(session_factory),
     )
 
     event = _validated_order()

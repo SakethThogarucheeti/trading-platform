@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from trading.broker.base.broker import Broker
+from trading.core.clock import SYSTEM_CLOCK
 from trading.core.database import build_session_factory, get_session, init_db
 from trading.core.models import Order, Signal
 from trading.core.schemas import (
@@ -61,7 +62,7 @@ class _FakeBroker(Broker):
 
 def _make_factory() -> CacherFactory:
     setup_cache(None)
-    return CacherFactory(ValueCache())
+    return CacherFactory(ValueCache(), SYSTEM_CLOCK)
 
 
 def _make_executor(engine: AsyncEngine, order_id: str = "K001") -> OrderExecutor:
