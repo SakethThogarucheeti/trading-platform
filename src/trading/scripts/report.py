@@ -15,25 +15,31 @@ Usage
 from __future__ import annotations
 
 import argparse
-import anyio
 import sys
 from datetime import UTC, date, datetime, timedelta
 
+import anyio
+
+from trading.core.clock import SystemClock
 from trading.reports.engine import run_report
+
+_clock = SystemClock()
+
+
+def _to_utc(d: date) -> datetime:
+    """Midnight on *d* in the configured local timezone, converted to UTC."""
+    return datetime(d.year, d.month, d.day, tzinfo=_clock.tz).astimezone(UTC)
 
 
 def _day_window(for_date: date) -> tuple[datetime, datetime]:
-    start = datetime(for_date.year, for_date.month, for_date.day, tzinfo=UTC)
+    start = _to_utc(for_date)
     return start, start + timedelta(days=1)
 
 
 def _week_window(for_date: date) -> tuple[datetime, datetime]:
     monday = for_date - timedelta(days=for_date.weekday())
     sunday = monday + timedelta(days=7)
-    return (
-        datetime(monday.year, monday.month, monday.day, tzinfo=UTC),
-        datetime(sunday.year, sunday.month, sunday.day, tzinfo=UTC),
-    )
+    return _to_utc(monday), _to_utc(sunday)
 
 
 def _month_window(for_date: date) -> tuple[datetime, datetime]:
@@ -42,10 +48,7 @@ def _month_window(for_date: date) -> tuple[datetime, datetime]:
         next_first = date(for_date.year + 1, 1, 1)
     else:
         next_first = date(for_date.year, for_date.month + 1, 1)
-    return (
-        datetime(first.year, first.month, first.day, tzinfo=UTC),
-        datetime(next_first.year, next_first.month, next_first.day, tzinfo=UTC),
-    )
+    return _to_utc(first), _to_utc(next_first)
 
 
 def _parse_date(arg: str, period: str) -> date:
@@ -76,7 +79,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    for_date = _parse_date(args.date, args.period) if args.date else date.today()
+    for_date = _parse_date(args.date, args.period) if args.date else _clock.today()
 
     if args.period == "day":
         start, end = _day_window(for_date)

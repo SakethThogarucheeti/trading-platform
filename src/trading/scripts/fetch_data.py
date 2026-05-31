@@ -35,6 +35,10 @@ import os
 import sys
 import time
 from datetime import UTC, datetime, timedelta
+
+from trading.core.clock import SystemClock
+
+_clock = SystemClock()
 from pathlib import Path
 
 import polars as pl
@@ -81,7 +85,11 @@ def _existing_range(path: Path) -> tuple[datetime, datetime] | None:
     if df.is_empty():
         return None
     dates = df["date"].cast(pl.Datetime("us", "UTC"))
-    return dates.min().replace(tzinfo=UTC), dates.max().replace(tzinfo=UTC)  # type: ignore[return-value]
+    min_val = dates.min()
+    max_val = dates.max()
+    if not isinstance(min_val, datetime) or not isinstance(max_val, datetime):
+        return None
+    return min_val.replace(tzinfo=UTC), max_val.replace(tzinfo=UTC)
 
 
 def _append_or_create(path: Path, new_df: pl.DataFrame) -> None:
@@ -94,7 +102,7 @@ def _append_or_create(path: Path, new_df: pl.DataFrame) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     combined.write_parquet(tmp)
-    tmp.rename(path)
+    tmp.replace(path)  # replace() is atomic and works on Windows unlike rename()
 
 
 def _fetch_symbol(
@@ -175,7 +183,6 @@ def _fetch_symbol(
 def _symbols_from_db() -> list[str]:
     """Load symbol list from the trading DB (requires DB to be running)."""
     import anyio
-
     from sqlalchemy import select
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -245,8 +252,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    end = datetime.now(UTC).replace(hour=23, minute=59, second=59, microsecond=0)
-    start = (end - timedelta(days=args.days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    today = _clock.today()
+    end = datetime(today.year, today.month, today.day, 23, 59, 59, tzinfo=_clock.tz).astimezone(UTC)
+    start_date = _clock.today() - timedelta(days=args.days)
+    start = datetime(start_date.year, start_date.month, start_date.day, tzinfo=_clock.tz).astimezone(UTC)
 
     broker = _build_broker()
 
