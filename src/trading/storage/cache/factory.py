@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from trading.core.clock import Clock
 from trading.storage.cache.api import ApiResponseCacher
 from trading.storage.cache.backend import ValueCache
 from trading.storage.cache.pnl import PnlCacher
@@ -15,15 +16,16 @@ class CacherFactory:
     Cacher instances are lazily created and reused (one per factory instance).
     """
 
-    def __init__(self, cache: ValueCache) -> None:
+    def __init__(self, cache: ValueCache, clock: Clock) -> None:
         self._cache = cache
+        self._clock = clock
         self._pnl: PnlCacher | None = None
         self._rolling_state: RollingStateCacher | None = None
         self._api: ApiResponseCacher | None = None
 
     def pnl(self) -> PnlCacher:
         if self._pnl is None:
-            self._pnl = PnlCacher(self._cache)
+            self._pnl = PnlCacher(self._cache, self._clock)
         return self._pnl
 
     def rolling_state(self) -> RollingStateCacher:

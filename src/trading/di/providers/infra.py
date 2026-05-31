@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from trading.broker.paper_broker import AbstractPriceStore, PriceStore
 from trading.config.settings import Settings, get_settings
+from trading.core.clock import Clock, SystemClock
 from trading.core.database import build_engine, build_session_factory
 from trading.storage.cache import CacherFactory, ValueCache, setup_cache
 from trading.storage.stores.audit import AuditStore
@@ -31,7 +32,7 @@ class RedisProvider(Provider):
             return
         import redis.asyncio as aioredis  # type: ignore[import-untyped]
 
-        client = aioredis.Redis.from_url(settings.redis_url, decode_responses=False)
+        client = aioredis.Redis.from_url(settings.redis_url, decode_responses=False)  # type: ignore[reportUnknownMemberType]
         try:
             yield client
         finally:
@@ -50,6 +51,10 @@ class InfrastructureProvider(Provider):
     @provide
     def settings(self) -> Settings:
         return get_settings()
+
+    @provide
+    def clock(self, settings: Settings) -> Clock:
+        return SystemClock(timezone=settings.timezone)
 
     @provide
     async def db_engine(self, settings: Settings) -> AsyncIterator[AsyncEngine]:
@@ -103,5 +108,5 @@ class InfrastructureProvider(Provider):
         return ValueCache()
 
     @provide
-    def cacher_factory(self, cache: ValueCache) -> CacherFactory:
-        return CacherFactory(cache)
+    def cacher_factory(self, cache: ValueCache, clock: Clock) -> CacherFactory:
+        return CacherFactory(cache, clock)

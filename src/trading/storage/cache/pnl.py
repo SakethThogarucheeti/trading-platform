@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 
+from trading.core.clock import Clock
 from trading.core.schemas import Side
-from trading.storage.cache.base import BaseCacher
 from trading.storage.cache.backend import ValueCache
+from trading.storage.cache.base import BaseCacher
 
 
 class PnlCacher(BaseCacher[float]):
@@ -14,18 +15,20 @@ class PnlCacher(BaseCacher[float]):
       - RiskFilter (reader): calls get_or_set() to enforce the daily loss limit
 
     Key schema: rf:pnl:{YYYY-MM-DD}
-    TTL: seconds remaining until midnight UTC + 1 hour grace.
+    TTL: seconds remaining until midnight IST + 1 hour grace.
     """
 
-    def __init__(self, cache: ValueCache) -> None:
+    def __init__(self, cache: ValueCache, clock: Clock) -> None:
         super().__init__(cache)
+        self._clock = clock
 
     def make_key(self, for_date: date) -> str:  # type: ignore[override]
         return f"rf:pnl:{for_date.isoformat()}"
 
     def default_ttl(self) -> int:
-        now = datetime.now(UTC)
-        midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        now = self._clock.now()
+        tomorrow = self._clock.today() + timedelta(days=1)
+        midnight = datetime(tomorrow.year, tomorrow.month, tomorrow.day, tzinfo=self._clock.tz).astimezone(UTC)
         return int((midnight - now).total_seconds()) + 3600
 
     def increment_sync(self, for_date: date, side: Side, avg_price: float, qty: int) -> None:
