@@ -9,7 +9,7 @@ from trading.broker.base.broker import Broker
 from trading.candles.candle_aggregator import CandleAggregator
 from trading.config.settings import AlgoSettings, Settings
 from trading.core.messaging import AbstractCircuitBreaker
-from trading.core.pipeline import AlgoPipeline, TickPipeline
+from trading.app.pipeline import AlgoPipeline, TickPipeline
 from trading.core.schemas import InstrumentType
 from trading.di.providers.strategy import make_strategy
 from trading.execution.fill_handler import FillHandler

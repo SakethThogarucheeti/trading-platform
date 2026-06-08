@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from trading.broker.paper_broker import AbstractPriceStore, PriceStore
 from trading.config.settings import Settings, get_settings
 from trading.core.clock import Clock, SystemClock
-from trading.core.database import build_engine, build_session_factory
+from trading.app.database import build_engine, build_session_factory
 from trading.storage.cache import CacherFactory, ValueCache, setup_cache
 from trading.storage.stores.audit import AuditStore
 from trading.storage.stores.candle import CandleDataStore

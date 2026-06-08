@@ -10,8 +10,15 @@ from sqlalchemy import pool
 
 from alembic import context
 
-# Import models so Alembic autogenerate sees the full metadata.
-from trading.core.models import Base
+# Import every module's Base so Alembic autogenerate sees the full schema.
+from trading.broker.storage.models import Base as BrokerBase
+from trading.candles.storage.models import Base as CandlesBase
+from trading.core.models import Base as CoreBase  # transitional: audit_logs
+from trading.execution.storage.models import Base as ExecutionBase
+from trading.monitoring.storage.models import Base as MonitoringBase
+from trading.risk.storage.models import Base as RiskBase
+from trading.strategy.storage.models import Base as StrategyBase
+from trading.tick_ingest.storage.models import Base as TickIngestBase
 
 # Load .env from the project root (one level above the alembic/ directory).
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -21,7 +28,16 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = Base.metadata
+target_metadata = [
+    CoreBase.metadata,
+    BrokerBase.metadata,
+    TickIngestBase.metadata,
+    CandlesBase.metadata,
+    StrategyBase.metadata,
+    RiskBase.metadata,
+    ExecutionBase.metadata,
+    MonitoringBase.metadata,
+]
 
 
 def _get_url() -> str:
@@ -47,6 +63,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_schemas=True,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -57,6 +74,7 @@ def do_run_migrations(connection: Any) -> None:
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
+        include_schemas=True,
     )
     with context.begin_transaction():
         context.run_migrations()
