@@ -131,7 +131,7 @@ def _write_token_to_env(token: str, env_path: Path) -> None:
 
 
 def _exchange_and_save(client: object, request_token: str) -> None:
-    from trading.broker.zerodha.kite_client import KiteClient
+    from trading.broker.service.zerodha.kite_client import KiteClient
 
     assert isinstance(client, KiteClient)
     print("\nRequest token received. Exchanging for access token …")
@@ -145,7 +145,7 @@ def _exchange_and_save(client: object, request_token: str) -> None:
 
 
 def main() -> None:
-    from trading.broker.zerodha.kite_client import KiteClient
+    from trading.broker.service.zerodha.kite_client import KiteClient
 
     port = _callback_port()
     client = KiteClient(API_KEY)

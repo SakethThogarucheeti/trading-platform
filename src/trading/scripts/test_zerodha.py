@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 import pytz
 from dotenv import load_dotenv
 
-from trading.broker.zerodha.broker import ZerodhaBroker
-from trading.broker.zerodha.kite_client import KiteClient
+from trading.broker.service.zerodha.broker import ZerodhaBroker
+from trading.broker.service.zerodha.kite_client import KiteClient
 
 # Load environment variables
 load_dotenv()

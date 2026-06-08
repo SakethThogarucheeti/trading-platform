@@ -30,7 +30,7 @@ from anyio import sleep_forever
 
 from trading.di.container import build_container
 from trading.core.lifecycle.runtime import AbstractRuntime
-from trading.monitoring.scheduler import Scheduler
+from trading.monitoring.service.scheduler import Scheduler
 from trading.api.server import ApiServer
 
 if TYPE_CHECKING:
@@ -118,8 +118,8 @@ async def _sync_instruments(settings: "Settings") -> None:
     from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
     from trading.broker.zerodha.kite_client import KiteClient
-    from trading.core.models import Instrument
-    from trading.storage.stores.instrument import InstrumentStore
+    from trading.candles.storage.models import Instrument
+    from trading.candles.storage.store import InstrumentStore
 
     symbols: set[str] = set()
     for algo in settings.algos:
@@ -201,7 +201,7 @@ async def _main() -> None:
     async with build_container() as container:
         from trading.broker.zerodha.kite_client import KiteClient
         from trading.core.database import build_engine, build_session_factory
-        from trading.storage.stores.trading import TradingStore
+        from trading.execution.storage.store import TradingStore
 
         _engine = build_engine(str(settings.postgres_url))
         _sf = build_session_factory(_engine)

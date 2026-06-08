@@ -127,7 +127,7 @@ def _load_parquet(symbol: str, interval: str, path: Path) -> list[CandleRow]:
 async def _run(args: argparse.Namespace) -> None:
     from trading.config.settings import get_settings
     from trading.core.database import build_engine, build_session_factory, init_db
-    from trading.storage.stores.candle import CandleDataStore
+    from trading.candles.storage.store import CandleDataStore
 
     settings = get_settings()
     engine = build_engine(str(settings.postgres_url))

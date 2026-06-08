@@ -7,9 +7,10 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from trading.candles.historical_data_service import HistoricalDataService
+from trading.candles.api import HistoricalDataService
 from trading.core.clock import Clock
-from trading.core.models import DecisionLog, Instrument
+from trading.candles.storage.models import Instrument
+from trading.core.models import DecisionLog
 
 
 def create_data_router(

@@ -8,8 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.core.clock import Clock
-from trading.core.models import AlgoConfig
-from trading.storage.stores.chart import ChartStore
+from trading.strategy.storage.models import AlgoConfig
+from trading.strategy.storage.store import ChartStore
 
 
 def create_charts_router(

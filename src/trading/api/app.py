@@ -17,12 +17,12 @@ from trading.api.routers.market import create_market_router
 from trading.api.routers.pnl import create_pnl_router
 from trading.api.routers.reports import create_reports_router
 from trading.api.routers.stream import create_stream_router
-from trading.broker.zerodha.kite_client import KiteClient
-from trading.candles.historical_data_service import HistoricalDataService
+from trading.broker.service.zerodha.kite_client import KiteClient
+from trading.candles.api import HistoricalDataService
 from trading.core.clock import SYSTEM_CLOCK, Clock
-from trading.execution.order_executor import OrderExecutor
+from trading.execution.api import OrderExecutor
 from trading.storage.cache import CacherFactory
-from trading.tick_ingest.kite_ingestor import KiteIngestor
+from trading.tick_ingest.api import KiteIngestor
 
 
 def build_app(

@@ -7,9 +7,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from trading.broker.zerodha.kite_client import KiteClient
-from trading.storage.stores.trading import TradingStore
-from trading.tick_ingest.kite_ingestor import KiteIngestor
+from trading.broker.service.zerodha.kite_client import KiteClient
+from trading.execution.storage.store import TradingStore
+from trading.tick_ingest.api import KiteIngestor
 
 
 class _CallbackRequest(BaseModel):

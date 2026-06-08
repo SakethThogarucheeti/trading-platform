@@ -5,12 +5,12 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.api.app import build_app
-from trading.broker.zerodha.kite_client import KiteClient
-from trading.candles.historical_data_service import HistoricalDataService
+from trading.broker.service.zerodha.kite_client import KiteClient
+from trading.candles.api import HistoricalDataService
 from trading.core.clock import SYSTEM_CLOCK, Clock
 from trading.core.lifecycle.component import Component
 from trading.storage.cache import CacherFactory
-from trading.tick_ingest.kite_ingestor import KiteIngestor
+from trading.tick_ingest.api import KiteIngestor
 
 logger = logging.getLogger(__name__)
 

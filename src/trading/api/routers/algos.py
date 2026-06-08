@@ -7,8 +7,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from trading.core.models import AlgoConfig, AlgoState
-from trading.storage.stores.config import ConfigStore
+from trading.strategy.storage.models import AlgoConfig, AlgoState
+from trading.strategy.storage.store import ConfigStore
 
 
 class _AlgoPatch(BaseModel):

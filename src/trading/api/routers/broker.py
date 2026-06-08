@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
 from trading.execution.fill_webhook import WebhookValidationError, parse_fill_payload
-from trading.execution.order_executor import OrderExecutor
+from trading.execution.api import OrderExecutor
 
 
 def create_broker_router(order_executor: OrderExecutor | None) -> APIRouter:

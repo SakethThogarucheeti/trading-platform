@@ -187,7 +187,7 @@ def _symbols_from_db() -> list[str]:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
     from trading.config.settings import get_settings
-    from trading.core.models import Instrument
+    from trading.candles.storage.models import Instrument
 
     settings = get_settings()
 
@@ -203,8 +203,8 @@ def _symbols_from_db() -> list[str]:
 
 
 def _build_broker() -> object:
-    from trading.broker.zerodha.broker import ZerodhaBroker
-    from trading.broker.zerodha.kite_client import KiteClient
+    from trading.broker.service.zerodha.broker import ZerodhaBroker
+    from trading.broker.service.zerodha.kite_client import KiteClient
 
     api_key = os.environ.get("ZERODHA_API_KEY", "")
     access_token = os.environ.get("ZERODHA_ACCESS_TOKEN", "")
