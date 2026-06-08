@@ -9,7 +9,7 @@ import pytest
 
 from trading.core.schemas import InstrumentType, TickEvent
 from trading.worker.circuit_breaker_redis import RedisCircuitBreaker
-from trading.tick_ingest.tick_publisher import TickPublisher
+from trading.tick_ingest.api import TickPublisher
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ class TestRedisCircuitBreaker:
         return r
 
     def test_inherits_circuit_breaker(self) -> None:
-        from trading.tick_ingest.tick_ingestor import CircuitBreaker
+        from trading.tick_ingest.api import CircuitBreaker
         assert issubclass(RedisCircuitBreaker, CircuitBreaker)
 
     def test_initial_state_closed(self) -> None:

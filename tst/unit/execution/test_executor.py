@@ -347,7 +347,7 @@ async def test_persist_order_status_retries_on_failure(engine: AsyncEngine) -> N
     sig_id = uuid4()
     await _insert_signal(engine, sig_id)
 
-    with patch.object(logging.getLogger("trading.execution.order_executor"), "critical") as mock_crit:
+    with patch.object(logging.getLogger("trading.execution.service.executor"), "critical") as mock_crit:
         await reg.handle(make_validated(signal_id=sig_id))
 
     assert mock_crit.called

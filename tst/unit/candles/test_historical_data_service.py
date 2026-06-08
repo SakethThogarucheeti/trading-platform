@@ -17,7 +17,8 @@ from trading.candles.historical_data_service import (
     warmup_start,
 )
 from trading.core.database import build_session_factory, init_db
-from trading.storage.stores.candle import AbstractCandleDataStore, CandleDataStore
+from trading.candles.storage.store import CandleDataStore
+from trading.storage.stores.candle import AbstractCandleDataStore
 from quantindicators.types import CandleRow
 
 BASE_TIME = datetime(2025, 1, 6, 9, 15, 0, tzinfo=UTC)
