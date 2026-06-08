@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, func
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -24,11 +24,6 @@ class Signal(Base):
     signal_type: Mapped[str] = mapped_column(String)
     stop_distance: Mapped[Decimal] = mapped_column(Numeric(12, 4))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
-
-    orders: Mapped[list] = relationship(
-        "Order", back_populates="signal", cascade="all, delete-orphan",
-        primaryjoin="Signal.id == foreign(Order.signal_id)",
-    )
 
 
 class AlgoConfig(Base):

@@ -9,6 +9,8 @@ from trading.candles.service.aggregator import CandleAggregator, CandleAggregato
 from trading.candles.service.bar_accumulator import SymbolConfig
 from trading.candles.service.historical import HistoricalDataResult, HistoricalDataService
 from trading.candles.service.persister import CandleConfig, CandlePersister
+from trading.candles.storage.models import Instrument
+from trading.candles.storage.store import CandleDataStore, InstrumentStore
 
 __all__ = [
     "CandleEvent",
@@ -16,6 +18,9 @@ __all__ = [
     "CandleAggregatorComponent",
     "CandleConfig",
     "CandlePersister",
+    "CandleDataStore",
+    "InstrumentStore",
+    "Instrument",
     "SymbolConfig",
     "HistoricalDataService",
     "HistoricalDataResult",

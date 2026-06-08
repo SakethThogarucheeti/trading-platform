@@ -3,6 +3,7 @@ from trading.tick_ingest.api.schemas import TickEvent
 from trading.tick_ingest.service.ingestor import CircuitBreaker, TickConfig, TickIngestor
 from trading.tick_ingest.service.kite_ingestor import KiteIngestor
 from trading.tick_ingest.service.publisher import TickPublisher
+from trading.tick_ingest.storage.store import AuditContext, AuditStore
 
 __all__ = [
     "TickEvent",
@@ -12,6 +13,8 @@ __all__ = [
     "TickConfig",
     "CircuitBreaker",
     "AbstractAuditStore",
+    "AuditStore",
+    "AuditContext",
     "BrokerStream",
     "Tick",
 ]

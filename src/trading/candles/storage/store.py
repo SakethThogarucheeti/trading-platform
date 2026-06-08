@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from trading.candles.storage.models import Candle
+from trading.candles.storage.models import Candle, Instrument
 
 
 def _candle_to_dict(c: Candle) -> CandleRow:
@@ -79,3 +79,23 @@ class CandleDataStore:
                 .order_by(Candle.ts.asc())
             )
             return [_candle_to_dict(c) for c in result.scalars().all()]
+
+
+class InstrumentStore:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._sf = session_factory
+
+    async def get_all(self) -> list[Instrument]:
+        async with self._sf() as session:
+            result = await session.execute(select(Instrument))
+            return list(result.scalars().all())
+
+    async def get_instrument(self, token: int) -> Instrument | None:
+        async with self._sf() as session:
+            return await session.get(Instrument, token)
+
+    async def upsert_instruments(self, instruments: list[Instrument]) -> None:
+        async with self._sf() as session:
+            async with session.begin():
+                for inst in instruments:
+                    await session.merge(inst)
