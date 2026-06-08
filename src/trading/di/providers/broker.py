@@ -5,11 +5,10 @@ import logging
 import httpx
 from dishka import Provider, Scope, provide  # type: ignore[import-untyped]
 
-from trading.broker.base.broker import Broker
-from trading.broker.base.broker_stream import BrokerStream
-from trading.broker.paper_broker import AbstractPriceStore, PaperBroker
-from trading.broker.zerodha.broker import ZerodhaBroker
-from trading.broker.zerodha.kite_client import KiteClient
+from trading.broker.api import Broker, BrokerStream
+from trading.broker.service.paper_broker import AbstractPriceStore, PaperBroker
+from trading.broker.service.zerodha.broker import ZerodhaBroker
+from trading.broker.service.zerodha.kite_client import KiteClient
 from trading.config.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -43,6 +42,6 @@ class BrokerProvider(Provider):
 
     @provide
     def broker_stream(self, client: KiteClient) -> BrokerStream:
-        from trading.broker.zerodha.stream import ZerodhaStream
+        from trading.broker.service.zerodha.stream import ZerodhaStream
 
         return ZerodhaStream(client)

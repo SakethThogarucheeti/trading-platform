@@ -5,7 +5,7 @@ from typing import Any
 
 from anyio import create_task_group
 
-from trading.broker.paper_broker import AbstractPriceStore
+from trading.broker.service.paper_broker import AbstractPriceStore
 from trading.core.lifecycle.component import Component
 from trading.core.schemas import TickEvent
 from trading.core.types import OnTickCallback

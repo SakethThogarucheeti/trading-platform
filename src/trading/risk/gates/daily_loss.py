@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from trading.core.schemas import SignalEvent
-from trading.risk.policy import RiskContext
+from trading.risk.service.policy import RiskContext
 
 _DAILY_LOSS_LIMIT = "DAILY_LOSS_LIMIT"
 

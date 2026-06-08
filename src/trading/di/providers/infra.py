@@ -5,19 +5,16 @@ from collections.abc import AsyncIterator
 from dishka import Provider, Scope, provide  # type: ignore[import-untyped]
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from trading.broker.paper_broker import AbstractPriceStore, PriceStore
+from trading.app.database import build_engine, build_session_factory
+from trading.broker.service.paper_broker import AbstractPriceStore, PriceStore
+from trading.candles.storage.store import CandleDataStore, InstrumentStore
 from trading.config.settings import Settings, get_settings
 from trading.core.clock import Clock, SystemClock
-from trading.app.database import build_engine, build_session_factory
+from trading.execution.storage.store import PositionStore, TradingStore
+from trading.monitoring.storage.store import HeartbeatStore
 from trading.storage.cache import CacherFactory, ValueCache, setup_cache
-from trading.storage.stores.audit import AuditStore
-from trading.storage.stores.candle import CandleDataStore
-from trading.storage.stores.chart import ChartStore
-from trading.storage.stores.config import ConfigStore
-from trading.storage.stores.heartbeat import HeartbeatStore
-from trading.storage.stores.instrument import InstrumentStore
-from trading.storage.stores.position import PositionStore
-from trading.storage.stores.trading import TradingStore
+from trading.strategy.storage.store import ChartStore, ConfigStore
+from trading.tick_ingest.storage.store import AuditStore
 
 
 class RedisProvider(Provider):

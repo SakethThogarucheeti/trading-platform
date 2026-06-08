@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from trading.core.schemas import Side, SignalEvent, SignalType
-from trading.risk.policy import RiskContext
+from trading.risk.service.policy import RiskContext
 
 _ALREADY_IN_POSITION = "ALREADY_IN_POSITION"
 

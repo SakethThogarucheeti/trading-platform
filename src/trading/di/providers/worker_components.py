@@ -6,30 +6,29 @@ from dishka import Provider, Scope, provide  # type: ignore[import-untyped]
 from quantindicators.polars_store import PolarsStore
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from trading.broker.base.broker import Broker
-from trading.broker.paper_broker import AbstractPriceStore
-from trading.candles.bar_accumulator import SymbolConfig
-from trading.candles.candle_aggregator import (
-    CandleAggregator,
+from trading.broker.api import Broker
+from trading.broker.service.paper_broker import AbstractPriceStore
+from trading.candles.api import (
     CandleAggregatorComponent,
     CandleConfig,
+    CandleDataStore,
     CandlePersister,
+    HistoricalDataService,
+    Instrument,
+    SymbolConfig,
 )
-from trading.candles.historical_data_service import HistoricalDataService
+from trading.candles.service.aggregator import CandleAggregator
 from trading.config.settings import AlgoSettings, Settings
 from trading.core.lifecycle.runtime import AbstractRuntime, Runtime
-from trading.core.models import Instrument
 from trading.core.schemas import InstrumentType
 from trading.di.providers.algo_pipeline import AlgoPipelineFactory, SharedAlgoDeps
-from trading.monitoring.heartbeat import HeartbeatMonitor
-from trading.monitoring.scheduler import Scheduler
+from trading.execution.storage.store import TradingStore
+from trading.monitoring.service.heartbeat import HeartbeatMonitor
+from trading.monitoring.service.scheduler import Scheduler
+from trading.monitoring.storage.store import HeartbeatStore
 from trading.storage.cache import CacherFactory
-from trading.storage.stores.audit import AuditStore
-from trading.storage.stores.candle import CandleDataStore
-from trading.storage.stores.chart import ChartStore
-from trading.storage.stores.config import ConfigStore
-from trading.storage.stores.heartbeat import HeartbeatStore
-from trading.storage.stores.trading import TradingStore
+from trading.strategy.storage.store import ChartStore, ConfigStore
+from trading.tick_ingest.storage.store import AuditStore
 from trading.worker.circuit_breaker_redis import RedisCircuitBreaker
 from trading.worker.tick_subscriber import TickSubscriber
 
@@ -84,10 +83,8 @@ class WorkerComponentProvider(Provider):
 
         intervals = algo.candle_intervals or settings.candle_intervals
 
-        # Circuit breaker backed by Redis — worker never opens/closes it directly
         circuit_breaker = RedisCircuitBreaker(redis)
 
-        # Candle aggregator (shared across TickPipeline for this worker)
         candle_config = CandleConfig(
             instruments=instruments,
             intervals=intervals,
@@ -97,7 +94,6 @@ class WorkerComponentProvider(Provider):
             config=candle_config,
             candle_logger=CandlePersister(candle_data_store, audit),
         )
-        # Resolve instrument tokens for subscription
         algo_symbols = set(algo.instruments)
         tokens = [r.token for r in instruments if r.symbol in algo_symbols]
         token_symbol_for_algo = {t: s for t, s in token_symbol.items() if s in algo_symbols}
@@ -174,10 +170,6 @@ class WorkerComponentProvider(Provider):
             on_market_open=runtime.start,
             on_market_close=runtime.stop,
         )
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     def _resolve_algo(
         self, settings: Settings, instrument_type_map: dict[str, str]

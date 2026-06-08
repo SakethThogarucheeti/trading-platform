@@ -7,36 +7,34 @@ from quantindicators.polars_store import PolarsStore
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.api.server import ApiServer
-from trading.broker.base.broker import Broker
-from trading.broker.base.broker_stream import BrokerStream
-from trading.broker.paper_broker import AbstractPriceStore
-from trading.broker.zerodha.kite_client import KiteClient
-from trading.candles.candle_aggregator import (
+from trading.broker.api import Broker, BrokerStream
+from trading.broker.service.paper_broker import AbstractPriceStore
+from trading.broker.service.zerodha.kite_client import KiteClient
+from trading.candles.api import (
     CandleAggregator,
     CandleAggregatorComponent,
     CandleConfig,
+    CandleDataStore,
     CandlePersister,
+    HistoricalDataService,
+    Instrument,
+    InstrumentStore,
+    SymbolConfig,
 )
-from trading.candles.historical_data_service import HistoricalDataService
 from trading.config.settings import AlgoSettings, Settings
+from trading.core.clock import Clock
 from trading.core.lifecycle.runtime import AbstractRuntime, Runtime
 from trading.core.messaging import AbstractCircuitBreaker
-from trading.core.models import Instrument
+from trading.core.schemas import InstrumentType
 from trading.di.providers.algo_pipeline import AlgoPipelineFactory, SharedAlgoDeps
-from trading.monitoring.heartbeat import HeartbeatMonitor
-from trading.monitoring.scheduler import Scheduler
-from trading.core.clock import Clock
+from trading.execution.storage.store import PositionStore, TradingStore
+from trading.monitoring.service.heartbeat import HeartbeatMonitor
+from trading.monitoring.service.scheduler import Scheduler
+from trading.monitoring.storage.store import HeartbeatStore
 from trading.storage.cache import CacherFactory
-from trading.storage.stores.audit import AuditStore
-from trading.storage.stores.candle import CandleDataStore
-from trading.storage.stores.chart import ChartStore
-from trading.storage.stores.config import ConfigStore
-from trading.storage.stores.heartbeat import HeartbeatStore
-from trading.storage.stores.position import PositionStore
-from trading.storage.stores.trading import TradingStore
-from trading.tick_ingest.kite_ingestor import KiteIngestor
-from trading.tick_ingest.tick_ingestor import CircuitBreaker, TickConfig, TickIngestor
-from trading.tick_ingest.tick_publisher import TickPublisher
+from trading.strategy.storage.store import ChartStore, ConfigStore
+from trading.tick_ingest.api import CircuitBreaker, KiteIngestor, TickConfig, TickIngestor, TickPublisher
+from trading.tick_ingest.storage.store import AuditStore
 
 logger = logging.getLogger(__name__)
 
@@ -169,9 +167,6 @@ class ComponentProvider(Provider):
         )
         self._kite_ingestor = ingestor
 
-        from trading.candles.bar_accumulator import SymbolConfig
-        from trading.core.schemas import InstrumentType
-
         symbols = [
             SymbolConfig(
                 symbol=inst.symbol,
@@ -298,8 +293,8 @@ class ComponentProvider(Provider):
         if settings.paper_trading:
             from sqlalchemy import select
 
-            from trading.core.models import Position
             from trading.core.schemas import FillEvent, Side
+            from trading.execution.storage.models import Position
 
             async def eod_square_off() -> None:
                 sf: async_sessionmaker[AsyncSession] = trading._sf  # type: ignore[attr-defined]

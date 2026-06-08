@@ -8,7 +8,7 @@ from trading.candles.service.historical import HistoricalDataService
 from trading.candles.service.persister import CandleConfig, CandlePersister
 from trading.candles.storage.store import CandleDataStore
 from trading.core.models import Instrument
-from trading.storage.stores.audit import AuditStore
+from trading.tick_ingest.storage.store import AuditStore
 
 
 class CandlesProvider(Provider):

@@ -4,7 +4,7 @@ import logging
 
 from anyio import sleep
 
-from trading.tick_ingest.tick_ingestor import CircuitBreaker
+from trading.tick_ingest.api import CircuitBreaker
 
 logger = logging.getLogger(__name__)
 
