@@ -6,9 +6,9 @@ from typing import Any
 
 from kiteconnect import KiteTicker  # type: ignore[import-untyped]
 
-from trading.broker.base.broker_stream import BrokerStream
-from trading.broker.types import Tick
-from trading.broker.zerodha.kite_client import KiteClient
+from trading.broker.api.schemas import Tick
+from trading.broker.service.broker_stream import BrokerStream
+from trading.broker.service.zerodha.kite_client import KiteClient
 
 logger = logging.getLogger(__name__)
 

@@ -55,7 +55,7 @@ def create_auth_router(
             kite_client.set_access_token(access_token)
 
         if kite_ingestor is not None:
-            asyncio.get_event_loop().create_task(kite_ingestor.reconnect_stream())
+            asyncio.get_running_loop().create_task(kite_ingestor.reconnect_stream())
 
         return JSONResponse(
             content={
