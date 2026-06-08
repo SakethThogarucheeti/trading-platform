@@ -53,17 +53,8 @@ class OrderType(StrEnum):
 
 
 # ---------------------------------------------------------------------------
-# Redis event models
-#
-# tick_log_id is a first-class field on every event — it is the root causal
-# ID that ties every downstream decision back to the originating market tick.
-# It is assigned by KiteIngestor after the TickLog row is flushed to Postgres,
-# and propagated forward through every subsequent event in the pipeline:
-#
-#   TickEvent → CandleEvent → SignalEvent → ValidatedOrderEvent → FillEvent
-#
-# Every DecisionLog row in Postgres carries this same tick_log_id, forming
-# a complete audit trail queryable with a single WHERE tick_log_id = ?.
+# Pipeline event models — defined here (single source of truth).
+# Module api/schemas.py files re-export these rather than redefining them.
 # ---------------------------------------------------------------------------
 
 
@@ -73,20 +64,20 @@ class TickEvent(BaseModel):
     last_price: float = Field(gt=0)
     volume: int = Field(ge=0)
     timestamp: datetime
-    tick_log_id: int  # assigned by KiteIngestor after DB flush; propagated through pipeline
+    tick_log_id: int
 
 
 class CandleEvent(BaseModel):
     symbol: str
     instrument_type: InstrumentType
-    interval: str  # e.g. "1min", "5min"
+    interval: str
     open: float = Field(gt=0)
     high: float = Field(gt=0)
     low: float = Field(gt=0)
     close: float = Field(gt=0)
     volume: int = Field(ge=0)
-    timestamp: datetime  # bar-close timestamp
-    tick_log_id: int  # copied from the tick that triggered bar close
+    timestamp: datetime
+    tick_log_id: int
 
 
 class SignalEvent(BaseModel):
@@ -98,9 +89,9 @@ class SignalEvent(BaseModel):
     algo_name: str | None = None
     signal_type: SignalType
     stop_distance: float = Field(gt=0)
-    entry_price: float = Field(default=0.0, ge=0)  # indicative price at signal time; 0 = unknown
+    entry_price: float = Field(default=0.0, ge=0)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    tick_log_id: int  # copied from the candle that triggered this signal
+    tick_log_id: int
 
     @classmethod
     def from_signal(
@@ -128,8 +119,14 @@ class ValidatedOrderEvent(BaseModel):
     side: Side
     quantity: int = Field(gt=0)
     order_type: OrderType
-    limit_price: float | None = None  # None for MARKET orders
-    tick_log_id: int  # carried through from signal
+    limit_price: float | None = None
+    tick_log_id: int
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # Carried through from SignalEvent for audit/persistence
+    strategy_id: str = ""
+    algo_name: str | None = None
+    signal_type: SignalType = SignalType.ENTRY
+    stop_distance: float = 0.0
 
     @classmethod
     def from_signal_event(cls, event: SignalEvent, quantity: int) -> ValidatedOrderEvent:
@@ -138,6 +135,10 @@ class ValidatedOrderEvent(BaseModel):
             symbol=event.symbol,
             instrument_type=event.instrument_type,
             side=event.side,
+            strategy_id=event.strategy_id,
+            algo_name=event.algo_name,
+            signal_type=event.signal_type,
+            stop_distance=event.stop_distance,
             quantity=quantity,
             order_type=OrderType.MARKET,
             limit_price=None,
@@ -157,4 +158,4 @@ class FillEvent(BaseModel):
     avg_price: float = Field(gt=0)
     filled_qty: int = Field(gt=0)
     timestamp: datetime
-    tick_log_id: int = 0  # carried through from the originating tick; 0 = unknown
+    tick_log_id: int = 0
