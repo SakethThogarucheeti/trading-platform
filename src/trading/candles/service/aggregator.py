@@ -14,7 +14,7 @@ from trading.core.clock import Clock, SystemClock
 from trading.core.lifecycle.component import Component
 from trading.core.messaging import AbstractRegistry
 from trading.core.schemas import InstrumentType
-from trading.core.tasks import fire
+from trading.app.tasks import fire
 from trading.tick_ingest.api.schemas import TickEvent
 
 logger = logging.getLogger(__name__)

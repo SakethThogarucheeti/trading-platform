@@ -12,7 +12,7 @@ from quantindicators.types import CandleRow
 from trading.candles.api.schemas import CandleEvent
 from trading.core.clock import Clock, SystemClock
 from trading.core.messaging import AbstractRegistry
-from trading.core.tasks import fire
+from trading.app.tasks import fire
 from trading.strategy.api.interfaces import (
     AbstractAuditStore,
     AbstractChartStore,

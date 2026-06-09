@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from trading.storage.stores.candle import AbstractCandleDataStore
+from trading.candles.api.interfaces import AbstractCandleStore as AbstractCandleDataStore
 from trading.storage.stores.candle_store import CandleStore, RedisClientProtocol
 
 

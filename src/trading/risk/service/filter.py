@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from trading.core.clock import Clock, SystemClock
 from trading.core.messaging import AbstractRegistry
 from trading.core.schemas import SignalType
-from trading.core.tasks import fire
+from trading.app.tasks import fire
 from trading.risk.api.interfaces import AbstractAuditStore, AbstractPositionStore, AbstractTradingStore, CacherFactory
 from trading.risk.api.schemas import ValidatedOrderEvent
 from trading.risk.service.policy import RiskContext, RiskGate, RiskSizer

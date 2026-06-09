@@ -11,7 +11,7 @@ from typing import Any, Protocol, runtime_checkable
 from quantindicators.store import AbstractCandleStore
 from quantindicators.types import CandleRow
 
-from trading.storage.stores.candle import AbstractCandleDataStore
+from trading.candles.api.interfaces import AbstractCandleStore as AbstractCandleDataStore
 
 _log = logging.getLogger(__name__)
 
