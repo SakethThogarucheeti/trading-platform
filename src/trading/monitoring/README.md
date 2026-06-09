@@ -1,38 +1,35 @@
-# monitoring/
+# monitoring
 
-Market-hours scheduling and liveness alerting. Add new health-check or alerting integrations here.
+Liveness monitoring and scheduled background tasks.
 
-## Files
+## Layout
 
-| File | Purpose |
-|------|---------|
-| `scheduler.py` | APScheduler cron wrapper for market-hours events |
-| `heartbeat.py` | DB liveness beats + Telegram staleness alerts |
+```
+monitoring/
+├── api/
+│   ├── __init__.py       Re-exports: HeartbeatMonitor, Scheduler, AbstractHeartbeatStore,
+│   │                                 AbstractAlerter
+│   └── interfaces.py     AbstractHeartbeatStore, AbstractAlerter protocols
+├── service/
+│   ├── heartbeat.py      HeartbeatMonitor — periodic DB heartbeat + stale component alerting
+│   └── scheduler.py      Scheduler — APScheduler wrapper (runs market-hours jobs)
+├── storage/
+│   ├── models.py         Heartbeat ORM model
+│   └── store.py          HeartbeatStore
+└── di/
+    └── providers.py      MonitoringProvider
+```
 
-## Scheduler
+## Key concepts
 
-`Scheduler` wraps APScheduler's `AsyncIOScheduler` with IST timezone. The following jobs are registered at startup by the DI container:
+**`HeartbeatMonitor`** is a `Component`. On each beat interval it writes a timestamp to the `heartbeats` table for every registered component name. It also queries for stale entries (last_seen older than `timeout_secs`) and fires an alert via `AbstractAlerter` if any are found.
 
-| Job | Time (IST) | Trigger |
-|-----|-----------|---------|
-| Market open | 09:15 Mon–Fri | `Runtime.start()` |
-| Market close | 15:30 Mon–Fri | `Runtime.stop()` |
-| EOD report | 15:45 Mon–Fri | report generation |
-| Weekly instrument sync | Sun 10:00 | symbol master refresh |
-| Position reset (optional) | 15:29 Mon–Fri | clear intraday positions |
+**`Scheduler`** wraps APScheduler. It registers jobs (e.g. daily PnL reset, end-of-day position close) and starts/stops with the component lifecycle.
 
-## HeartbeatMonitor
+`api/telegram.py` (in the `trading.api` package) provides the `TelegramAlerter` that implements `AbstractAlerter`.
 
-`HeartbeatMonitor` is a `Component` that runs two concurrent inner loops:
+## Imports
 
-- **`_beat_loop`** — upserts the module's own `last_seen` timestamp in Postgres every N seconds.
-- **`_monitor_loop`** — queries `HeartbeatStore.get_stale_modules()` and invokes the alerter callback (e.g., Telegram message) for any module that has gone silent beyond the configured timeout.
-
-The Telegram alerter is rate-limited to avoid flooding when a module is persistently stale.
-
-## Relationship to other packages
-
-- `storage/stores/heartbeat.py` — persistence layer for heartbeat rows
-- `api/telegram.py` — Telegram alerter passed to `HeartbeatMonitor`
-- `di/providers/components.py` — wires `HeartbeatMonitor` into the `Runtime`
-- `main.py` — `Scheduler` is resolved from the DI container and started before `sleep_forever()`
+```python
+from trading.monitoring.api import HeartbeatMonitor, Scheduler
+```

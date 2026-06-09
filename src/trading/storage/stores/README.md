@@ -1,34 +1,17 @@
-# storage/stores/
+# storage/stores
 
-Domain-specific store implementations. Each store owns one slice of the DB schema.
+Previously contained all domain store classes. After the SDK migration these have all moved to their owning module's `storage/` layer.
 
-## Files
+The only file remaining here is `candle_store.py`, which is shared infrastructure (not a domain store):
 
-| File | Key class | Responsibility |
-|------|-----------|---------------|
-| `audit.py` | `AuditStore` | Tick logs + per-decision audit trail |
-| `candle.py` | `CandleDataStore` | OHLCV candle persistence and retrieval |
-| `candle_store.py` | `CandleStore` | Candle fetch with optional Redis cache (for indicator computation) |
-| `chart.py` | `ChartStore` | Indicator value logging for charting and backtests |
-| `config.py` | `ConfigStore` | Algo config rows + live algo state |
-| `heartbeat.py` | `HeartbeatStore` | Module liveness timestamps |
-| `instrument.py` | `InstrumentStore` | Instrument master (symbol, token, type) |
-| `trading.py` | `TradingStore` | Signals, orders, positions, broker tokens |
+**`candle_store.py`** — `CandleStore` — implements `quantindicators.AbstractCandleStore` on top of `CandleDataStore` with an optional Redis read-through cache. Used by the indicator library during strategy `on_candle()` execution.
 
-## Store overview
+All other stores are now at canonical paths:
 
-**`AuditStore`** — every tick that enters the system gets a `TickLog` row (returns the DB-assigned `tick_log_id` that propagates downstream). Every algo decision step (signal generated, order placed, fill received) gets a `DecisionLog` row with full JSON context.
-
-**`CandleDataStore`** — persists OHLCV bars. `save_candles()` uses `ON CONFLICT DO NOTHING` so warmup and live candles are idempotent. Used by `CandleAggregator` after each bar closes.
-
-**`CandleStore`** — wraps `CandleDataStore` with optional Redis caching keyed by `(symbol, interval, limit/since)`. Shared across all indicators querying the same window; TTL is 90 seconds.
-
-**`TradingStore`** — the widest store. Manages the full order lifecycle (`save_order` → `update_order_status` → position tracking), signal persistence, and encrypted broker token storage.
-
-**`ConfigStore`** — `seed_algo_config()` writes the algo's strategy params to DB on startup; `upsert_algo_state()` snapshots live indicator state periodically for recovery after restarts.
-
-## Abstract interfaces
-
-Each store exports an `Abstract*` base class (e.g., `AbstractTradingStore`). These are used as the DI injection type and as the parameter type in components, making it easy to swap in test doubles.
-
-The abstract classes are provided by `di/providers/infra.py` and injected via Dishka.
+```python
+from trading.tick_ingest.storage.store import AuditStore
+from trading.candles.storage.store import CandleDataStore, InstrumentStore
+from trading.execution.storage.store import TradingStore, PositionStore, NotFoundError
+from trading.monitoring.storage.store import HeartbeatStore
+from trading.strategy.storage.store import ChartStore, ConfigStore
+```

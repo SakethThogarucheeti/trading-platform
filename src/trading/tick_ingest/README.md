@@ -1,53 +1,45 @@
-# tick_ingest/
+# tick_ingest
 
-Zerodha WebSocket → validated `TickEvent` → Redis pub/sub. Add new market-data sources here.
+WebSocket tick ingestion — receives raw market ticks from the broker, applies the circuit breaker, writes audit records, and publishes to Redis.
 
-## Files
-
-| File | Purpose |
-|------|---------|
-| `tick_ingestor.py` | Validates raw ticks; owns the in-process `CircuitBreaker` |
-| `kite_ingestor.py` | WebSocket `Component`; bridges Kite callbacks to asyncio |
-| `tick_publisher.py` | Publishes `TickEvent` to Redis and circuit state to `circuit:state` |
-
-## Pipeline
+## Layout
 
 ```
-Zerodha WebSocket
-        ↓  raw dict (KiteTicker callback thread)
-KiteIngestor  ─── call_soon_threadsafe ──→  asyncio event loop
-        ↓
-TickIngestor.handle(raw_tick)
-    ├── validate token, price, timestamp
-    ├── persist TickLog to DB (returns tick_log_id)
-    └── return TickEvent
-        ↓
-TickPublisher.publish(tick_event)
-    ├── serialize and PUBLISH to Redis  ticks:<instrument_token>
-    └── SET circuit:state  "open" | "closed"
+tick_ingest/
+├── api/
+│   ├── __init__.py       Re-exports: TickEvent, TickIngestor, KiteIngestor, TickPublisher,
+│   │                                 TickConfig, CircuitBreaker, AbstractAuditStore,
+│   │                                 AuditStore, AuditContext, BrokerStream, Tick
+│   ├── interfaces.py     AbstractAuditStore, BrokerStream, Tick protocols
+│   └── schemas.py        TickEvent (re-export from core.schemas)
+├── service/
+│   ├── ingestor.py       TickIngestor — AbstractRegistry; validates ticks, checks CB,
+│   │                                    logs to AuditStore, calls on_tick handlers
+│   │                     CircuitBreaker — open/close state machine
+│   │                     TickConfig — configuration model
+│   ├── kite_ingestor.py  KiteIngestor — Component; bridges ZerodhaStream WebSocket → TickIngestor
+│   └── publisher.py      TickPublisher — publishes TickEvent JSON to Redis channel
+├── storage/
+│   ├── models.py         TickLog ORM model
+│   └── store.py          AuditStore — log_tick(), log_decision(), log_audit()
+│                         AuditContext — base dataclass for decision context objects
+└── di/
+    └── providers.py      TickIngestProvider
 ```
 
-## CircuitBreaker
+## Key concepts
 
-The ingestor owns a `CircuitBreaker` that tracks WebSocket health:
+**`TickIngestor`** is the registry for tick handlers. `KiteIngestor` feeds it ticks from the Zerodha WebSocket. `TickPublisher` is registered as a handler and fans out to Redis pub/sub for the worker process.
 
-- **Closed** (normal) — ticks are flowing.
-- **Open** (fault) — no ticks received for 30 seconds (disconnection timeout). The `RiskFilter` checks circuit state before placing orders; no orders are sent while the circuit is open.
-- **Closed again** — on WebSocket reconnect.
+**`CircuitBreaker`** — when the broker connection fails repeatedly, the CB opens and `TickIngestor` rejects further ticks. `CircuitBreakerRedis` worker syncs the CB state across processes via Redis.
 
-Worker processes use `RedisCircuitBreaker` (`worker/circuit_breaker_redis.py`) which polls `circuit:state` from Redis every 2 seconds instead of owning the state directly.
+**`AuditStore`** owns three tables:
+- `tick_logs` — one row per raw tick received
+- `decision_logs` — one row per pipeline decision (SIGNAL_GENERATED, SIGNAL_ACCEPTED, etc.), linked to a tick_log_id
+- `audit_logs` — free-form module-level log messages
 
-## KiteIngestor
+## Imports
 
-`KiteIngestor` is a `Component` that:
-1. Calls `ZerodhaStream.connect()` and subscribes to instrument tokens from config.
-2. Receives ticks on the KiteTicker background thread and bridges them to asyncio via `call_soon_threadsafe`.
-3. Invokes `TickIngestor.handle()` for validation + persistence, then `TickPublisher.publish()`.
-4. Fires `on_tick` callbacks (e.g., `CandleAggregator`) after each validated tick.
-
-## Relationship to other packages
-
-- `broker/zerodha/stream.py` — `ZerodhaStream` (the raw KiteTicker wrapper)
-- `worker/tick_subscriber.py` — consumes `ticks:<token>` channels in worker processes
-- `candles/candle_aggregator.py` — registered as `on_tick` callback
-- `di/providers/components.py` — wires `KiteIngestor` + `TickIngestor` + `TickPublisher` into the main runtime
+```python
+from trading.tick_ingest.api import KiteIngestor, TickIngestor, AuditStore, CircuitBreaker
+```

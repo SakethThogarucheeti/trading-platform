@@ -1,46 +1,44 @@
 # risk
 
-Pre-order risk controls and position sizing. The five rejection gates in `RiskRegistry` are the system's safety layer — every signal must pass all of them before reaching the broker.
+Signal validation, position sizing, and risk gate enforcement.
 
-## Structure
+## Layout
 
 ```
 risk/
-├── base.py        # RiskController — Component wrapper around RiskRegistry
-├── controller.py  # Risk check registry (composable check chain)
-└── sizer.py       # calculate_quantity() — ATR-based position sizer
+├── api/
+│   ├── __init__.py       Re-exports: ValidatedOrderEvent, RiskFilter, RiskConfig,
+│   │                                 RiskGate, RiskSizer, RiskContext, VolatilitySizer
+│   ├── interfaces.py     AbstractPositionStore, AbstractTradingStore, AbstractAuditStore,
+│   │                     CacherFactory, SignalEvent protocols
+│   └── schemas.py        ValidatedOrderEvent (re-export from core.schemas)
+├── service/
+│   ├── filter.py         RiskFilter — runs gate chain, sizes, emits ValidatedOrderEvent
+│   ├── policy.py         RiskContext dataclass, RiskGate ABC, RiskSizer ABC
+│   └── sizer.py          VolatilitySizer — ATR-based quantity calculation
+├── storage/
+│   └── models.py         (reserved for future equity snapshots)
+├── di/
+│   └── providers.py      RiskProvider
+└── gates/
+    ├── circuit_breaker.py  CircuitBreakerGate — rejects when CB is open
+    ├── daily_loss.py       DailyLossGate — rejects when daily loss limit exceeded
+    ├── duplicate_position.py DuplicatePositionGate — rejects if position already open
+    └── time_cutoff.py      TimeCutoffGate — rejects after intraday cutoff time
 ```
 
-## Risk gates (in order)
+## How RiskFilter works
 
-### 1. Intraday cutoff
-Rejects signals after `intraday_cutoff_hour:minute` (default 15:30 IST). Prevents entering new positions that can't be exited intraday. Configurable per `RiskConfig`.
+1. Builds a `RiskContext` (equity, today's PnL from cache, current position)
+2. Runs each `RiskGate.check(signal, ctx)` in order — first rejection wins
+3. Calls `RiskSizer.size(signal, ctx)` to determine quantity
+4. If qty > 0: saves the signal to DB, fires a decision log, returns `ValidatedOrderEvent`
+5. Otherwise logs the rejection reason and returns `None`
 
-### 2. Circuit breaker
-Rejects signals when `circuit_breaker.is_open()` is `True` — meaning the Zerodha WebSocket has been silent for more than 30 seconds. The circuit breaker instance is the same object held by `TickRegistry`; no flags or shared stores are involved.
-
-### 3. Daily loss limit
-Fetches today's realized PnL from the repository and rejects if it has crossed `−(equity × max_daily_loss_pct / 100)`. Skipped in paper trading and backtesting (no reliable intraday PnL available).
-
-### 4. Duplicate position check
-Rejects ENTRY signals when the current position is already in the same direction. A SELL signal when long is a reversal and is allowed through. This prevents doubling up on a losing position but permits managed exits.
-
-### 5. Quantity sizing
-Computes `qty = floor((equity × risk_per_trade_pct / 100) / stop_distance)`. Rejects if `qty` rounds to zero (signal's stop distance is too wide relative to available capital). For futures/options, rounds down to the nearest lot size multiple.
-
-## `calculate_quantity`
+## Imports
 
 ```python
-def calculate_quantity(
-    stop_distance: float,
-    equity: float,
-    risk_pct: float,
-    lot_size: int = 1,
-) -> int
+from trading.risk.api import RiskFilter, RiskConfig, ValidatedOrderEvent
 ```
 
-Pure function with no DB calls. The formula ensures a fixed percentage of equity is risked regardless of the instrument's volatility, since `stop_distance` is typically `atr_multiplier × ATR`.
-
-## `RiskController`
-
-`Component` wrapper around `RiskRegistry`. Holds no async work of its own (`_run()` sleeps forever). Its `_setup()` reads the current day's PnL and primes the daily loss state so the first signal of the session gets an accurate check.
+See [gates/README.md](gates/README.md) for the gate implementations.

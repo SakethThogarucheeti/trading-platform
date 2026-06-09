@@ -1,70 +1,33 @@
 # core
 
-Shared domain primitives: ORM models, Pydantic event schemas, database infrastructure, and the pipeline base class. Everything else in the system imports from here; this package imports from nothing else in `trading/`.
+Minimal shared primitives used across all modules. No domain logic, no DB access.
 
-## Structure
+## Files
 
-```
-core/
-├── models.py       # SQLAlchemy ORM — the persistent record of every pipeline event
-├── schemas.py      # Pydantic event DTOs — the in-memory flow between registries
-├── messaging.py    # AbstractRegistry — base class for all pipeline stages
-├── pipeline.py     # AlgoPipeline + TickPipeline — pipeline wiring helpers
-├── database.py     # Async engine factory + session context manager
-├── clock.py        # Clock ABC, SystemClock, SimulatedClock
-├── context.py      # thread_id context variable for structured logging
-├── types.py        # Shared type aliases
-├── tasks.py        # fire() — fire-and-forget async background task helper
-└── lifecycle/      # Component ABC + Runtime supervisor (see lifecycle/README.md)
-    ├── component.py
-    └── runtime.py
-```
+**`clock.py`** — `Clock` protocol + `SystemClock` (uses `datetime.now(UTC)`) and `SimulatedClock` (for backtests). Injected everywhere time-of-day decisions are made.
 
-## ORM models (`models.py`)
+**`messaging.py`** — `AbstractRegistry` (async fan-out registry), `AbstractCircuitBreaker` (open/close interface), `FillObserver` (fill notification protocol).
 
-| Model | Table | Written by | Purpose |
-|-------|-------|------------|---------|
-| `Candle` | `candles` | `CandleRegistry` | OHLCV bars; unique on `(symbol, interval, timestamp)` |
-| `Signal` | `signals` | `RiskRegistry` | Accepted signals with strategy and stop-distance |
-| `Order` | `orders` | `ExecRegistry` | Full order lifecycle: PENDING → PLACED → FILLED |
-| `Position` | `positions` | `ExecRegistry` | Net quantity + weighted average price per `(symbol, instrument_type)` |
-| `TickLog` | `tick_logs` | `TickRegistry` | Immutable append-only record of every raw tick |
-| `DecisionLog` | `decision_logs` | all registries | Pipeline audit trail; `tick_log_id` foreign key enables full causal reconstruction |
-| `AuditLog` | `audit_logs` | `RiskRegistry`, `ExecRegistry` | Free-form operational events |
+**`schemas.py`** — Canonical Pydantic event models shared across modules:
+- `TickEvent`, `CandleEvent`, `SignalEvent`, `ValidatedOrderEvent`, `FillEvent`
+- Enums: `InstrumentType`, `Side`, `OrderType`, `OrderStatus`, `SignalType`
 
-## Event schemas (`schemas.py`)
+Module-level `api/schemas.py` files re-export from here — this is the single source of truth.
 
-Each schema carries `tick_log_id` from the originating tick all the way through to execution, enabling a single `WHERE tick_log_id = X` query to reconstruct the full causal chain.
+**`models.py`** — Legacy monolith ORM file. Still used transitionally for `AuditLog`, `DecisionLog`, and by `core/test_database.py`. Domain models have migrated to their owning module's `storage/models.py`.
 
-```
-dict (raw Kite tick)
-  → TickEvent
-      → CandleEvent
-          → SignalEvent
-              → ValidatedOrderEvent
-```
+**`context.py`** — Request context helpers.
 
-## `AbstractRegistry`
+**`types.py`** — Shared type aliases.
 
-The single method every pipeline stage must implement:
+**`lifecycle/`** — `Component` ABC and `Runtime` supervisor. See [lifecycle/README.md](lifecycle/README.md).
 
-```python
-class AbstractRegistry(ABC):
-    @abstractmethod
-    async def handle(self, event: Any) -> Any:
-        ...
-```
+## What moved out of core
 
-Concrete registries add their own config `@dataclass` and internal state; the only coupling between stages is the event schema types.
+App-level concerns that were in `core/` are now in `trading.app`:
 
-## Clock abstraction
-
-`SimulatedClock` is injected during backtests so that all timestamp calculations (`datetime.now()`) use bar-close time instead of wall-clock time. All components accept a `Clock` at construction — never call `datetime.now()` directly.
-
-```python
-class Clock(ABC):
-    def now(self) -> datetime: ...
-
-class SystemClock(Clock): ...       # wall time — used in live trading
-class SimulatedClock(Clock): ...    # advances per bar — used in backtests
-```
+| Old | New |
+|-----|-----|
+| `core/database.py` | `app/database.py` |
+| `core/pipeline.py` | `app/pipeline.py` |
+| `core/tasks.py` | `app/tasks.py` |

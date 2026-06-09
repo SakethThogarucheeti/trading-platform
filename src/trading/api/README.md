@@ -1,50 +1,15 @@
-# api/
+# api
 
-External-facing interfaces: HTTP API endpoints, the dashboard server, and Telegram alerting.
+FastAPI HTTP layer — serves the trading dashboard and provides REST endpoints for the frontend.
 
-## Structure
+## Files
 
-```
-api/
-├── routers/             # FastAPI route modules — one file per API domain
-│   ├── _helpers.py      # shared session_filter helper
-│   ├── _middleware.py   # RequestIdMiddleware, AccessLogMiddleware
-│   ├── auth.py          # /api/auth/*
-│   ├── market.py        # /api/ping, /api/health, /api/positions, /api/signals, /api/candles, /api/ticks
-│   ├── algos.py         # /api/algos*
-│   ├── pnl.py           # /api/pnl, /api/pnl/by-algo
-│   ├── reports.py       # /api/reports/*
-│   ├── charts.py        # /api/charts
-│   ├── stream.py        # /api/decisions/stream (SSE)
-│   ├── broker.py        # /api/postback (Zerodha webhook)
-│   └── data.py          # /api/sessions, /api/settings, /api/instruments, /api/trades, /api/candles/history
-├── telegram.py          # TelegramAlerter — async Telegram Bot API client
-└── dashboard/
-    ├── app.py           # build_app() — assembles all routers into a FastAPI app
-    └── component.py     # DashboardServer — Component wrapper (starts uvicorn)
-```
+**`app.py`** — FastAPI application factory. Mounts all routers and wires the Dishka DI container into the app lifespan.
 
-## HTTP API
+**`server.py`** — `ApiServer` Component. Wraps the FastAPI app as a lifecycle `Component` so it starts/stops cleanly with the rest of the server process.
 
-The routers in `api/routers/` are consumed by `dashboard/app.py` today but are structured to be composable — any server can import and mount individual routers.
+**`telegram.py`** — `TelegramAlerter`. Implements `AbstractAlerter` from `monitoring.api.interfaces`. Sends alerts to a configured Telegram bot/chat when stale heartbeats are detected.
 
-Each router module exports a `create_<module>_router(...)` factory that accepts only its own dependencies and returns a configured `APIRouter`.
+## Routers
 
-See `dashboard/README.md` for the full endpoint list and middleware details.
-
-## Dashboard server
-
-When `DASHBOARD_ENABLED=true`, a FastAPI app serves on `DASHBOARD_HOST:DASHBOARD_PORT` (default `127.0.0.1:8081`).
-
-`DashboardServer` participates in the `Runtime` lifecycle — it starts last (so all other components are running when requests arrive) and shuts down gracefully on stop.
-
-## Telegram alerts
-
-`TelegramAlerter` sends messages to a configured chat ID via the Telegram Bot API. It is passed as the alerter callback to `HeartbeatMonitor` in `monitoring/`.
-
-```dotenv
-TELEGRAM_BOT_TOKEN=your_bot_token
-TELEGRAM_CHAT_ID=your_chat_id
-```
-
-Leave both empty to disable alerting without changing any other code.
+See [routers/README.md](routers/README.md).

@@ -1,57 +1,37 @@
 # broker
 
-Broker and market-data abstractions. Every interaction with Zerodha — REST or WebSocket — is encapsulated here so the rest of the system never imports `kiteconnect` directly.
+Broker abstraction layer — defines the `Broker` and `BrokerStream` ABCs and provides two concrete implementations: the live Zerodha adapter and an in-process paper broker for testing and simulation.
 
-## Structure
+## Layout
 
 ```
 broker/
-├── base/
-│   ├── broker.py          # Broker ABC (REST: instruments, OHLC, place_order)
-│   └── broker_stream.py   # BrokerStream ABC (WebSocket: subscribe, callbacks)
-├── zerodha/
-│   ├── broker.py          # ZerodhaBroker — wraps KiteConnect REST API
-│   ├── stream.py          # ZerodhaStream — wraps KiteConnect WebSocket
-│   ├── kite_client.py     # Thin sync/async bridge around kiteconnect.KiteConnect
-│   └── models.py          # TypedDicts for raw Kite API response shapes
-└── paper_broker.py        # PaperBroker, AbstractPriceStore, PriceStore
+├── api/
+│   ├── __init__.py       Re-exports: Broker, BrokerStream, AbstractPriceStore, Tick, BrokerConfig
+│   └── interfaces.py     AbstractPriceStore protocol
+├── service/
+│   ├── broker.py         Broker ABC — place_order, cancel_order, get_positions, fetch_candles
+│   ├── broker_stream.py  BrokerStream ABC — start/stop WebSocket tick feed
+│   ├── paper_broker.py   PaperBroker + PriceStore (in-memory fill simulation)
+│   └── zerodha/
+│       ├── broker.py     ZerodhaBroker (live implementation)
+│       ├── kite_client.py KiteConnect HTTP wrapper
+│       ├── models.py     KiteOrder, KitePosition typed dicts
+│       └── stream.py     ZerodhaStream (KiteTicker WebSocket adapter)
+├── storage/
+│   └── models.py         BrokerToken ORM model (encrypted credential storage)
+└── di/
+    └── providers.py      BrokerProvider — selects live vs paper based on config
 ```
 
-## Abstractions
+## Key abstractions
 
-### `Broker` (ABC)
+**`Broker`** (service/broker.py) — the interface every order-routing component depends on. Concrete impls: `ZerodhaBroker` (live) and `PaperBroker` (simulation).
 
-```python
-async def get_instruments(exchange: str) -> list[Instrument]
-async def get_ohlc(symbol, interval, start, end) -> list[Candle]
-async def place_order(symbol, side, qty, order_type, limit_price) -> str  # kite_order_id
-```
+**`BrokerStream`** (service/broker_stream.py) — WebSocket tick feed. `ZerodhaStream` wraps KiteTicker; `PaperBroker` doubles as a synthetic stream for backtests.
 
-### `BrokerStream` (ABC)
+**`AbstractPriceStore`** (api/interfaces.py) — a `Protocol` that gives components read access to the latest tick price. Implemented by `PriceStore` (in-memory dict) which is updated by `TickSubscriber` from Redis.
 
-```python
-def subscribe(tokens: list[int]) -> None
-def set_on_tick(callback: Callable[[list[dict]], None]) -> None
-def set_on_connect(callback: Callable[[], None]) -> None
-def set_on_disconnect(callback: Callable[[Exception | None], None]) -> None
-def start() -> None
-def stop() -> None
-```
+## Credential storage
 
-## Implementations
-
-| Mode | Broker | BrokerStream |
-|------|--------|--------------|
-| Live | `ZerodhaBroker` | `ZerodhaStream` |
-| Paper | `PaperBroker` (wraps ZerodhaBroker, fakes `place_order`) | `ZerodhaStream` (real market data) |
-| Backtest | `SlippageFillSimulator` (in strategy-testing/) | `CandlePlayer` (in strategy-testing/) |
-
-## Paper trading
-
-`PaperBroker` passes all read operations through to the real broker but short-circuits `place_order`, returning a synthetic order ID and triggering an immediate simulated fill. Fill price comes from `PriceStore`, which is updated by `KiteIngestor` on every incoming tick.
-
-## Key design notes
-
-- `ZerodhaBroker` caches the instruments list in memory (`_instruments`). Instruments change only at market open, so this is safe for the lifetime of a session.
-- `kite_client.py` bridges the synchronous `kiteconnect` library to the async event loop using `anyio.to_thread.run_sync`.
-- Raw Kite API responses use `TypedDict` (not Pydantic) because they are external API shapes that are not validated before use — the `TickRegistry` handles validation downstream.
+`BrokerToken` stores the Zerodha access token encrypted with `pgp_sym_encrypt`. The encryption key comes from `TOKEN_SECRET_KEY` in env and never touches the DB.

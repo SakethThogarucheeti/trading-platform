@@ -1,35 +1,18 @@
-# worker/
+# worker
 
-Redis subscriber and circuit state sync for worker processes. Add new worker-side pipeline stages here.
+Worker-process entry points. The worker runs in a separate process from the HTTP server and handles the Redis-side of the pipeline.
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `tick_subscriber.py` | Redis pub/sub consumer — worker's counterpart to `KiteIngestor` |
-| `circuit_breaker_redis.py` | Polls `circuit:state` from Redis; drop-in for in-process `CircuitBreaker` |
+**`tick_subscriber.py`** — `TickSubscriber`. Subscribes to the Redis tick channel, deserialises `TickEvent` JSON, and calls `CandleAggregator.handle()` to drive the strategy pipeline. Also updates the `PriceStore` so `PaperBroker` has a current price for fill simulation.
 
-## Why a separate package
+**`circuit_breaker_redis.py`** — `CircuitBreakerRedis`. Subscribes to the Redis circuit-breaker channel. When the ingestor process opens or closes the breaker it publishes an event; this subscriber mirrors the state into the worker process's `CircuitBreaker` instance so both processes stay in sync.
 
-The main ingestor process owns the Zerodha WebSocket connection and publishes ticks to Redis. Worker processes (one per algo) run in isolated Python processes and consume from Redis instead. This package contains the worker-side of that split:
+## How the two processes divide work
 
-- `TickSubscriber` subscribes to `ticks:<token>` channels and forwards each deserialized `TickEvent` to registered `on_tick` callbacks — the same interface as `KiteIngestor`.
-- `RedisCircuitBreaker` polls `circuit:state` written by `TickPublisher`, so workers respect the ingestor's circuit state without needing a direct connection.
+| Process | Entry point | Responsibilities |
+|---------|-------------|-----------------|
+| Server | `main.py` / `start.py` | HTTP API, KiteIngestor WebSocket, TickPublisher, HeartbeatMonitor |
+| Worker | `worker/` components | TickSubscriber, CandleAggregator, SignalGenerator, RiskFilter, OrderExecutor |
 
-## TickSubscriber
-
-`TickSubscriber` is a `Component` that:
-1. Subscribes to a set of `ticks:<instrument_token>` Redis channels.
-2. Runs `circuit_breaker.sync_loop()` as a concurrent background task to keep circuit state fresh.
-3. Deserializes each Redis message to a `TickEvent` and calls all registered `on_tick` callbacks.
-
-## RedisCircuitBreaker
-
-`RedisCircuitBreaker` is a drop-in replacement for the ingestor's in-process `CircuitBreaker`. It caches the last-seen state locally and refreshes from Redis every 2 seconds. Worker components call `circuit_breaker.is_open` to check whether to suppress orders.
-
-## Relationship to other packages
-
-- `tick_ingest/tick_publisher.py` — writes to `ticks:<token>` and `circuit:state`
-- `core/lifecycle/component.py` — `TickSubscriber` extends `Component`
-- `candles/candle_aggregator.py` — registered as `on_tick` callback in worker mode
-- `di/providers/worker_components.py` — wires `TickSubscriber` + `RedisCircuitBreaker` into the worker runtime
+The boundary is Redis pub/sub on the tick channel. The server publishes; the worker consumes and drives the full strategy → execution pipeline.

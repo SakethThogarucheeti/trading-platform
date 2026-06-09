@@ -1,49 +1,32 @@
-# storage/cache/
+# storage/cache
 
-Two-tier caching layer (in-memory + Redis via cashews). Keeps hot values — daily P&L, rolling strategy state, dashboard API responses — out of the database on the hot path.
-
-## Architecture
-
-```
-CacherFactory          (single DI-injected singleton)
-    │
-    ├── PnlCacher          domain: daily realized P&L
-    ├── RollingStateCacher domain: per-tick strategy rolling state
-    └── ApiResponseCacher  domain: dashboard API response bodies
-          │
-          └── BaseCacher[T]  (abstract base — get_or_set, make_key, default_ttl)
-                │
-                └── ValueCache  (backend: in-memory dict + cashews Redis)
-```
+Two-tier cache used by the risk and strategy layers for values that are expensive to recompute on every tick.
 
 ## Files
 
-| File | Class | Purpose |
-|------|-------|---------|
-| `backend.py` | `ValueCache` | Two-tier backend: in-memory dict (sync-safe, always current) + Redis via cashews (async, survives restarts). Memory is always checked first; Redis is only consulted on a miss and the result is written back into memory. |
-| `base.py` | `BaseCacher[T]` | Abstract base. Subclasses define `make_key(*args)` and `default_ttl()`. Provides `get_or_set(key_args, producer, ttl)` — calls the producer only on a cache miss. |
-| `pnl.py` | `PnlCacher` | Daily realized P&L. Written by `OrderExecutor` on every fill (`increment_sync`); read by `RiskFilter` before each signal check. Key: `rf:pnl:{YYYY-MM-DD}`. TTL: seconds until midnight + 1h grace. |
-| `rolling_state.py` | `RollingStateCacher` | Per-tick rolling strategy state (previous indicator values, bar counters). Written by `SignalGenerator` after every `on_candle()`; read on startup to restore state across restarts. Keeps a sliding window of the last 50 `tick_log_id`s per `(algo, symbol, interval)`. |
-| `api.py` | `ApiResponseCacher` | TTL-based cache for dashboard API response bodies (already-serialized JSON strings). Short TTLs (30–60s) keep the dashboard fast without hammering the DB on every poll. |
-| `factory.py` | `CacherFactory` | Lazily creates and reuses all typed cachers. DI injects this as an app-scoped singleton — callers use `factory.pnl()`, `factory.rolling_state()`, `factory.api()`. |
+**`base.py`** — `AbstractCache[K, V]` protocol. A cache is a key-value store with async `get`, `set`, and `invalidate`.
 
-## Usage pattern
+**`backend.py`** — `ValueCache` — in-memory dict. Used in tests and when Redis is not configured.
+
+**`factory.py`** — `CacherFactory` — the single injectable object. Vends named cache instances:
+- `factory.pnl()` — daily PnL cache; keyed by `(date,)`
+- `factory.rolling_state()` — per-algo rolling state (indicator warm-up data)
+
+**`pnl.py`** — `PnLCache` — wraps `AbstractCache` with `increment_sync()` for fill-driven PnL updates and typed `get_or_set()`.
+
+**`rolling_state.py`** — `RollingStateCache` — saves/loads per-algo-symbol-interval state snapshots to Redis (JSON-encoded). Used by `SignalGenerator` to survive restarts without re-warming.
+
+**`api.py`** — `ApiResponseCacher` — caches HTTP API responses (e.g. instrument list) in Redis.
+
+## Setup
 
 ```python
-# Cache-aside with producer callback
-value = await cacher.get_or_set(
-    key_args=(today,),
-    producer=lambda: store.get_daily_realized_pnl(today),
-    ttl=60,
-)
+from trading.storage.cache import setup_cache, CacherFactory, ValueCache
+
+# In production (Redis available)
+setup_cache(redis_client)
+
+# In tests
+setup_cache(None)   # falls back to ValueCache
+factory = CacherFactory(ValueCache(), clock)
 ```
-
-The producer is an async callable invoked only on a cache miss. The result is written to both memory and Redis before being returned.
-
-## Relationship to other packages
-
-- `storage/cache` is injected via `di/providers/` as a `CacherFactory` singleton
-- `execution/order_executor.py` — calls `PnlCacher.increment_sync()` on fill
-- `risk/` — reads `PnlCacher` via `RiskContext` before each signal check
-- `strategy/` — reads/writes `RollingStateCacher` for state continuity across restarts
-- `api/routers/pnl.py`, `api/routers/reports.py` — use `ApiResponseCacher` to short-circuit repeated dashboard polls

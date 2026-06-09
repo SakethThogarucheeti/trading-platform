@@ -1,57 +1,41 @@
 # storage
 
-The only layer that touches PostgreSQL. All other packages call store interfaces; none issue SQLAlchemy queries directly.
+Shared storage infrastructure. Domain-specific stores live in their owning module's `storage/` layer; this package contains only cross-cutting storage concerns.
 
-## Structure
+## Layout
 
 ```
 storage/
-├── base.py          # AbstractRepository — legacy base (kept for compatibility)
-├── repository.py    # Repository — concrete legacy implementation
-└── stores/          # Domain-specific stores (preferred interface going forward)
-    ├── audit.py         # Tick logs + per-decision audit trail
-    ├── candle.py        # OHLCV candle persistence and retrieval
-    ├── candle_store.py  # Candle fetch with optional Redis cache
-    ├── chart.py         # Indicator value logging for charting
-    ├── config.py        # Algo config rows + live algo state
-    ├── heartbeat.py     # Module liveness timestamps
-    ├── instrument.py    # Instrument master (symbol, token, type)
-    └── trading.py       # Signals, orders, positions, broker tokens
+├── cache/          Two-tier cache (in-memory ValueCache + optional Redis)
+└── stores/
+    └── candle_store.py   CandleStore — Postgres + Redis-cached AbstractCandleStore
+                          for the indicator library (quantindicators)
 ```
 
-See `stores/README.md` for per-store details.
+## cache/
 
-## `AbstractRepository`
+See [cache/README.md](cache/README.md).
 
-Defines the complete DB API consumed by the rest of the system. All methods are async and accept an `AsyncSession` from the caller — the repository is stateless; transaction management is the caller's responsibility.
+## stores/candle_store.py
 
-Key method groups:
-
-| Group | Methods |
-|-------|---------|
-| Candles | `save_candle`, `get_candles`, `get_candles_since` |
-| Ticks | `log_tick` |
-| Signals | `save_signal`, `get_signals` |
-| Orders | `save_order`, `get_order_by_kite_id`, `update_order_status`, `update_order_fill` |
-| Positions | `get_position`, `update_position` (atomic `SELECT … FOR UPDATE`) |
-| PnL | `get_daily_realized_pnl` |
-| Audit | `log_heartbeat`, `log_decision`, `log_audit_event` |
-
-## `Repository` implementation
-
-- Candle inserts use `ON CONFLICT DO NOTHING` — safe to replay historical feeds without error.
-- All monetary values (prices, PnL) are stored as `Numeric` in Postgres and converted to `Decimal` on read to avoid floating-point drift.
-- `update_position` uses `SELECT … FOR UPDATE` to prevent concurrent fills from producing an inconsistent net quantity or average price.
-- No business logic lives here — arithmetic (position sizing, PnL calculation) is in `risk/sizer.py` and `reports/pnl.py` respectively.
-
-## Session management
-
-Sessions are created by callers (registries, scripts) via `core.database.get_session()`, which is an async context manager:
+`CandleStore` implements `quantindicators.store.AbstractCandleStore`. It wraps a `CandleDataStore` (from `trading.candles.storage.store`) with an optional Redis cache layer. Indicator objects fetch candle windows through this store during `on_candle()` callbacks.
 
 ```python
-async with get_session(engine) as session:
-    await repo.save_order(session, order)
-    # auto-commit on exit, auto-rollback on exception
+from trading.storage.stores.candle_store import CandleStore
 ```
 
-The repository never opens its own sessions or manages transactions. This keeps it composable: multiple repository calls can share one transaction when atomicity is required.
+Cache key format: `cs:candles:{symbol}:{interval}:n{limit}` or `cs:candles:{symbol}:{interval}:since:{iso}`. TTL: 90 seconds.
+
+## What moved out
+
+All domain store classes previously in `storage/stores/` have been migrated to their owning modules:
+
+| Store | Now lives in |
+|-------|-------------|
+| `AuditStore` | `trading.tick_ingest.storage.store` |
+| `CandleDataStore` | `trading.candles.storage.store` |
+| `InstrumentStore` | `trading.candles.storage.store` |
+| `TradingStore` | `trading.execution.storage.store` |
+| `PositionStore` | `trading.execution.storage.store` |
+| `HeartbeatStore` | `trading.monitoring.storage.store` |
+| `ChartStore`, `ConfigStore` | `trading.strategy.storage.store` |
