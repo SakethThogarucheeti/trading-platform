@@ -9,15 +9,15 @@ import pytest
 from anyio import create_task_group, sleep
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from trading.broker.base.broker_stream import BrokerStream
-from trading.broker.paper_broker import AbstractPriceStore
-from trading.core.database import build_session_factory, init_db
+from trading.broker.service.broker_stream import BrokerStream
+from trading.broker.service.paper_broker import AbstractPriceStore
+from trading.app.database import build_session_factory, init_db
 from trading.core.models import Instrument
 from trading.core.schemas import InstrumentType, TickEvent
 from trading.core.messaging import AbstractCircuitBreaker
-from trading.tick_ingest.kite_ingestor import KiteIngestor
-from trading.tick_ingest.tick_ingestor import CircuitBreaker, TickConfig, TickIngestor
-from trading.storage.stores.audit import AuditStore
+from trading.tick_ingest.service.kite_ingestor import KiteIngestor
+from trading.tick_ingest.service.ingestor import CircuitBreaker, TickConfig, TickIngestor
+from trading.tick_ingest.storage.store import AuditStore
 
 NOW = datetime.now(UTC)
 
@@ -343,7 +343,7 @@ async def test_tick_registry_db_persist_failure_returns_tick_with_minus_one_id(
     engine: AsyncEngine,
 ) -> None:
     """audit.log_tick() raises → tick_log_id set to -1 but TickEvent returned."""
-    from trading.storage.stores.audit import AbstractAuditStore
+    from trading.tick_ingest.api.interfaces import AbstractAuditStore
 
     class _FailingAuditStore(AbstractAuditStore):
         async def log_tick(self, tick, symbol: str) -> int:

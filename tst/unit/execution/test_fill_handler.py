@@ -8,9 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 
 from trading.core.schemas import FillEvent, Side
-from trading.execution.fill_handler import FillHandler
-from trading.execution.position_accountant import PositionAccountant
-from trading.storage.stores.trading import AbstractTradingStore, NotFoundError
+from trading.execution.service.fill_handler import FillHandler
+from trading.execution.service.position_accountant import PositionAccountant
+from trading.execution.api.interfaces import AbstractTradingStore
+from trading.execution.storage.store import NotFoundError
 
 
 # ---------------------------------------------------------------------------

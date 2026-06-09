@@ -11,7 +11,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from trading.core.database import build_session_factory, get_session, init_db
+from trading.app.database import build_session_factory, get_session, init_db
 from trading.core.models import (
     AlgoConfig,
     AlgoState,

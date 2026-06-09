@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from trading.core.tasks import _on_done, fire
+from trading.app.tasks import _on_done, fire
 
 
 @pytest.mark.asyncio

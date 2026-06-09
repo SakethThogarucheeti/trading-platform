@@ -5,7 +5,7 @@ import logging
 import random
 from typing import Any
 
-from trading.broker.base.broker import Broker
+from trading.broker.service.broker import Broker
 from trading.core.schemas import OrderType, Side
 
 logger = logging.getLogger(__name__)

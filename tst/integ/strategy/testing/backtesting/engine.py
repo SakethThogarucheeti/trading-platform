@@ -24,29 +24,29 @@ from testing.backtesting.report import BacktestConfig, BacktestReport
 from testing.registry import session_type
 from testing.session import TestingSession
 from testing.simulators.execution_sim import SlippageFillSimulator
-from trading.broker.paper_broker import PriceStore
+from trading.broker.service.paper_broker import PriceStore
 from trading.core.clock import SimulatedClock
-from trading.core.database import build_session_factory, init_db
+from trading.app.database import build_session_factory, init_db
 from trading.core.schemas import CandleEvent, InstrumentType
 from trading.di.providers.strategy import make_strategy
 from quantindicators.polars_store import PolarsStore
-from trading.strategy.signal_generator import AlgoInstance, AlgoRunConfig, SignalGenerator
-from trading.candles.bar_accumulator import SymbolConfig
-from trading.execution.fill_handler import FillHandler
-from trading.execution.order_executor import ExecConfig, OrderExecutor
-from trading.execution.position_accountant import PositionAccountant
+from trading.strategy.service.generator import AlgoInstance, AlgoRunConfig, SignalGenerator
+from trading.candles.service.bar_accumulator import SymbolConfig
+from trading.execution.service.fill_handler import FillHandler
+from trading.execution.service.executor import ExecConfig, OrderExecutor
+from trading.execution.service.position_accountant import PositionAccountant
 from trading.risk.gates.circuit_breaker import CircuitBreakerGate
 from trading.risk.gates.daily_loss import DailyLossGate
 from trading.risk.gates.duplicate_position import DuplicatePositionGate
 from trading.risk.gates.time_cutoff import TimeCutoffGate
-from trading.risk.risk_filter import RiskConfig, RiskFilter
-from trading.tick_ingest.tick_ingestor import CircuitBreaker
+from trading.risk.service.filter import RiskConfig, RiskFilter
+from trading.tick_ingest.service.ingestor import CircuitBreaker
 from trading.storage.cache import CacherFactory, ValueCache, setup_cache
-from trading.storage.stores.audit import AuditStore
-from trading.storage.stores.chart import ChartStore
-from trading.storage.stores.config import ConfigStore
-from trading.storage.stores.position import PositionStore
-from trading.storage.stores.trading import TradingStore
+from trading.tick_ingest.storage.store import AuditStore
+from trading.strategy.storage.store import ChartStore
+from trading.strategy.storage.store import ConfigStore
+from trading.execution.storage.store import PositionStore
+from trading.execution.storage.store import TradingStore
 
 logger = logging.getLogger(__name__)
 

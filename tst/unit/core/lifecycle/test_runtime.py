@@ -8,12 +8,12 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from trading.core.database import build_session_factory, init_db
+from trading.app.database import build_session_factory, init_db
 from trading.core.models import Heartbeat
 from trading.core.lifecycle.component import Component, ComponentState
-from trading.monitoring.heartbeat import HeartbeatMonitor
+from trading.monitoring.service.heartbeat import HeartbeatMonitor
 from trading.core.lifecycle.runtime import Runtime
-from trading.storage.stores.heartbeat import HeartbeatStore
+from trading.monitoring.storage.store import HeartbeatStore
 
 # ---------------------------------------------------------------------------
 # Minimal Component implementations for testing
@@ -213,7 +213,7 @@ async def test_heartbeat_monitor_registers_components(engine: AsyncEngine) -> No
     task = asyncio.get_event_loop().create_task(monitor.start())
     await asyncio.sleep(0.1)
 
-    from trading.core.database import get_session
+    from trading.app.database import get_session
 
     async with get_session(engine) as s:
         hb_a = await s.get(Heartbeat, "ingestor")
@@ -230,7 +230,7 @@ async def test_heartbeat_monitor_beats_regularly(engine: AsyncEngine) -> None:
     task = asyncio.get_event_loop().create_task(monitor.start())
     await asyncio.sleep(1.5)  # allow setup + initial stale check + first beat (beat=1s)
 
-    from trading.core.database import get_session
+    from trading.app.database import get_session
 
     async with get_session(engine) as s:
         hb = await s.get(Heartbeat, "heartbeat_monitor")
@@ -256,7 +256,7 @@ async def test_heartbeat_monitor_detects_stale_module(engine: AsyncEngine) -> No
         alerted.append(module)
 
     # Pre-insert a very old heartbeat
-    from trading.core.database import get_session
+    from trading.app.database import get_session
 
     old_ts = datetime.now(UTC) - timedelta(seconds=120)
     async with get_session(engine) as s:

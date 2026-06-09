@@ -12,11 +12,11 @@ from anyio import create_task_group
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from trading.config.settings import Settings
-from trading.core.database import build_session_factory, init_db
+from trading.app.database import build_session_factory, init_db
 from trading.core.models import Heartbeat
-from trading.monitoring.heartbeat import HeartbeatMonitor
+from trading.monitoring.service.heartbeat import HeartbeatMonitor
 from trading.api.telegram import TelegramAlerter
-from trading.storage.stores.heartbeat import HeartbeatStore
+from trading.monitoring.storage.store import HeartbeatStore
 
 
 def make_settings(token: str | None = "BOT_TOKEN", chat_id: str | None = "CHAT_ID") -> Settings:
@@ -331,7 +331,7 @@ async def test_check_stale_exception_is_caught(engine: AsyncEngine) -> None:
     """Covers lines 101-102: _check_stale() catches exceptions from get_stale_modules."""
     from unittest.mock import AsyncMock
 
-    from trading.storage.stores.heartbeat import AbstractHeartbeatStore
+    from trading.monitoring.api.interfaces import AbstractHeartbeatStore
 
     class _FailingHeartbeatStore(AbstractHeartbeatStore):
         async def update_heartbeat(self, module: str) -> None:

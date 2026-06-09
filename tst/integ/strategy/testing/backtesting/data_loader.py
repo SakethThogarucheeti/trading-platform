@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 import polars as pl
 
 if TYPE_CHECKING:
-    from trading.broker.base.broker import Broker
-    from trading.candles.historical_data_service import HistoricalDataService
+    from trading.broker.service.broker import Broker
+    from trading.candles.service.historical import HistoricalDataService
 
 # Required columns and their expected Polars dtypes (for validation)
 _REQUIRED_COLUMNS: set[str] = {"date", "open", "high", "low", "close", "volume"}

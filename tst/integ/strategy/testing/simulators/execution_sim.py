@@ -9,8 +9,8 @@ from uuid import uuid4
 
 import polars as pl
 
-from trading.broker.base.broker import Broker
-from trading.broker.paper_broker import AbstractPriceStore
+from trading.broker.service.broker import Broker
+from trading.broker.service.paper_broker import AbstractPriceStore
 from trading.core.schemas import OrderType, Side
 
 logger = logging.getLogger(__name__)

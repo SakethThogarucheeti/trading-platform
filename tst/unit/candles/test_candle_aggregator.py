@@ -11,16 +11,17 @@ import pytest
 from anyio import create_task_group, sleep
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from trading.broker.base.broker import Broker
-from trading.candles.bar_accumulator import SymbolConfig
-from trading.candles.historical_data_service import HistoricalDataResult, HistoricalDataService
-from trading.core.database import build_session_factory, init_db
+from trading.broker.api import Broker
+from trading.candles.service.bar_accumulator import SymbolConfig
+from trading.candles.service.historical import HistoricalDataResult, HistoricalDataService
+from trading.app.database import build_session_factory, init_db
 from trading.core.models import Instrument
 from trading.core.schemas import CandleEvent, InstrumentType, TickEvent
-from trading.candles.candle_aggregator import CandleAggregator, CandleAggregatorComponent, CandleConfig
+from trading.candles.service.aggregator import CandleAggregator, CandleAggregatorComponent
+from trading.candles.service.persister import CandleConfig
 from trading.core.lifecycle.component import ComponentState
-from trading.storage.stores.audit import AuditStore
-from trading.storage.stores.candle import CandleDataStore
+from trading.tick_ingest.storage.store import AuditStore
+from trading.candles.storage.store import CandleDataStore
 
 
 _INFY_SYMBOL = SymbolConfig(
@@ -91,7 +92,7 @@ async def engine() -> AsyncEngine:  # type: ignore[misc]
 async def test_candle_aggregator_starts_and_reaches_running(engine: AsyncEngine) -> None:
     sf = build_session_factory(engine)
 
-    from trading.core.database import get_session
+    from trading.app.database import get_session
 
     async with get_session(engine) as s:
         s.add(Instrument(token=1, symbol="INFY", exchange="NSE", instrument_type="EQUITY"))

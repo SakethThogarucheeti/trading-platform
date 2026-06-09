@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from trading.core.clock import SYSTEM_CLOCK
-from trading.core.database import build_session_factory, init_db
+from trading.app.database import build_session_factory, init_db
 from trading.core.models import Order, Position, Signal
 from trading.core.schemas import (
     InstrumentType,
@@ -24,13 +24,12 @@ from trading.risk.gates.circuit_breaker import CircuitBreakerGate
 from trading.risk.gates.daily_loss import DailyLossGate
 from trading.risk.gates.duplicate_position import DuplicatePositionGate
 from trading.risk.gates.time_cutoff import TimeCutoffGate
-from trading.risk.risk_filter import RiskConfig, RiskFilter
-from trading.tick_ingest.tick_ingestor import CircuitBreaker
-from trading.risk.sizer import calculate_quantity
-from trading.storage.stores.audit import AuditStore
+from trading.risk.service.filter import RiskConfig, RiskFilter
+from trading.tick_ingest.service.ingestor import CircuitBreaker
+from trading.risk.service.sizer import calculate_quantity
+from trading.tick_ingest.storage.store import AuditStore
 from trading.storage.cache import CacherFactory, ValueCache, setup_cache
-from trading.storage.stores.position import PositionStore
-from trading.storage.stores.trading import TradingStore
+from trading.execution.storage.store import PositionStore, TradingStore
 
 NOW = datetime.now(UTC)
 TODAY = NOW.date()
@@ -241,7 +240,7 @@ async def test_daily_loss_gate_disabled_always_passes(engine: AsyncEngine) -> No
 
 
 async def test_entry_with_existing_position_rejected(engine: AsyncEngine) -> None:
-    from trading.core.database import get_session
+    from trading.app.database import get_session
 
     async with get_session(engine) as s:
         s.add(
@@ -260,7 +259,7 @@ async def test_entry_with_existing_position_rejected(engine: AsyncEngine) -> Non
 
 
 async def test_exit_with_existing_position_passes(engine: AsyncEngine) -> None:
-    from trading.core.database import get_session
+    from trading.app.database import get_session
 
     async with get_session(engine) as s:
         s.add(
@@ -301,7 +300,7 @@ async def test_zero_quantity_rejects_signal(engine: AsyncEngine) -> None:
 async def test_rejected_signal_logged_to_audit(engine: AsyncEngine) -> None:
     from sqlalchemy import select
 
-    from trading.core.database import get_session
+    from trading.app.database import get_session
     from trading.core.models import AuditLog
 
     config = make_config(intraday_cutoff_hour=0, intraday_cutoff_minute=0)
@@ -345,7 +344,7 @@ async def test_audit_log_failure_in_accept_is_swallowed() -> None:
     """Covers lines 130-131: audit.log_audit raises inside handle() and is swallowed."""
     from unittest.mock import AsyncMock, MagicMock
 
-    from trading.storage.stores.audit import AbstractAuditStore
+    from trading.risk.api.interfaces import AbstractAuditStore
 
     class _FailAuditStore(AbstractAuditStore):
         async def log_tick(self, event, symbol):
@@ -392,7 +391,7 @@ async def test_save_signal_failure_is_swallowed() -> None:
     """Covers lines 136-137: trading.save_signal raises inside handle() and is swallowed."""
     from unittest.mock import AsyncMock
 
-    from trading.storage.stores.audit import AbstractAuditStore
+    from trading.risk.api.interfaces import AbstractAuditStore
 
     class _NoopAuditStore(AbstractAuditStore):
         async def log_tick(self, event, symbol):
@@ -439,7 +438,7 @@ async def test_reject_audit_log_failure_is_swallowed() -> None:
     """Covers lines 175-176: audit.log_audit raises inside _reject() and is swallowed."""
     from unittest.mock import AsyncMock
 
-    from trading.storage.stores.audit import AbstractAuditStore
+    from trading.risk.api.interfaces import AbstractAuditStore
 
     class _FailAuditStore(AbstractAuditStore):
         async def log_tick(self, event, symbol):
@@ -483,12 +482,12 @@ async def test_log_decision_writes_when_tick_log_id_positive(engine: AsyncEngine
     """Covers lines 175-176: _log_decision is called with tick_log_id > 0."""
     from sqlalchemy import select
 
-    from trading.core.database import get_session
+    from trading.app.database import get_session
     from trading.core.models import DecisionLog
 
     reg, factory = make_registry(engine)
     sig = make_signal(tick_log_id=99)
-    from trading.risk.risk_filter import SignalAcceptedContext
+    from trading.risk.service.filter import SignalAcceptedContext
     await reg._log_decision("SIGNAL_ACCEPTED", sig, SignalAcceptedContext(qty=5, order_type="MARKET"))
 
     # Wait briefly for the fire-and-forget task
@@ -510,7 +509,7 @@ async def test_time_cutoff_gate_rejects_after_cutoff() -> None:
     from datetime import UTC, datetime, time
 
     from trading.risk.gates.time_cutoff import TimeCutoffGate
-    from trading.risk.policy import RiskContext
+    from trading.risk.service.policy import RiskContext
 
     gate = TimeCutoffGate()
     ctx = RiskContext(
@@ -530,7 +529,7 @@ async def test_time_cutoff_gate_passes_before_cutoff() -> None:
     from datetime import UTC, datetime, time
 
     from trading.risk.gates.time_cutoff import TimeCutoffGate
-    from trading.risk.policy import RiskContext
+    from trading.risk.service.policy import RiskContext
 
     gate = TimeCutoffGate()
     ctx = RiskContext(
@@ -555,7 +554,7 @@ async def test_circuit_breaker_gate_rejects_when_open() -> None:
 
     from datetime import UTC, datetime, time
 
-    from trading.risk.policy import RiskContext
+    from trading.risk.service.policy import RiskContext
 
     ctx = RiskContext(
         now=datetime(2024, 1, 1, 10, 0, tzinfo=UTC),
@@ -574,7 +573,7 @@ async def test_daily_loss_gate_rejects_when_limit_exceeded() -> None:
     from datetime import UTC, datetime, time
 
     from trading.risk.gates.daily_loss import DailyLossGate
-    from trading.risk.policy import RiskContext
+    from trading.risk.service.policy import RiskContext
 
     gate = DailyLossGate(enabled=True)
     ctx = RiskContext(
@@ -596,7 +595,7 @@ async def test_duplicate_position_gate_rejects_same_direction() -> None:
 
     from trading.core.models import Position
     from trading.risk.gates.duplicate_position import DuplicatePositionGate
-    from trading.risk.policy import RiskContext
+    from trading.risk.service.policy import RiskContext
 
     gate = DuplicatePositionGate()
     pos = Position(symbol="INFY", instrument_type="EQUITY", net_qty=10, avg_price=Decimal("100"), updated_at=NOW)

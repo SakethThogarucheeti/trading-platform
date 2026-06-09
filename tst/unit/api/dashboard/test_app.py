@@ -266,7 +266,7 @@ async def test_pnl_empty():
 @pytest.mark.asyncio
 async def test_algos_empty():
     sf = _mock_sf(scalars_return=[])
-    with patch("trading.storage.stores.config.ConfigStore.get_algo_configs_with_state", new=AsyncMock(return_value=[])):
+    with patch("trading.strategy.storage.store.ConfigStore.get_algo_configs_with_state", new=AsyncMock(return_value=[])):
         async with await _client(sf) as client:
             resp = await client.get("/api/algos")
     assert resp.status_code == 200
@@ -289,7 +289,7 @@ async def test_algos_with_data():
         },
     }
     sf = _mock_sf(scalars_return=[])
-    with patch("trading.storage.stores.config.ConfigStore.get_algo_configs_with_state", new=AsyncMock(return_value=[algo])):
+    with patch("trading.strategy.storage.store.ConfigStore.get_algo_configs_with_state", new=AsyncMock(return_value=[algo])):
         async with await _client(sf) as client:
             resp = await client.get("/api/algos")
     assert resp.status_code == 200
@@ -518,7 +518,7 @@ async def test_signals_with_algo_name_filter():
 async def test_charts_with_algo_name_filter():
     """charts endpoint with algo_name restricts to that algo's series."""
     sf = _mock_sf(scalars_return=[], fetchall_return=[])
-    with patch("trading.storage.stores.chart.ChartStore.get_chart_names", new=AsyncMock(return_value=[])):
+    with patch("trading.strategy.storage.store.ChartStore.get_chart_names", new=AsyncMock(return_value=[])):
         async with await _client(sf) as client:
             resp = await client.get("/api/charts?algo_name=ema_crossover")
     assert resp.status_code == 200

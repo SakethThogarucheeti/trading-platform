@@ -9,15 +9,14 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from trading.core.clock import SYSTEM_CLOCK
-from trading.core.database import build_session_factory, init_db
+from trading.app.database import build_session_factory, init_db
 from trading.core.schemas import CandleEvent, InstrumentType, SignalEvent
 from trading.di.providers.strategy import make_strategy
 from quantindicators.polars_store import PolarsStore
 from trading.storage.cache import CacherFactory, ValueCache, setup_cache
-from trading.strategy.signal_generator import AlgoInstance, AlgoRunConfig, SignalGenerator
-from trading.storage.stores.audit import AuditStore
-from trading.storage.stores.chart import ChartStore
-from trading.storage.stores.config import ConfigStore
+from trading.strategy.service.generator import AlgoInstance, AlgoRunConfig, SignalGenerator
+from trading.tick_ingest.storage.store import AuditStore
+from trading.strategy.storage.store import ChartStore, ConfigStore
 
 BASE_TIME = datetime(2025, 1, 6, 9, 15, tzinfo=UTC)
 
@@ -304,7 +303,7 @@ async def test_log_signal_audit_failure_is_swallowed() -> None:
     from unittest.mock import AsyncMock
 
     from trading.core.schemas import Side, SignalType
-    from trading.storage.stores.audit import AbstractAuditStore
+    from trading.strategy.api.interfaces import AbstractAuditStore
 
     class _FailingAuditStore(AbstractAuditStore):
         async def log_tick(self, event, symbol):
@@ -320,7 +319,7 @@ async def test_log_signal_audit_failure_is_swallowed() -> None:
     mock_config_store = AsyncMock()
 
     from quantindicators.polars_store import PolarsStore
-    from trading.strategy.signal_generator import AlgoRunConfig, SignalGenerator
+    from trading.strategy.service.generator import AlgoRunConfig, SignalGenerator
 
     config = AlgoRunConfig(
         instrument_strategy_map={"INFY": "ema_crossover"},

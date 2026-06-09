@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from trading.core.schemas import SignalEvent, SignalType, ValidatedOrderEvent
-from trading.storage.stores.trading import TradingStore
+from trading.execution.storage.store import TradingStore
 
 
 async def seed_signal(session_factory: async_sessionmaker, event: ValidatedOrderEvent) -> None:

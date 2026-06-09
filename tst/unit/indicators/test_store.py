@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from trading.storage.stores.candle_store import CandleStore
-from trading.storage.stores.candle import CandleDataStore
+from trading.candles.storage.store import CandleDataStore
 
 
 @pytest.fixture(scope="session")
@@ -25,7 +25,7 @@ def pg_container():
 async def pg_engine(pg_container):
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    from trading.core.database import init_db
+    from trading.app.database import init_db
 
     url = (
         pg_container.get_connection_url()

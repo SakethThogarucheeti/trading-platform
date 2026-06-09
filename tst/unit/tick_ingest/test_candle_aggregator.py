@@ -8,13 +8,14 @@ import polars as pl
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from trading.core.database import build_session_factory, init_db
+from trading.app.database import build_session_factory, init_db
 from trading.core.models import Instrument
 from trading.core.schemas import CandleEvent, InstrumentType, TickEvent
-from trading.candles.bar_accumulator import bar_open_time
-from trading.candles.candle_aggregator import CandleAggregator, CandleConfig, CandlePersister
-from trading.storage.stores.audit import AuditStore
-from trading.storage.stores.candle import CandleDataStore
+from trading.candles.service.bar_accumulator import bar_open_time
+from trading.candles.service.aggregator import CandleAggregator
+from trading.candles.service.persister import CandleConfig, CandlePersister
+from trading.tick_ingest.storage.store import AuditStore
+from trading.candles.storage.store import CandleDataStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -208,7 +209,7 @@ async def test_unknown_token_returns_none(engine: AsyncEngine) -> None:
 
 async def test_candle_persister_tick_log_id_positive_calls_audit(engine: AsyncEngine) -> None:
     """CandlePersister.log calls audit.log_decision when tick_log_id > 0."""
-    from trading.storage.stores.candle import AbstractCandleDataStore
+    from trading.candles.api.interfaces import AbstractCandleStore as AbstractCandleDataStore
 
     class _SucceedingCandleStore(AbstractCandleDataStore):
         async def save_candles(self, rows) -> None:
@@ -240,7 +241,7 @@ async def test_candle_persister_tick_log_id_positive_calls_audit(engine: AsyncEn
 
 async def test_candle_persister_exception_path_is_swallowed(engine: AsyncEngine) -> None:
     """CandlePersister.log exception is caught and logged, not re-raised."""
-    from trading.storage.stores.candle import AbstractCandleDataStore
+    from trading.candles.api.interfaces import AbstractCandleStore as AbstractCandleDataStore
 
     class _FailingCandleStore(AbstractCandleDataStore):
         async def save_candles(self, rows) -> None:
@@ -274,7 +275,7 @@ async def test_handle_with_tick_log_id_schedules_log_candle(engine: AsyncEngine)
     """tick_log_id != 0 triggers fire-and-forget _log_candle."""
     reg = make_registry(engine, tokens=[1], intervals=["1min"])
 
-    from trading.core.database import get_session
+    from trading.app.database import get_session
 
     async with get_session(engine) as s:
         s.add(Instrument(token=1, symbol="SYM1", exchange="NSE", instrument_type="EQUITY"))

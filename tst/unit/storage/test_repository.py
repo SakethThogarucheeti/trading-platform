@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from trading.core.database import build_session_factory, get_session, init_db
+from trading.app.database import build_session_factory, get_session, init_db
 from trading.core.models import Instrument, Order, Signal
 from trading.core.schemas import (
     FillEvent,
@@ -20,13 +20,11 @@ from trading.core.schemas import (
     SignalEvent,
     SignalType,
 )
-from trading.storage.stores.audit import AuditStore
-from trading.storage.stores.chart import ChartStore
-from trading.storage.stores.config import ConfigStore
-from trading.storage.stores.heartbeat import HeartbeatStore
-from trading.storage.stores.instrument import InstrumentStore
-from trading.storage.stores.position import PositionStore
-from trading.storage.stores.trading import NotFoundError, TradingStore
+from trading.tick_ingest.storage.store import AuditStore
+from trading.strategy.storage.store import ChartStore, ConfigStore
+from trading.monitoring.storage.store import HeartbeatStore
+from trading.candles.storage.store import InstrumentStore
+from trading.execution.storage.store import NotFoundError, PositionStore, TradingStore
 
 NOW = datetime.now(UTC)
 TODAY = NOW.date()
@@ -543,7 +541,7 @@ async def test_chart_store_get_indicator_series_filters_by_session_id(
 
 async def test_candle_store_save_empty_rows_is_noop(engine: AsyncEngine) -> None:
     """Covers line 45: save_candles() returns early when rows is empty."""
-    from trading.storage.stores.candle import CandleDataStore
+    from trading.candles.storage.store import CandleDataStore
 
     sf = build_session_factory(engine)
     store = CandleDataStore(sf)

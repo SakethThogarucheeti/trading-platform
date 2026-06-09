@@ -271,7 +271,7 @@ class TestTickSubscriber:
 
     @pytest.mark.anyio
     async def test_listen_updates_price_store(self) -> None:
-        from trading.broker.paper_broker import PriceStore
+        from trading.broker.service.paper_broker import PriceStore
 
         tick = _tick(token=738561, price=1600.0)
         messages = [{"type": "message", "data": tick.model_dump_json().encode()}]

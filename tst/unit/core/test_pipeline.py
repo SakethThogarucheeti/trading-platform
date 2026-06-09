@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from trading.core.pipeline import AlgoPipeline, TickPipeline
+from trading.app.pipeline import AlgoPipeline, TickPipeline
 from trading.core.schemas import (
     InstrumentType,
     OrderType,

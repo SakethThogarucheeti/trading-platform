@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 import polars as pl
 
-from trading.broker.base.broker import Broker
+from trading.broker.service.broker import Broker
 from trading.core.schemas import OrderType, Side
 
 # NSE session: 09:15 → 15:30, 25 bars at 15min cadence

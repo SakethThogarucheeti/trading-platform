@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 from helpers import seed_signal
 from simulators.fault_injector import FaultInjector
 
-from trading.broker.paper_broker import PriceStore
+from trading.broker.service.paper_broker import PriceStore
 from trading.core.clock import SimulatedClock
 from trading.core.models import Order
 from trading.core.schemas import (
@@ -30,19 +30,19 @@ from trading.core.schemas import (
     SignalEvent,
     SignalType,
 )
-from trading.execution.fill_handler import FillHandler
-from trading.execution.order_executor import ExecConfig, OrderExecutor
-from trading.execution.position_accountant import PositionAccountant
+from trading.execution.service.fill_handler import FillHandler
+from trading.execution.service.executor import ExecConfig, OrderExecutor
+from trading.execution.service.position_accountant import PositionAccountant
 from trading.risk.gates.circuit_breaker import CircuitBreakerGate
 from trading.risk.gates.daily_loss import DailyLossGate
 from trading.risk.gates.duplicate_position import DuplicatePositionGate
 from trading.risk.gates.time_cutoff import TimeCutoffGate
-from trading.risk.risk_filter import RiskConfig, RiskFilter
-from trading.tick_ingest.tick_ingestor import CircuitBreaker
+from trading.risk.service.filter import RiskConfig, RiskFilter
+from trading.tick_ingest.service.ingestor import CircuitBreaker
 from trading.storage.cache import CacherFactory, ValueCache, setup_cache
-from trading.storage.stores.audit import AuditStore
-from trading.storage.stores.position import PositionStore
-from trading.storage.stores.trading import TradingStore
+from trading.tick_ingest.storage.store import AuditStore
+from trading.execution.storage.store import PositionStore
+from trading.execution.storage.store import TradingStore
 
 
 def _make_fill_handler(session_factory):

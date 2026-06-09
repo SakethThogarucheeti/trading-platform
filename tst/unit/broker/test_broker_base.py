@@ -6,7 +6,7 @@ from datetime import datetime
 
 import polars as pl
 
-from trading.broker.base.broker import Broker
+from trading.broker.service.broker import Broker
 from trading.core.schemas import OrderType, Side
 
 

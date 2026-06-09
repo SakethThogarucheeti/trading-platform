@@ -8,17 +8,17 @@ import polars as pl
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from trading.broker.base.broker import Broker
-from trading.candles.historical_data_service import (
+from trading.broker.api import Broker
+from trading.candles.service.historical import (
     HistoricalDataService,
     _df_to_candle_rows,
     _has_full_coverage,
     _rows_to_df,
     warmup_start,
 )
-from trading.core.database import build_session_factory, init_db
+from trading.app.database import build_session_factory, init_db
 from trading.candles.storage.store import CandleDataStore
-from trading.storage.stores.candle import AbstractCandleDataStore
+from trading.candles.api.interfaces import AbstractCandleStore as AbstractCandleDataStore
 from quantindicators.types import CandleRow
 
 BASE_TIME = datetime(2025, 1, 6, 9, 15, 0, tzinfo=UTC)

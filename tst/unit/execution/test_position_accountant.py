@@ -10,9 +10,9 @@ import pytest
 
 from trading.core.clock import Clock, SYSTEM_CLOCK
 from trading.core.schemas import FillEvent, Side
-from trading.execution.position_accountant import PositionAccountant
+from trading.execution.service.position_accountant import PositionAccountant
 from trading.storage.cache import CacherFactory, ValueCache, setup_cache
-from trading.storage.stores.position import AbstractPositionStore
+from trading.execution.api.interfaces import AbstractPositionStore
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ import polars as pl
 from trading.core.schemas import CandleEvent
 from trading.core.lifecycle.component import Component
 from trading.core.lifecycle.runtime import Runtime
-from trading.candles.bar_accumulator import SymbolConfig
+from trading.candles.service.bar_accumulator import SymbolConfig
 
 logger = logging.getLogger(__name__)
 

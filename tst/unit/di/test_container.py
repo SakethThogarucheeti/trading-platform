@@ -14,10 +14,10 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from trading.config.settings import Settings
-from trading.core.database import build_session_factory, init_db
-from trading.di.container import build_container
-from trading.storage.stores.audit import AuditStore
-from trading.storage.stores.trading import TradingStore
+from trading.app.database import build_session_factory, init_db
+from trading.app.container import build_container
+from trading.tick_ingest.storage.store import AuditStore
+from trading.execution.storage.store import TradingStore
 
 # ---------------------------------------------------------------------------
 # Test infrastructure provider — replaces prod InfraProvider in tests

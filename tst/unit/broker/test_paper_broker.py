@@ -9,8 +9,8 @@ import httpx
 import polars as pl
 import pytest
 
-from trading.broker.base.broker import Broker
-from trading.broker.paper_broker import AbstractPriceStore, PaperBroker, PriceStore
+from trading.broker.service.broker import Broker
+from trading.broker.service.paper_broker import AbstractPriceStore, PaperBroker, PriceStore
 from trading.core.schemas import OrderType, Side
 
 # ---------------------------------------------------------------------------

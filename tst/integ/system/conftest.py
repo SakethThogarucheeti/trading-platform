@@ -4,7 +4,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from trading.core.database import build_session_factory, init_db
+from trading.app.database import build_session_factory, init_db
 
 
 @pytest.fixture(scope="session")

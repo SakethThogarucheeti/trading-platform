@@ -17,7 +17,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from trading.core.database import init_db
+from trading.app.database import init_db
 
 # Add strategy/testing/ to path so `import testing` resolves
 sys.path.insert(0, str(Path(__file__).parent))

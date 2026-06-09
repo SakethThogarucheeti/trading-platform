@@ -9,9 +9,9 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from trading.broker.base.broker import Broker
+from trading.broker.api import Broker
 from trading.core.clock import SYSTEM_CLOCK
-from trading.core.database import build_session_factory, get_session, init_db
+from trading.app.database import build_session_factory, get_session, init_db
 from trading.core.models import Order, Signal
 from trading.core.schemas import (
     InstrumentType,
@@ -21,12 +21,11 @@ from trading.core.schemas import (
     SignalType,
     ValidatedOrderEvent,
 )
-from trading.execution.fill_handler import FillHandler
-from trading.execution.order_executor import ExecConfig, OrderExecutor
-from trading.execution.position_accountant import PositionAccountant
+from trading.execution.service.fill_handler import FillHandler
+from trading.execution.service.executor import ExecConfig, OrderExecutor
+from trading.execution.service.position_accountant import PositionAccountant
 from trading.storage.cache import CacherFactory, ValueCache, setup_cache
-from trading.storage.stores.position import PositionStore
-from trading.storage.stores.trading import TradingStore
+from trading.execution.storage.store import PositionStore, TradingStore
 
 NOW = datetime.now(UTC)
 
