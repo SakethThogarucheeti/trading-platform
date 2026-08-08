@@ -28,7 +28,7 @@ from zoneinfo import ZoneInfo
 
 from anyio import sleep_forever
 
-from trading.di.container import build_container
+from trading.di.containers.app import build_container
 from trading.core.lifecycle.runtime import AbstractRuntime
 from trading.monitoring.service.scheduler import Scheduler
 from trading.api.server import ApiServer
@@ -199,8 +199,8 @@ async def _main() -> None:
     await _sync_instruments(settings)
 
     async with build_container() as container:
-        from trading.broker.zerodha.kite_client import KiteClient
-        from trading.core.database import build_engine, build_session_factory
+        from trading.broker.service.zerodha.kite_client import KiteClient
+        from trading.app.database import build_engine, build_session_factory
         from trading.execution.storage.store import TradingStore
 
         _engine = build_engine(str(settings.postgres_url))
@@ -209,16 +209,16 @@ async def _main() -> None:
         _token = await _trading.get_broker_token("zerodha", settings.token_secret_key)
         await _engine.dispose()
 
-        kite_client: KiteClient = await container.get(KiteClient)
+        kite_client: KiteClient = container.broker.kite_client()
         if _token:
             kite_client.set_access_token(_token)
             logger.info("Loaded Zerodha token from DB")
         else:
             logger.warning("No Zerodha token in DB — complete login before trading starts")
 
-        runtime: AbstractRuntime = await container.get(AbstractRuntime)
-        scheduler: Scheduler = await container.get(Scheduler)
-        dashboard: ApiServer | None = await container.get(ApiServer | None)
+        runtime: AbstractRuntime = await container.components.runtime()
+        scheduler: Scheduler = await container.components.scheduler()
+        dashboard: ApiServer | None = await container.components.dashboard()
 
         scheduler.start()
         logger.info("Scheduler started.")
@@ -259,12 +259,12 @@ async def _run_worker(algo_name: str) -> None:
 
     Does NOT run migrations or instrument sync — the ingestor owns those.
     """
-    from trading.di.container import build_worker_container
+    from trading.di.containers.app import build_worker_container
 
     logger.info("Worker starting: algo=%r", algo_name)
     async with build_worker_container(algo_name) as container:
-        runtime: AbstractRuntime = await container.get(AbstractRuntime)
-        scheduler: Scheduler = await container.get(Scheduler)
+        runtime: AbstractRuntime = await container.worker_components.runtime()
+        scheduler: Scheduler = await container.worker_components.scheduler()
         scheduler.start()
         logger.info("Worker scheduler started for algo=%r", algo_name)
 

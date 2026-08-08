@@ -8,16 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from trading.app.pipeline import AlgoPipeline, TickPipeline
 from trading.broker.api import Broker
 from trading.candles.api import CandleAggregator
-from trading.config.settings import AlgoSettings, Settings
+from trading.config.settings import AlgoSettings, GateConfig, Settings
 from trading.core.messaging import AbstractCircuitBreaker
 from trading.core.schemas import InstrumentType
-from trading.di.providers.strategy import make_strategy
+from trading.di.containers.algo_steps import AlgoSteps
 from trading.execution.api import ExecConfig, FillHandler, OrderExecutor, PositionAccountant
 from trading.execution.storage.store import PositionStore, TradingStore
-from trading.risk.gates.circuit_breaker import CircuitBreakerGate
-from trading.risk.gates.daily_loss import DailyLossGate
-from trading.risk.gates.duplicate_position import DuplicatePositionGate
-from trading.risk.gates.time_cutoff import TimeCutoffGate
 from trading.risk.service.filter import RiskConfig, RiskFilter
 from trading.risk.service.policy import RiskGate
 from trading.storage.cache import CacherFactory
@@ -37,6 +33,7 @@ class SharedAlgoDeps:
     polars_store: PolarsStore
     settings: Settings
     factory: CacherFactory
+    steps: AlgoSteps
 
 
 class AlgoPipelineFactory:
@@ -46,6 +43,12 @@ class AlgoPipelineFactory:
     Callers provide the per-algo inputs (algo config, intervals, instrument types,
     circuit breaker) and receive a TickPipeline ready to be registered as a tick
     callback. All shared infrastructure deps live in SharedAlgoDeps.
+
+    Strategy and risk gate selection is config-driven: `algo.strategy_id` +
+    `algo.strategy_params`, and `algo.risk_gates` (an ordered list of
+    {gate_id, params}), are resolved through `SharedAlgoDeps.steps`
+    (AlgoSteps) rather than hardcoded here -- swapping a strategy or
+    changing a gate's threshold is a config change, not a code change.
     """
 
     def __init__(self, shared: SharedAlgoDeps) -> None:
@@ -64,7 +67,7 @@ class AlgoPipelineFactory:
 
         algo_instances: dict[str, AlgoInstance] = {
             sym: AlgoInstance(
-                strategy=make_strategy(algo.strategy_id),
+                strategy=s.steps.strategy(algo.strategy_id, algo.strategy_params),
                 instrument_type=InstrumentType(
                     instrument_type_map.get(sym, InstrumentType.EQUITY.value)
                 ),
@@ -93,19 +96,14 @@ class AlgoPipelineFactory:
 
         position_store = PositionStore(s.session_factory)
 
-        gates: list[RiskGate] = [
-            TimeCutoffGate(),
-            CircuitBreakerGate(circuit),
-            DailyLossGate(enabled=not s.settings.paper_trading),
-            DuplicatePositionGate(),
-        ]
+        gates: list[RiskGate] = [self._build_gate(gc, s.settings) for gc in algo.risk_gates]
 
         risk_filter = RiskFilter(
             config=RiskConfig(
                 equity=algo.equity,
                 max_daily_loss_pct=s.settings.max_daily_loss_pct,
                 risk_per_trade_pct=s.settings.risk_per_trade_pct,
-                rc_id=algo.risk_controller_id,
+                rc_id=algo.name,
                 intraday_cutoff_hour=s.settings.intraday_cutoff_hour,
                 intraday_cutoff_minute=s.settings.intraday_cutoff_minute,
             ),
@@ -114,6 +112,7 @@ class AlgoPipelineFactory:
             audit=s.audit,
             position=position_store,
             factory=s.factory,
+            circuit=circuit,
         )
 
         accountant = PositionAccountant(position_store, s.factory)
@@ -134,9 +133,15 @@ class AlgoPipelineFactory:
             algo_pipeline=algo_pipeline,
         )
 
+    def _build_gate(self, gate_config: GateConfig, settings: Settings) -> RiskGate:
+        params = dict(gate_config.params)
+        if gate_config.gate_id == "daily_loss" and settings.paper_trading:
+            params.setdefault("enabled", False)
+        return self._s.steps.gate(gate_config.gate_id, params)
+
     async def seed_state(self, algo: AlgoSettings, intervals: list[str]) -> None:
         s = self._s
-        strategy = make_strategy(algo.strategy_id)
+        strategy = s.steps.strategy(algo.strategy_id, algo.strategy_params)
 
         params = strategy.get_params()
         await s.config_store.seed_algo_config(
