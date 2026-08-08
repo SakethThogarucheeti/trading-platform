@@ -5,10 +5,27 @@ from datetime import time
 from functools import lru_cache
 from pathlib import Path
 
+from typing import Any
+
 from pydantic import BaseModel, Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _log = logging.getLogger(__name__)
+
+
+class GateConfig(BaseModel):
+    """One entry in an algo's risk gate chain: which gate, and its own params."""
+
+    gate_id: str  # registered risk gate identifier (see trading_risk_sdk's gate registry)
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+_DEFAULT_RISK_GATES: list[GateConfig] = [
+    GateConfig(gate_id="time_cutoff"),
+    GateConfig(gate_id="circuit_breaker"),
+    GateConfig(gate_id="daily_loss"),
+    GateConfig(gate_id="duplicate_position"),
+]
 
 
 class AlgoSettings(BaseModel):
@@ -16,7 +33,7 @@ class AlgoSettings(BaseModel):
     Declarative configuration for one trading algo.
 
     Each algo is a self-contained trading engine with its own instruments,
-    strategy, risk controller, feature engine, execution engine, and equity.
+    strategy, risk gate chain, feature engine, execution engine, and equity.
 
     Serialised as JSON in the ALGOS environment variable:
         ALGOS='[{"name":"momentum","instruments":["INFY","TCS"],"equity":100000}]'
@@ -29,7 +46,10 @@ class AlgoSettings(BaseModel):
     instruments: list[str]  # trading symbols, must exist in instruments table
     broker_name: str = "zerodha"  # "zerodha" | "paper"
     strategy_id: str = "ema_crossover"  # registered strategy identifier
-    risk_controller_id: str = "default"  # registered risk controller identifier
+    strategy_params: dict[str, Any] = Field(default_factory=dict)  # splatted into the strategy ctor
+    risk_gates: list[GateConfig] = Field(
+        default_factory=lambda: list(_DEFAULT_RISK_GATES)
+    )  # ordered, composable gate chain; defaults match today's hardcoded gate list
     execution_engine_id: str = "direct"  # registered execution engine identifier
     candle_intervals: list[str] | None = None  # None → use global Settings.candle_intervals
     equity: float = 100_000.0  # capital allocated for risk sizing
