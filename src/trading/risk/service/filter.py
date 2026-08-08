@@ -8,7 +8,7 @@ from typing import Callable
 from pydantic import BaseModel, Field
 
 from trading.core.clock import Clock, SystemClock
-from trading.core.messaging import AbstractRegistry
+from trading.core.messaging import AbstractCircuitBreaker, AbstractRegistry
 from trading.core.schemas import SignalType
 from trading.app.tasks import fire
 from trading.risk.api.interfaces import AbstractAuditStore, AbstractPositionStore, AbstractTradingStore, CacherFactory
@@ -58,6 +58,7 @@ class RiskFilter(AbstractRegistry):
         clock: Clock | None = None,
         sizer: RiskSizer | None = None,
         equity_provider: Callable[[], float] | None = None,
+        circuit: AbstractCircuitBreaker | None = None,
     ) -> None:
         self._config = config
         self._gates = gates
@@ -68,6 +69,7 @@ class RiskFilter(AbstractRegistry):
         self._clock: Clock = clock or SystemClock()
         self._sizer: RiskSizer = sizer or VolatilitySizer()
         self._equity_provider = equity_provider
+        self._circuit = circuit
 
     @property
     def config(self) -> RiskConfig:
@@ -111,6 +113,7 @@ class RiskFilter(AbstractRegistry):
         if event.signal_type == SignalType.ENTRY:
             position = await self._position.get_position(event.symbol, event.instrument_type.value)
         equity = self._equity_provider() if self._equity_provider is not None else self._config.equity
+        circuit_open = self._circuit.is_open() if self._circuit is not None else False
         return RiskContext(
             now=now,
             today=today,
@@ -120,6 +123,7 @@ class RiskFilter(AbstractRegistry):
             cutoff=time(self._config.intraday_cutoff_hour, self._config.intraday_cutoff_minute),
             realized_pnl=realized_pnl,
             position=position,
+            circuit_open=circuit_open,
         )
 
     async def _reject(self, event: SignalEvent, reason: str) -> None:

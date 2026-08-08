@@ -69,7 +69,7 @@ def _make_risk_reg(
         ),
         gates=[
             TimeCutoffGate(),
-            CircuitBreakerGate(CircuitBreaker()),
+            CircuitBreakerGate(),
             DailyLossGate(enabled=False),  # paper mode: skip daily loss check
             DuplicatePositionGate(),
         ],
@@ -78,6 +78,7 @@ def _make_risk_reg(
         position=position,
         factory=CacherFactory(ValueCache(), clock or SYSTEM_CLOCK),
         clock=clock,
+        circuit=CircuitBreaker(),
     )
 
 
@@ -152,7 +153,7 @@ async def test_circuit_open_rejects_signal(engine, session_factory):
         ),
         gates=[
             TimeCutoffGate(),
-            CircuitBreakerGate(circuit),
+            CircuitBreakerGate(),
             DailyLossGate(enabled=False),
             DuplicatePositionGate(),
         ],
@@ -161,6 +162,7 @@ async def test_circuit_open_rejects_signal(engine, session_factory):
         position=position,
         factory=CacherFactory(ValueCache(), clock or SYSTEM_CLOCK),
         clock=clock,
+        circuit=circuit,
     )
     result = await risk_reg.handle(_signal())
 

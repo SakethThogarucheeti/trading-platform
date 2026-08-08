@@ -121,7 +121,7 @@ def make_registry(
         config=config or make_config(),
         gates=[
             TimeCutoffGate(),
-            CircuitBreakerGate(cb),
+            CircuitBreakerGate(),
             DailyLossGate(enabled=daily_loss_enabled),
             DuplicatePositionGate(),
         ],
@@ -129,6 +129,7 @@ def make_registry(
         audit=AuditStore(sf),
         position=PositionStore(sf),
         factory=factory,
+        circuit=cb,
     )
     return rf, factory
 
@@ -367,7 +368,7 @@ async def test_audit_log_failure_in_accept_is_swallowed() -> None:
         config=make_config(),
         gates=[
             TimeCutoffGate(),
-            CircuitBreakerGate(cb),
+            CircuitBreakerGate(),
             DailyLossGate(enabled=True),
             DuplicatePositionGate(),
         ],
@@ -375,6 +376,7 @@ async def test_audit_log_failure_in_accept_is_swallowed() -> None:
         audit=_FailAuditStore(),
         position=mock_position,
         factory=_make_factory(),
+        circuit=cb,
     )
     sig = make_signal(tick_log_id=1)
     # The audit.log_audit failure should be swallowed, result should still return
@@ -414,7 +416,7 @@ async def test_save_signal_failure_is_swallowed() -> None:
         config=make_config(),
         gates=[
             TimeCutoffGate(),
-            CircuitBreakerGate(cb),
+            CircuitBreakerGate(),
             DailyLossGate(enabled=True),
             DuplicatePositionGate(),
         ],
@@ -422,6 +424,7 @@ async def test_save_signal_failure_is_swallowed() -> None:
         audit=_NoopAuditStore(),
         position=mock_position,
         factory=_make_factory(),
+        circuit=cb,
     )
     sig = make_signal(tick_log_id=1)
     # save_signal failure should be swallowed
@@ -459,7 +462,7 @@ async def test_reject_audit_log_failure_is_swallowed() -> None:
         config=make_config(),
         gates=[
             TimeCutoffGate(),
-            CircuitBreakerGate(cb),
+            CircuitBreakerGate(),
             DailyLossGate(enabled=True),
             DuplicatePositionGate(),
         ],
@@ -467,6 +470,7 @@ async def test_reject_audit_log_failure_is_swallowed() -> None:
         audit=_FailAuditStore(),
         position=mock_position,
         factory=_make_factory(),
+        circuit=cb,
     )
     sig = make_signal(tick_log_id=5)
     # _reject with failing audit store should not raise
@@ -548,9 +552,7 @@ async def test_time_cutoff_gate_passes_before_cutoff() -> None:
 async def test_circuit_breaker_gate_rejects_when_open() -> None:
     from trading.risk.gates.circuit_breaker import CircuitBreakerGate
 
-    circuit = CircuitBreaker()
-    circuit.open()
-    gate = CircuitBreakerGate(circuit)
+    gate = CircuitBreakerGate()
 
     from datetime import UTC, datetime, time
 
@@ -565,6 +567,7 @@ async def test_circuit_breaker_gate_rejects_when_open() -> None:
         cutoff=time(15, 30),
         realized_pnl=0.0,
         position=None,
+        circuit_open=True,
     )
     assert await gate.check(make_signal(), ctx) == "CIRCUIT_OPEN"
 

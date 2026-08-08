@@ -98,7 +98,7 @@ def _make_pipeline(session_factory, broker):
         ),
         gates=[
             TimeCutoffGate(),
-            CircuitBreakerGate(CircuitBreaker()),
+            CircuitBreakerGate(),
             DailyLossGate(enabled=False),
             DuplicatePositionGate(),
         ],
@@ -107,6 +107,7 @@ def _make_pipeline(session_factory, broker):
         position=position,
         factory=factory,
         clock=clock,
+        circuit=CircuitBreaker(),
     )
     price_store = PriceStore()
     price_store.update("INFY", 1505.0)

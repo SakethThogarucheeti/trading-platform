@@ -196,7 +196,7 @@ class BacktestSession(TestingSession):
                 ),
                 gates=[
                     TimeCutoffGate(),
-                    CircuitBreakerGate(CircuitBreaker()),
+                    CircuitBreakerGate(),
                     DailyLossGate(enabled=False),
                     DuplicatePositionGate(),
                 ],
@@ -206,6 +206,7 @@ class BacktestSession(TestingSession):
                 factory=factory,
                 clock=sim_clock,
                 equity_provider=lambda: tracker.current_equity,
+                circuit=CircuitBreaker(),
             )
 
             exec_reg = OrderExecutor(
