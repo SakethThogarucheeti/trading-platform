@@ -105,6 +105,27 @@ async def test_fill_unknown_order_returns_early() -> None:
     mock_accountant.apply_fill.assert_not_called()
 
 
+async def test_fill_unexpected_error_propagates() -> None:
+    """A non-NotFoundError from trading store must propagate, not be swallowed."""
+    mock_trading = MagicMock(spec=AbstractTradingStore)
+    mock_trading.update_order_status = AsyncMock(side_effect=RuntimeError("db connection lost"))
+    mock_accountant = MagicMock(spec=PositionAccountant)
+    mock_accountant.apply_fill = AsyncMock()
+
+    handler = FillHandler(trading=mock_trading, accountant=mock_accountant)
+    with pytest.raises(RuntimeError, match="db connection lost"):
+        await handler.handle(
+            kite_order_id="KITE_002",
+            avg_price=100.0,
+            filled_qty=5,
+            symbol="INFY",
+            instrument_type="EQUITY",
+            side="BUY",
+        )
+
+    mock_accountant.apply_fill.assert_not_called()
+
+
 async def test_fill_passes_tick_log_id() -> None:
     """tick_log_id is forwarded into the FillEvent passed to accountant."""
     mock_trading = MagicMock(spec=AbstractTradingStore)

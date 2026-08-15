@@ -53,18 +53,19 @@ class CandleAggregator(AbstractRegistry):
             accumulator if accumulator is not None else BarAccumulator()
         )
 
-    async def handle(self, tick: TickEvent) -> CandleEvent | None:  # type: ignore[override]
+    async def handle(self, tick: TickEvent) -> list[CandleEvent]:  # type: ignore[override]
         sc = self._token_sc.get(tick.instrument_token)
         if sc is None:
-            return None
+            return []
 
+        closed: list[CandleEvent] = []
         for interval in self._config.intervals:
             candle = self._accumulator.process(sc, interval, tick)
             if candle is not None:
                 fire(self._candle_logger.log(candle))
-                return candle
+                closed.append(candle)
 
-        return None
+        return closed
 
 
 class CandleAggregatorComponent(Component):

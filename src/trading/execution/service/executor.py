@@ -77,7 +77,21 @@ class OrderExecutor(AbstractRegistry):
             )
             final_status = OrderStatus.PLACED
         except Exception as exc:
-            logger.error("OrderExecutor: broker.place_order failed — %s", exc)
+            # "timed out" errors mean the request may have reached the broker before
+            # the timeout fired — the order could be live even though we mark it
+            # REJECTED here. Anything else means the request never reached the broker
+            # (or was explicitly rejected). Flagged distinctly since only the first
+            # case risks a REJECTED-in-our-DB order that is actually live at the broker.
+            # TODO: true reconciliation needs a broker-side order-status poll or
+            # webhook fallback — this is logging-only, not a fix for that risk.
+            if "timed out" in str(exc).lower():
+                logger.critical(
+                    "OrderExecutor: broker.place_order TIMED OUT for signal_id=%s — "
+                    "order status at broker is UNKNOWN, marking REJECTED locally but it may be live — %s",
+                    event.signal_id, exc,
+                )
+            else:
+                logger.error("OrderExecutor: broker.place_order failed — %s", exc)
             kite_order_id = f"FAILED_{order_id}"
             final_status = OrderStatus.REJECTED
 

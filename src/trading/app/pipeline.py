@@ -39,8 +39,7 @@ class TickPipeline:
         return self._signal_generator
 
     async def run(self, tick: TickEvent) -> None:
-        candle = await self._candle_registry.handle(tick)
-        if candle is None:
-            return
-        signals = await self._signal_generator.handle(candle)
-        await self._algo_pipeline.run(signals)
+        candles = await self._candle_registry.handle(tick)
+        for candle in candles:
+            signals = await self._signal_generator.handle(candle)
+            await self._algo_pipeline.run(signals)

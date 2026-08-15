@@ -114,7 +114,7 @@ async def test_first_tick_initialises_bar(engine: AsyncEngine) -> None:
 
     result = await reg.handle(tick(1, 100.0, t(0)))
     # First tick opens the bar but doesn't close it
-    assert result is None
+    assert result == []
     assert ("SYM1", "1min") in reg._accumulator._bars
     bar = reg._accumulator._bars[("SYM1", "1min")]
     assert bar.open == bar.high == bar.low == bar.close == 100.0
@@ -161,9 +161,10 @@ async def test_tick_crossing_bar_boundary_emits_candle(engine: AsyncEngine) -> N
     await reg.handle(tick(1, 100.0, BASE_TIME))
     await reg.handle(tick(1, 105.0, BASE_TIME + timedelta(seconds=30)))
     # 09:16 — new bar → emits previous
-    candle = await reg.handle(tick(1, 110.0, BASE_TIME + timedelta(minutes=1)))
+    candles = await reg.handle(tick(1, 110.0, BASE_TIME + timedelta(minutes=1)))
 
-    assert candle is not None
+    assert len(candles) == 1
+    candle = candles[0]
     assert candle.open == 100.0
     assert candle.high == 105.0
     assert candle.close == 105.0
@@ -171,19 +172,18 @@ async def test_tick_crossing_bar_boundary_emits_candle(engine: AsyncEngine) -> N
     assert candle.interval == "1min"
 
 
-async def test_two_intervals_first_closes_1min(engine: AsyncEngine) -> None:
+async def test_two_intervals_both_close_together(engine: AsyncEngine) -> None:
     reg = make_registry(engine, intervals=["1min", "5min"])
 
     # Two ticks in the 09:15 window
     await reg.handle(tick(1, 100.0, BASE_TIME))
     await reg.handle(tick(1, 102.0, BASE_TIME + timedelta(seconds=30)))
 
-    # 09:16 — crosses 1min but stays in 5min
-    candle = await reg.handle(tick(1, 104.0, BASE_TIME + timedelta(minutes=1)))
+    # 09:20 — crosses both the 1min and 5min boundaries simultaneously
+    candles = await reg.handle(tick(1, 104.0, BASE_TIME + timedelta(minutes=5)))
 
-    # 1min bar was the first interval checked, so it returns the closed bar
-    assert candle is not None
-    assert candle.interval == "1min"
+    # Both intervals must close on the same tick — neither is dropped
+    assert {c.interval for c in candles} == {"1min", "5min"}
 
     # Both bars still tracked
     assert ("SYM1", "1min") in reg._accumulator._bars
@@ -200,11 +200,11 @@ async def test_zero_volume_tick_updates_ohlc(engine: AsyncEngine) -> None:
     assert bar.open == 100.0
 
 
-async def test_unknown_token_returns_none(engine: AsyncEngine) -> None:
+async def test_unknown_token_returns_empty(engine: AsyncEngine) -> None:
     reg = make_registry(engine, tokens=[1])
 
     result = await reg.handle(tick(999, 100.0, t(0)))
-    assert result is None
+    assert result == []
 
 
 async def test_candle_persister_tick_log_id_positive_calls_audit(engine: AsyncEngine) -> None:

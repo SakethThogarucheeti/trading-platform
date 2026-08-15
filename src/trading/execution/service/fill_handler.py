@@ -7,12 +7,9 @@ from trading.core.schemas import OrderStatus, Side
 from trading.execution.api.interfaces import AbstractTradingStore
 from trading.execution.api.schemas import FillEvent
 from trading.execution.service.position_accountant import PositionAccountant
+from trading.execution.storage.store import NotFoundError
 
 logger = logging.getLogger(__name__)
-
-
-class NotFoundError(Exception):
-    """Raised when a required DB row is absent."""
 
 
 class FillHandler:
@@ -47,7 +44,7 @@ class FillHandler:
         )
         try:
             await self._trading.update_order_status(kite_order_id, OrderStatus.FILLED, avg_price)
-        except Exception as exc:
+        except NotFoundError as exc:
             logger.warning("FillHandler: fill for unknown order %s — %s", kite_order_id, exc)
             return
         fill_side = Side(side)

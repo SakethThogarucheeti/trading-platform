@@ -1560,9 +1560,9 @@ requires-dist = [
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "tenacity", specifier = ">=9.1.4" },
     { name = "trading-pipeline", editable = "../trading-pipeline" },
-    { name = "trading-risk-sdk", editable = "../trading-risk-sdk" },
-    { name = "trading-strategy-sdk", editable = "../trading-strategy-sdk" },
-    { name = "trading-types", editable = "../trading-types" },
+    { name = "trading-risk-sdk", git = "https://github.com/SakethThogarucheeti/trading-risk-sdk.git?tag=v0.1.0" },
+    { name = "trading-strategy-sdk", git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git?tag=v0.1.0" },
+    { name = "trading-types", git = "https://github.com/SakethThogarucheeti/trading-types.git?tag=v0.1.0" },
     { name = "tzdata", specifier = ">=2026.1" },
     { name = "uvicorn", specifier = ">=0.29" },
 ]
@@ -1585,64 +1585,30 @@ dev = [
 [[package]]
 name = "trading-risk-sdk"
 version = "0.1.0"
-source = { editable = "../trading-risk-sdk" }
+source = { git = "https://github.com/SakethThogarucheeti/trading-risk-sdk.git?tag=v0.1.0#2ed2bfb97a6332077cc4dbd681f468838ab91723" }
 dependencies = [
     { name = "pydantic" },
     { name = "trading-types" },
 ]
 
-[package.metadata]
-requires-dist = [
-    { name = "pydantic", specifier = ">=2.0" },
-    { name = "trading-types", editable = "../trading-types" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-asyncio", specifier = ">=0.23" },
-]
-
 [[package]]
 name = "trading-strategy-sdk"
 version = "0.1.0"
-source = { editable = "../trading-strategy-sdk" }
+source = { git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git?tag=v0.1.0#61996eeb8f52c401a2a1ec3e5feb52ae818aa85b" }
 dependencies = [
     { name = "pydantic" },
     { name = "quantindicators", extra = ["scipy"] },
     { name = "trading-types" },
 ]
 
-[package.metadata]
-requires-dist = [
-    { name = "pydantic", specifier = ">=2.0" },
-    { name = "quantindicators", extras = ["scipy"], git = "https://github.com/SakethThogarucheeti/quantindicators.git" },
-    { name = "trading-types", editable = "../trading-types" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-asyncio", specifier = ">=0.23" },
-]
-
 [[package]]
 name = "trading-types"
 version = "0.1.0"
-source = { editable = "../trading-types" }
+source = { git = "https://github.com/SakethThogarucheeti/trading-types.git?tag=v0.1.0#2abbb2b185888b02c5686e8d558673a0b50d7236" }
 dependencies = [
     { name = "pydantic" },
     { name = "tzdata" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "pydantic", specifier = ">=2.0" },
-    { name = "tzdata", specifier = ">=2026.1" },
-]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.0" }]
 
 [[package]]
 name = "trio"

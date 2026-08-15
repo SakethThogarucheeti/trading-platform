@@ -117,7 +117,7 @@ async def _sync_instruments(settings: "Settings") -> None:
     """Upsert instruments for all symbols declared in ALGOS into the DB."""
     from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
-    from trading.broker.zerodha.kite_client import KiteClient
+    from trading.broker.service.zerodha.kite_client import KiteClient
     from trading.candles.storage.models import Instrument
     from trading.candles.storage.store import InstrumentStore
 

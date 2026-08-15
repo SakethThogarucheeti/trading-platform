@@ -242,6 +242,46 @@ async def test_broker_timeout_marks_order_rejected(engine: AsyncEngine) -> None:
     assert order.status == OrderStatus.REJECTED.value
 
 
+async def test_broker_timeout_logs_critical_ambiguity_warning(engine: AsyncEngine) -> None:
+    """A timeout error (order may have reached the broker) logs CRITICAL, not just error."""
+    import logging
+    from unittest.mock import patch
+
+    class _TimeoutBroker(MockBroker):
+        async def place_order(self, symbol, side, qty, order_type, limit_price=None, instrument_type="EQUITY", tick_log_id=0) -> str:  # type: ignore[override]
+            raise RuntimeError("ZerodhaBroker: place_order timed out after 10.0s")
+
+    reg = make_registry(engine, _TimeoutBroker())
+
+    sig_id = uuid4()
+    await _insert_signal(engine, sig_id)
+
+    with patch.object(logging.getLogger("trading.execution.service.executor"), "critical") as mock_crit:
+        await reg.handle(make_validated(signal_id=sig_id))
+
+    assert mock_crit.called
+    assert "TIMED OUT" in mock_crit.call_args[0][0]
+
+
+async def test_broker_non_timeout_error_logs_error_not_critical(engine: AsyncEngine) -> None:
+    """A non-timeout broker error logs at ERROR level, distinct from the timeout/ambiguous case."""
+    import logging
+    from unittest.mock import patch
+
+    broker = MockBroker(raises=True)
+    reg = make_registry(engine, broker)
+
+    sig_id = uuid4()
+    await _insert_signal(engine, sig_id)
+
+    with patch.object(logging.getLogger("trading.execution.service.executor"), "critical") as mock_crit, \
+         patch.object(logging.getLogger("trading.execution.service.executor"), "error") as mock_err:
+        await reg.handle(make_validated(signal_id=sig_id))
+
+    mock_crit.assert_not_called()
+    assert mock_err.called
+
+
 async def test_handle_fill_unknown_order_returns_early(engine: AsyncEngine) -> None:
     """handle_fill for an unknown kite_order_id hits the NotFoundError path and returns early."""
     broker = MockBroker()

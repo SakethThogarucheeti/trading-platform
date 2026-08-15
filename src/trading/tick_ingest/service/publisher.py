@@ -27,11 +27,19 @@ class TickPublisher:
         try:
             await self._redis.publish(channel, payload)  # type: ignore[attr-defined]
         except Exception:
-            logger.debug("TickPublisher: publish failed for token %s", tick.instrument_token)
+            logger.error(
+                "TickPublisher: publish failed for token %s — workers will not receive this tick",
+                tick.instrument_token,
+                exc_info=True,
+            )
 
     async def set_circuit_state(self, open: bool) -> None:
         value = "open" if open else "closed"
         try:
             await self._redis.set("circuit:state", value)  # type: ignore[attr-defined]
         except Exception:
-            logger.debug("TickPublisher: failed to set circuit:state=%s", value)
+            logger.error(
+                "TickPublisher: failed to set circuit:state=%s — workers may act on stale circuit state",
+                value,
+                exc_info=True,
+            )

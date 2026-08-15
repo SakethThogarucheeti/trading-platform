@@ -32,7 +32,7 @@ from zoneinfo import ZoneInfo
 
 from anyio import sleep_forever
 
-from trading.di.container import build_worker_container
+from trading.app.container import build_worker_container
 from trading.engine.runtime import AbstractRuntime
 from trading.engine.scheduler import Scheduler
 

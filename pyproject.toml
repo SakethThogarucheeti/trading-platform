@@ -73,11 +73,10 @@ package = true
 
 [tool.uv.sources]
 quantindicators = { git = "https://github.com/SakethThogarucheeti/quantindicators.git" }
-# Local paths pending GitHub push — switch to git sources (pinned to tags)
-# once these are pushed, per the SDK extraction plan.
-trading-types = { path = "../trading-types", editable = true }
-trading-strategy-sdk = { path = "../trading-strategy-sdk", editable = true }
-trading-risk-sdk = { path = "../trading-risk-sdk", editable = true }
+trading-types = { git = "https://github.com/SakethThogarucheeti/trading-types.git", tag = "v0.1.0" }
+trading-strategy-sdk = { git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git", tag = "v0.1.0" }
+trading-risk-sdk = { git = "https://github.com/SakethThogarucheeti/trading-risk-sdk.git", tag = "v0.1.0" }
+# Local path pending GitHub push — switch to a git source (pinned to a tag) once pushed.
 trading-pipeline = { path = "../trading-pipeline", editable = true }
 
 

@@ -114,7 +114,7 @@ class TestTickPipeline:
         signal = _signal()
 
         candle_agg = MagicMock()
-        candle_agg.handle = AsyncMock(return_value=candle)
+        candle_agg.handle = AsyncMock(return_value=[candle])
         sig_gen = MagicMock()
         sig_gen.handle = AsyncMock(return_value=[signal])
         algo_pipe = MagicMock()
@@ -134,7 +134,7 @@ class TestTickPipeline:
     @pytest.mark.anyio
     async def test_run_stops_when_candle_not_complete(self) -> None:
         candle_agg = MagicMock()
-        candle_agg.handle = AsyncMock(return_value=None)
+        candle_agg.handle = AsyncMock(return_value=[])
         sig_gen = MagicMock()
         sig_gen.handle = AsyncMock()
         algo_pipe = MagicMock()
@@ -166,7 +166,7 @@ class TestTickPipeline:
         signals = [_signal(), _signal()]
 
         candle_agg = MagicMock()
-        candle_agg.handle = AsyncMock(return_value=candle)
+        candle_agg.handle = AsyncMock(return_value=[candle])
         sig_gen = MagicMock()
         sig_gen.handle = AsyncMock(return_value=signals)
         algo_pipe = MagicMock()
@@ -180,3 +180,49 @@ class TestTickPipeline:
         await pipe.run(_tick())
 
         algo_pipe.run.assert_awaited_once_with(signals)
+
+    @pytest.mark.anyio
+    async def test_run_processes_all_candles_when_multiple_intervals_close(self) -> None:
+        from trading.core.schemas import CandleEvent
+
+        candle_1min = CandleEvent(
+            symbol="INFY",
+            instrument_type=InstrumentType.EQUITY,
+            interval="1min",
+            open=1500.0, high=1505.0, low=1495.0, close=1502.0,
+            volume=1000,
+            timestamp=datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
+            tick_log_id=1,
+        )
+        candle_5min = CandleEvent(
+            symbol="INFY",
+            instrument_type=InstrumentType.EQUITY,
+            interval="5min",
+            open=1500.0, high=1510.0, low=1490.0, close=1505.0,
+            volume=10000,
+            timestamp=datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
+            tick_log_id=1,
+        )
+        signal_1 = _signal()
+        signal_2 = _signal()
+
+        candle_agg = MagicMock()
+        candle_agg.handle = AsyncMock(return_value=[candle_1min, candle_5min])
+        sig_gen = MagicMock()
+        sig_gen.handle = AsyncMock(side_effect=[[signal_1], [signal_2]])
+        algo_pipe = MagicMock()
+        algo_pipe.run = AsyncMock()
+
+        pipe = TickPipeline(
+            candle_registry=candle_agg,
+            signal_generator=sig_gen,
+            algo_pipeline=algo_pipe,
+        )
+        await pipe.run(_tick())
+
+        assert sig_gen.handle.await_count == 2
+        sig_gen.handle.assert_any_await(candle_1min)
+        sig_gen.handle.assert_any_await(candle_5min)
+        assert algo_pipe.run.await_count == 2
+        algo_pipe.run.assert_any_await([signal_1])
+        algo_pipe.run.assert_any_await([signal_2])

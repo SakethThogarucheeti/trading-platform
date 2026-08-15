@@ -245,17 +245,17 @@ def _make_aggregator(
     return agg, mock_logger
 
 
-async def test_handle_returns_none_when_no_bar_closes() -> None:
+async def test_handle_returns_empty_when_no_bar_closes() -> None:
     agg, _ = _make_aggregator(accumulator_result=None)
     result = await agg.handle(_make_tick())
-    assert result is None
+    assert result == []
 
 
 async def test_handle_returns_candle_when_bar_closes() -> None:
     candle = _make_candle()
     agg, _ = _make_aggregator(accumulator_result=candle)
     result = await agg.handle(_make_tick())
-    assert result is candle
+    assert result == [candle]
 
 
 async def test_handle_calls_logger_on_bar_close() -> None:
@@ -275,9 +275,49 @@ async def test_handle_no_logger_call_when_bar_open() -> None:
     assert len(mock_logger.calls) == 0
 
 
-async def test_handle_unknown_token_returns_none() -> None:
+async def test_handle_unknown_token_returns_empty() -> None:
     agg, mock_logger = _make_aggregator(accumulator_result=_make_candle())
     result = await agg.handle(_make_tick(token=999))
-    assert result is None
+    assert result == []
     await sleep(0)
     assert len(mock_logger.calls) == 0
+
+
+def _make_multi_interval_aggregator(
+    logger: _MockCandleLogger | None = None,
+) -> tuple[CandleAggregator, _MockCandleLogger]:
+    """Aggregator configured with two intervals, both closing on the same tick."""
+    mock_logger = logger or _MockCandleLogger()
+    candle_1min = _make_candle()
+    candle_5min = CandleEvent(
+        symbol="INFY",
+        instrument_type=InstrumentType.EQUITY,
+        interval="5min",
+        open=100.0,
+        high=106.0,
+        low=98.0,
+        close=104.0,
+        volume=2000,
+        timestamp=datetime(2025, 1, 6, 9, 15, tzinfo=UTC),
+        tick_log_id=0,
+    )
+    mock_acc = MagicMock()
+    mock_acc.process = MagicMock(side_effect=[candle_1min, candle_5min])
+    config = CandleConfig(
+        instruments=[Instrument(token=1, symbol="INFY", exchange="NSE", instrument_type="EQUITY")],
+        intervals=["1min", "5min"],
+        warmup_count=5,
+    )
+    agg = CandleAggregator(config=config, candle_logger=mock_logger, accumulator=mock_acc)
+    return agg, mock_logger
+
+
+async def test_handle_returns_all_intervals_that_close_on_same_tick() -> None:
+    agg, mock_logger = _make_multi_interval_aggregator()
+    result = await agg.handle(_make_tick())
+
+    assert len(result) == 2
+    assert {c.interval for c in result} == {"1min", "5min"}
+
+    await sleep(0)
+    assert len(mock_logger.calls) == 2
