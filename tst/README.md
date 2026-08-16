@@ -1,6 +1,7 @@
 # tst — Test suites
 
-Two test workspaces: fast unit tests run from the project root; integration tests each have their own `pyproject.toml`.
+Fast unit tests run from the project root. Integration tests have moved to the
+sibling repo `../trading-integ-tests/` (each suite keeps its own `pyproject.toml`).
 
 ## Unit tests (`tst/unit/`)
 
@@ -13,29 +14,23 @@ uv run pytest tst/unit/
 
 The unit test layout mirrors `src/trading/` — each package has a corresponding directory under `tst/unit/`. See `tst/unit/README.md` for details.
 
-## Strategy integration tests (`tst/integ/strategy/`)
+## Integration tests (`../trading-integ-tests/`)
 
-Requires Docker. Uses `testcontainers` to spin up an isolated Postgres schema per run.
+Requires Docker. Two suites, each with its own Python environment:
 
 ```bash
-cd trading-platform/tst/integ/strategy
+# Strategy: indicator smoke tests, backtests, walk-forward, Monte Carlo, hyperparameter search
+cd ../trading-integ-tests/strategy
+uv sync
+uv run pytest .
+
+# System: end-to-end pipeline — broker failure, order lifecycle, risk guardrails, state recovery
+cd ../trading-integ-tests/system
 uv sync
 uv run pytest .
 ```
 
-Covers indicator smoke tests, full backtests, walk-forward analysis, Monte Carlo simulation, and hyperparameter search. See `tst/integ/strategy/README.md` for details.
-
-## System integration tests (`tst/integ/system/`)
-
-Requires Docker. Boots Postgres + Redis and tests end-to-end pipeline scenarios.
-
-```bash
-cd trading-platform/tst/integ/system
-uv sync
-uv run pytest .
-```
-
-Covers broker failure, order lifecycle, risk guardrails, and state recovery. See `tst/integ/system/README.md` for details.
+Both depend on `trading-platform` via an editable path dependency (`../../trading-platform`). See `trading-integ-tests/strategy/README.md` and `trading-integ-tests/system/README.md` for details.
 
 ## Key testing conventions
 

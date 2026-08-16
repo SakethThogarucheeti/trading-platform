@@ -93,6 +93,9 @@ class KiteIngestor(Component):
         self._loop = asyncio.get_running_loop()
         self._connected = Event()
 
+        if self._tick_publisher is not None:
+            await self._tick_publisher.start()
+
         self._stream.set_on_connect(self._on_ws_connect)
         self._stream.set_on_ticks(self._on_ws_ticks)
         self._stream.set_on_disconnect(self._on_ws_disconnect)
@@ -124,6 +127,8 @@ class KiteIngestor(Component):
         self._running = False
         self._cancel_circuit_scope()
         await self._stream.close()
+        if self._tick_publisher is not None:
+            await self._tick_publisher.stop()
 
     def _cancel_circuit_scope(self) -> None:
         if self._circuit_scope is not None:
@@ -196,7 +201,15 @@ class KiteIngestor(Component):
                 self._price_store.update(symbol, tick.last_price)  # type: ignore[attr-defined]
 
         if self._tick_publisher is not None:
-            await self._tick_publisher.publish(tick)
+            try:
+                await self._tick_publisher.publish(tick)
+            except Exception:
+                logger.error(
+                    "KiteIngestor: failed to publish tick for token %s to Kafka — "
+                    "downstream workers will not receive this tick",
+                    tick.instrument_token,
+                    exc_info=True,
+                )
 
         for callback in self._on_tick_callbacks:
             try:

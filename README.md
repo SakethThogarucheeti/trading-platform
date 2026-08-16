@@ -1,8 +1,8 @@
-# algo-trader
+# trading-platform
 
-An event-driven intraday trading platform for Indian equity markets, built on Zerodha/Kite.
+Event-driven intraday trading engine for Indian equity markets, built on Zerodha/Kite. Orchestration layer only — pipeline, broker adapters, and risk-filter execution; strategy and risk-filter content live in [trading-strategy-sdk](https://github.com/SakethThogarucheeti/trading-strategy-sdk) and [trading-risk-sdk](https://github.com/SakethThogarucheeti/trading-risk-sdk). Part of the [algo-trader](https://github.com/SakethThogarucheeti/algo-trader) system.
 
-**Architecture:** Direct in-process pipeline · PostgreSQL persistence · APScheduler market-hours automation · Dishka DI · async-first (anyio)
+**Architecture:** Direct in-process pipeline · PostgreSQL persistence · APScheduler market-hours automation · dependency-injector DI · async-first (anyio)
 
 ---
 

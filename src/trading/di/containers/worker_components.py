@@ -6,6 +6,7 @@ from dependency_injector import containers, providers
 from quantindicators.polars_store import PolarsStore
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from trading.app.faust_app import build_faust_app
 from trading.broker.api import Broker
 from trading.broker.service.paper_broker import AbstractPriceStore
 from trading.candles.api import (
@@ -31,7 +32,7 @@ from trading.storage.cache import CacherFactory
 from trading.strategy.storage.store import ChartStore, ConfigStore
 from trading.tick_ingest.storage.store import AuditStore
 from trading.worker.circuit_breaker_redis import RedisCircuitBreaker
-from trading.worker.tick_subscriber import TickSubscriber
+from trading.worker.tick_agent import TickAgentComponent
 
 logger = logging.getLogger(__name__)
 
@@ -139,14 +140,6 @@ async def _worker_runtime(
         warmup_count=settings.warmup_candles,
     )
 
-    tick_subscriber = TickSubscriber(
-        redis=redis,
-        tokens=tokens,
-        circuit_breaker=circuit_breaker,
-        token_symbol=token_symbol_for_algo,
-        price_store=paper_price_store,
-    )
-
     factory = AlgoPipelineFactory(SharedAlgoDeps(
         chart=chart,
         config_store=config_store,
@@ -170,7 +163,16 @@ async def _worker_runtime(
     await factory.seed_state(algo, intervals)
 
     candle_aggregator_component.add_algo_registry(tick_pipeline.signal_generator)
-    tick_subscriber.add_on_tick(tick_pipeline.run)
+
+    faust_app = build_faust_app(f"worker-{algo_name}", settings)
+    tick_agent = TickAgentComponent(
+        app=faust_app,
+        tokens=tokens,
+        tick_pipeline=tick_pipeline,
+        circuit_breaker=circuit_breaker,
+        token_symbol=token_symbol_for_algo,
+        price_store=paper_price_store,
+    )
 
     heartbeat_monitor = _build_heartbeat(heartbeat_store, sf, settings, algo.name)
 
@@ -181,7 +183,7 @@ async def _worker_runtime(
         len(algo.instruments),
     )
 
-    return Runtime([tick_subscriber, candle_aggregator_component, heartbeat_monitor])
+    return Runtime([tick_agent, candle_aggregator_component, heartbeat_monitor])
 
 
 def _worker_scheduler(settings: Settings, runtime: AbstractRuntime) -> Scheduler:
@@ -193,7 +195,8 @@ class WorkerComponentContainer(containers.DeclarativeContainer):
     Builds the worker-process Runtime for a single named algo.
 
     Mirrors ComponentContainer but:
-    - Uses TickSubscriber (Redis pub/sub) instead of KiteIngestor (WebSocket)
+    - Uses TickAgentComponent (a faust-streaming agent consuming the shared
+      Kafka `ticks` topic) instead of KiteIngestor (WebSocket)
     - Uses RedisCircuitBreaker instead of the in-memory CircuitBreaker
     - Activates only the algo whose name matches `algo_name`
     - Does NOT run migrations or instrument sync (those belong to the ingestor)

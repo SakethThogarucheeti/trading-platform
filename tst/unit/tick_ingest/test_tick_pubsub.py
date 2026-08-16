@@ -1,4 +1,4 @@
-"""Unit tests for TickPublisher, TickSubscriber, and RedisCircuitBreaker."""
+"""Unit tests for TickPublisher, RedisCircuitBreaker, and TickAgentComponent."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from trading.core.schemas import InstrumentType, TickEvent
+from trading.tick_ingest.service.publisher import TickPublisher
 from trading.worker.circuit_breaker_redis import RedisCircuitBreaker
-from trading.tick_ingest.api import TickPublisher
 
 
 # ---------------------------------------------------------------------------
@@ -34,61 +34,86 @@ def _tick(token: int = 738561, price: float = 1500.0) -> TickEvent:
 
 
 class TestTickPublisher:
+    def _producer(self) -> MagicMock:
+        p = MagicMock()
+        p.start = AsyncMock()
+        p.stop = AsyncMock()
+        p.send_and_wait = AsyncMock()
+        return p
+
     def _redis(self) -> MagicMock:
         r = MagicMock()
-        r.publish = AsyncMock()
         r.set = AsyncMock()
         return r
 
     @pytest.mark.anyio
-    async def test_publish_sends_to_correct_channel(self) -> None:
-        redis = self._redis()
-        pub = TickPublisher(redis)
+    async def test_publish_sends_to_ticks_topic_keyed_by_token(self) -> None:
+        producer = self._producer()
+        pub = TickPublisher(producer, self._redis())
         tick = _tick(token=738561)
         await pub.publish(tick)
-        redis.publish.assert_awaited_once()
-        channel, payload = redis.publish.call_args.args
-        assert channel == "ticks:738561"
-        assert "738561" in payload  # JSON payload contains the token
+        producer.send_and_wait.assert_awaited_once()
+        topic, kwargs = producer.send_and_wait.call_args.args[0], producer.send_and_wait.call_args.kwargs
+        assert topic == "ticks"
+        assert kwargs["key"] == b"738561"
+        assert b"738561" in kwargs["value"]
 
     @pytest.mark.anyio
     async def test_publish_payload_is_valid_tick_json(self) -> None:
-        redis = self._redis()
-        pub = TickPublisher(redis)
+        producer = self._producer()
+        pub = TickPublisher(producer, self._redis())
         tick = _tick(token=111111, price=2000.0)
         await pub.publish(tick)
-        _, payload = redis.publish.call_args.args
+        payload = producer.send_and_wait.call_args.kwargs["value"]
         restored = TickEvent.model_validate_json(payload)
         assert restored.instrument_token == 111111
         assert restored.last_price == pytest.approx(2000.0)
 
     @pytest.mark.anyio
-    async def test_publish_swallows_redis_errors(self) -> None:
-        redis = MagicMock()
-        redis.publish = AsyncMock(side_effect=ConnectionError("redis down"))
-        pub = TickPublisher(redis)
-        # Must not raise
-        await pub.publish(_tick())
+    async def test_publish_propagates_kafka_errors(self) -> None:
+        producer = self._producer()
+        producer.send_and_wait = AsyncMock(side_effect=ConnectionError("kafka down"))
+        pub = TickPublisher(producer, self._redis())
+        # Unlike the old Redis pub/sub path, a publish failure must NOT be
+        # swallowed here — KiteIngestor is responsible for catching and
+        # logging it (see test_kite_ingestor for that behavior), so that a
+        # failure is visible instead of silently dropping the tick.
+        with pytest.raises(ConnectionError):
+            await pub.publish(_tick())
+
+    @pytest.mark.anyio
+    async def test_start_and_stop_delegate_to_producer(self) -> None:
+        producer = self._producer()
+        pub = TickPublisher(producer, self._redis())
+        await pub.start()
+        producer.start.assert_awaited_once()
+        await pub.stop()
+        producer.stop.assert_awaited_once()
 
     @pytest.mark.anyio
     async def test_set_circuit_state_open(self) -> None:
         redis = self._redis()
-        pub = TickPublisher(redis)
+        pub = TickPublisher(self._producer(), redis)
         await pub.set_circuit_state(open=True)
         redis.set.assert_awaited_once_with("circuit:state", "open")
 
     @pytest.mark.anyio
     async def test_set_circuit_state_closed(self) -> None:
         redis = self._redis()
-        pub = TickPublisher(redis)
+        pub = TickPublisher(self._producer(), redis)
         await pub.set_circuit_state(open=False)
         redis.set.assert_awaited_once_with("circuit:state", "closed")
 
     @pytest.mark.anyio
-    async def test_set_circuit_state_swallows_errors(self) -> None:
+    async def test_set_circuit_state_swallows_redis_errors(self) -> None:
         redis = MagicMock()
         redis.set = AsyncMock(side_effect=ConnectionError("redis down"))
-        pub = TickPublisher(redis)
+        pub = TickPublisher(self._producer(), redis)
+        await pub.set_circuit_state(open=True)  # must not raise
+
+    @pytest.mark.anyio
+    async def test_set_circuit_state_noop_when_redis_none(self) -> None:
+        pub = TickPublisher(self._producer(), None)
         await pub.set_circuit_state(open=True)  # must not raise
 
 
@@ -157,168 +182,89 @@ class TestRedisCircuitBreaker:
 
 
 # ---------------------------------------------------------------------------
-# TickSubscriber
+# TickAgentComponent
 # ---------------------------------------------------------------------------
 
 
-class TestTickSubscriber:
-    def _make_subscriber(self, tokens=None, callbacks=None):
-        from trading.worker.tick_subscriber import TickSubscriber
+class TestTickAgentComponent:
+    def _make_agent(self, tokens=None, tick_pipeline=None, price_store=None):
+        import faust
 
-        redis = MagicMock()
-        pubsub = MagicMock()
-        pubsub.subscribe = AsyncMock()
-        pubsub.unsubscribe = AsyncMock()
-        pubsub.aclose = AsyncMock()
-        redis.pubsub = MagicMock(return_value=pubsub)
+        from trading.worker.tick_agent import TickAgentComponent
 
+        app = faust.App("test-agent", broker="kafka://localhost:19999", store="memory://")
         circuit = RedisCircuitBreaker(MagicMock())
-        sub = TickSubscriber(
-            redis=redis,
+        pipeline = tick_pipeline or MagicMock(run=AsyncMock())
+        agent = TickAgentComponent(
+            app=app,
             tokens=tokens or [738561],
-            circuit_breaker=circuit,
-            token_symbol={738561: "INFY"},
-        )
-        for cb in (callbacks or []):
-            sub.add_on_tick(cb)
-        return sub, pubsub
-
-    @pytest.mark.anyio
-    async def test_setup_subscribes_to_channels(self) -> None:
-        sub, pubsub = self._make_subscriber(tokens=[738561, 260105])
-        await sub._setup()
-        pubsub.subscribe.assert_awaited_once_with("ticks:738561", "ticks:260105")
-
-    @pytest.mark.anyio
-    async def test_teardown_unsubscribes_and_closes(self) -> None:
-        sub, pubsub = self._make_subscriber()
-        await sub._setup()
-        await sub._teardown()
-        pubsub.unsubscribe.assert_awaited()
-        pubsub.aclose.assert_awaited()
-
-    @pytest.mark.anyio
-    async def test_teardown_is_idempotent_when_not_setup(self) -> None:
-        sub, _ = self._make_subscriber()
-        await sub._teardown()  # should not raise
-
-    @pytest.mark.anyio
-    async def test_listen_dispatches_tick_to_callbacks(self) -> None:
-        tick = _tick()
-        messages = [
-            {"type": "message", "data": tick.model_dump_json().encode()},
-        ]
-
-        received: list[TickEvent] = []
-
-        async def _on_tick(t: TickEvent) -> None:
-            received.append(t)
-
-        sub, pubsub = self._make_subscriber(callbacks=[_on_tick])
-
-        # Make pubsub.listen() return our messages async-iterably
-        async def _listen():
-            for m in messages:
-                yield m
-
-        pubsub.listen = _listen
-        sub._pubsub = pubsub
-
-        await sub._listen()
-
-        assert len(received) == 1
-        assert received[0].instrument_token == tick.instrument_token
-
-    @pytest.mark.anyio
-    async def test_listen_skips_non_message_type(self) -> None:
-        messages = [{"type": "subscribe", "data": b""}]
-        received: list[TickEvent] = []
-
-        async def _on_tick(t: TickEvent) -> None:
-            received.append(t)
-
-        sub, pubsub = self._make_subscriber(callbacks=[_on_tick])
-
-        async def _listen():
-            for m in messages:
-                yield m
-
-        pubsub.listen = _listen
-        sub._pubsub = pubsub
-
-        await sub._listen()
-        assert received == []
-
-    @pytest.mark.anyio
-    async def test_listen_skips_invalid_json(self) -> None:
-        messages = [{"type": "message", "data": b"not-valid-json"}]
-        received: list[TickEvent] = []
-
-        async def _on_tick(t: TickEvent) -> None:
-            received.append(t)
-
-        sub, pubsub = self._make_subscriber(callbacks=[_on_tick])
-
-        async def _listen():
-            for m in messages:
-                yield m
-
-        pubsub.listen = _listen
-        sub._pubsub = pubsub
-
-        await sub._listen()
-        assert received == []
-
-    @pytest.mark.anyio
-    async def test_listen_updates_price_store(self) -> None:
-        from trading.broker.service.paper_broker import PriceStore
-
-        tick = _tick(token=738561, price=1600.0)
-        messages = [{"type": "message", "data": tick.model_dump_json().encode()}]
-
-        from trading.worker.tick_subscriber import TickSubscriber
-
-        redis = MagicMock()
-        pubsub = MagicMock()
-        pubsub.subscribe = AsyncMock()
-        redis.pubsub = MagicMock(return_value=pubsub)
-
-        price_store = PriceStore()
-        circuit = RedisCircuitBreaker(MagicMock())
-        sub = TickSubscriber(
-            redis=redis,
-            tokens=[738561],
+            tick_pipeline=pipeline,
             circuit_breaker=circuit,
             token_symbol={738561: "INFY"},
             price_store=price_store,
         )
+        return agent, pipeline
 
-        async def _listen():
-            for m in messages:
-                yield m
+    @pytest.mark.anyio
+    async def test_process_ticks_runs_pipeline_for_known_token(self) -> None:
+        tick = _tick(token=738561)
 
-        pubsub.listen = _listen
-        sub._pubsub = pubsub
+        async def _stream():
+            yield tick.model_dump_json().encode()
 
-        await sub._listen()
+        agent, pipeline = self._make_agent(tokens=[738561])
+        await agent._process_ticks(_stream())
+
+        pipeline.run.assert_awaited_once()
+        (called_tick,) = pipeline.run.call_args.args
+        assert called_tick.instrument_token == 738561
+
+    @pytest.mark.anyio
+    async def test_process_ticks_skips_unknown_token(self) -> None:
+        tick = _tick(token=999999)
+
+        async def _stream():
+            yield tick.model_dump_json().encode()
+
+        agent, pipeline = self._make_agent(tokens=[738561])
+        await agent._process_ticks(_stream())
+
+        pipeline.run.assert_not_awaited()
+
+    @pytest.mark.anyio
+    async def test_process_ticks_skips_invalid_json(self) -> None:
+        async def _stream():
+            yield b"not-valid-json"
+
+        agent, pipeline = self._make_agent(tokens=[738561])
+        await agent._process_ticks(_stream())
+
+        pipeline.run.assert_not_awaited()
+
+    @pytest.mark.anyio
+    async def test_process_ticks_updates_price_store(self) -> None:
+        from trading.broker.service.paper_broker import PriceStore
+
+        tick = _tick(token=738561, price=1600.0)
+
+        async def _stream():
+            yield tick.model_dump_json().encode()
+
+        price_store = PriceStore()
+        agent, _ = self._make_agent(tokens=[738561], price_store=price_store)
+        await agent._process_ticks(_stream())
+
         assert price_store.get("INFY") == pytest.approx(1600.0)
 
     @pytest.mark.anyio
-    async def test_listen_swallows_callback_errors(self) -> None:
-        tick = _tick()
-        messages = [{"type": "message", "data": tick.model_dump_json().encode()}]
+    async def test_process_ticks_swallows_pipeline_errors(self) -> None:
+        tick = _tick(token=738561)
 
-        async def _bad_callback(t: TickEvent) -> None:
-            raise RuntimeError("callback error")
+        async def _stream():
+            yield tick.model_dump_json().encode()
 
-        sub, pubsub = self._make_subscriber(callbacks=[_bad_callback])
-
-        async def _listen():
-            for m in messages:
-                yield m
-
-        pubsub.listen = _listen
-        sub._pubsub = pubsub
+        bad_pipeline = MagicMock(run=AsyncMock(side_effect=RuntimeError("pipeline error")))
+        agent, _ = self._make_agent(tokens=[738561], tick_pipeline=bad_pipeline)
 
         # Must not raise
-        await sub._listen()
+        await agent._process_ticks(_stream())

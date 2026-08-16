@@ -1,7 +1,7 @@
 [project]
 name = "trading-platform"
 version = "0.1.0"
-description = "Add your description here"
+description = "Event-driven intraday trading engine for Indian equity markets (Zerodha/Kite) — pipeline orchestration, broker adapters, and risk-filter execution; strategy and risk-filter content live in trading-strategy-sdk and trading-risk-sdk"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -37,9 +37,9 @@ dependencies = [
     "trading-strategy-sdk",
     # Risk-calculation toolkit (gates, sizer, policy protocols)
     "trading-risk-sdk",
-    # Generic Step/Pipeline composition primitives (Sink/Source transport seam)
-    "trading-pipeline",
     "dependency-injector>=4.49.1",
+    "faust-streaming>=0.13.2",
+    "opentracing>=2.4.0",
 ]
 
 [dependency-groups]
@@ -76,8 +76,6 @@ quantindicators = { git = "https://github.com/SakethThogarucheeti/quantindicator
 trading-types = { git = "https://github.com/SakethThogarucheeti/trading-types.git", tag = "v0.1.0" }
 trading-strategy-sdk = { git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git", tag = "v0.1.0" }
 trading-risk-sdk = { git = "https://github.com/SakethThogarucheeti/trading-risk-sdk.git", tag = "v0.1.0" }
-# Local path pending GitHub push — switch to a git source (pinned to a tag) once pushed.
-trading-pipeline = { path = "../trading-pipeline", editable = true }
 
 
 [tool.ruff]

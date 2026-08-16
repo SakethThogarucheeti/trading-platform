@@ -54,8 +54,8 @@ Other modules import **only** from `trading.<module>.api`. The `service/` and `s
 WebSocket tick
   → KiteIngestor (tick_ingest)
   → TickIngestor (circuit breaker, audit log)
-  → TickPublisher → Redis pub/sub
-  → TickSubscriber (worker process) → CandleAggregator
+  → TickPublisher → Kafka `ticks` topic
+  → TickAgentComponent (faust agent, worker process) → CandleAggregator
   → CandleAggregator (candles) → CandleEvent
   → SignalGenerator (strategy) → SignalEvent
   → RiskFilter (risk) → ValidatedOrderEvent

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from aiokafka import AIOKafkaProducer
 from dependency_injector import containers, providers
 from quantindicators.polars_store import PolarsStore
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -41,6 +42,11 @@ logger = logging.getLogger(__name__)
 
 def _circuit_breaker() -> AbstractCircuitBreaker:
     return CircuitBreaker()
+
+
+def _kafka_bootstrap_servers(settings: Settings) -> str:
+    """aiokafka wants "host:port", not the faust-style "kafka://host:port" URL."""
+    return settings.kafka_broker_url.removeprefix("kafka://")
 
 
 async def _load_instruments(sf: async_sessionmaker[AsyncSession]) -> list[Instrument]:
@@ -171,7 +177,8 @@ class _RuntimeAssembler:
         paper_price_store = price_store if settings.paper_trading else None
         polars_store = PolarsStore()
 
-        tick_publisher = TickPublisher(redis) if redis is not None else None
+        producer = AIOKafkaProducer(bootstrap_servers=_kafka_bootstrap_servers(settings))
+        tick_publisher = TickPublisher(producer, redis)
 
         ingestor = KiteIngestor(
             stream=stream,

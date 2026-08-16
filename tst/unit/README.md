@@ -27,7 +27,7 @@ The directory structure mirrors `src/trading/`. To find tests for a package, loo
 | `storage/` | All domain stores (TradingStore, AuditStore, etc.) |
 | `strategy/` | Strategy base, factory, signal generator, all built-in strategies |
 | `tick_ingest/` | `TickIngestor`, `KiteIngestor`, `TickPublisher`, `CircuitBreaker` |
-| `worker/` | `TickSubscriber`, `RedisCircuitBreaker` |
+| `worker/` | `TickAgentComponent`, `RedisCircuitBreaker` |
 
 ## Conventions
 

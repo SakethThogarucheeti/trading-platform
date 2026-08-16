@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     postgres_url: PostgresDsn
     redis_url: str | None = None
+    kafka_broker_url: str = "kafka://localhost:9092"
 
     # ------------------------------------------------------------------ #
     # Risk controls — optional with safe defaults                         #
