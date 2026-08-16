@@ -1708,7 +1708,7 @@ wheels = [
 [[package]]
 name = "quantindicators"
 version = "0.1.0"
-source = { git = "https://github.com/SakethThogarucheeti/quantindicators.git#88c8c37a5f5b04c44a0e694506d9192e71c6c52f" }
+source = { git = "https://github.com/SakethThogarucheeti/quantindicators.git?tag=v0.1.0#1f9187e65c47c74f8357e2a2738f705e8f16f212" }
 dependencies = [
     { name = "numpy" },
     { name = "pydantic" },
@@ -2029,12 +2029,12 @@ requires-dist = [
     { name = "pyright", specifier = ">=1.1.408" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "pytz", specifier = ">=2025.2" },
-    { name = "quantindicators", extras = ["scipy"], git = "https://github.com/SakethThogarucheeti/quantindicators.git" },
+    { name = "quantindicators", extras = ["scipy"], git = "https://github.com/SakethThogarucheeti/quantindicators.git?tag=v0.1.0" },
     { name = "redis", extras = ["hiredis"], specifier = ">=5.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "tenacity", specifier = ">=9.1.4" },
     { name = "trading-risk-sdk", git = "https://github.com/SakethThogarucheeti/trading-risk-sdk.git?tag=v0.1.0" },
-    { name = "trading-strategy-sdk", git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git?tag=v0.1.0" },
+    { name = "trading-strategy-sdk", git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git?tag=v0.1.1" },
     { name = "trading-types", git = "https://github.com/SakethThogarucheeti/trading-types.git?tag=v0.1.0" },
     { name = "tzdata", specifier = ">=2026.1" },
     { name = "uvicorn", specifier = ">=0.29" },
@@ -2067,7 +2067,7 @@ dependencies = [
 [[package]]
 name = "trading-strategy-sdk"
 version = "0.1.0"
-source = { git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git?tag=v0.1.0#61996eeb8f52c401a2a1ec3e5feb52ae818aa85b" }
+source = { git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git?tag=v0.1.1#c664dcb616d5d98f5eaae3034ca0e5d0f78cd112" }
 dependencies = [
     { name = "pydantic" },
     { name = "quantindicators", extra = ["scipy"] },
