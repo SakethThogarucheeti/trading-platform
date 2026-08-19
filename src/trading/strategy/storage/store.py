@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.strategy.storage.models import AlgoConfig, AlgoState, IndicatorLog
@@ -122,14 +123,22 @@ class ConfigStore:
                     existing.params = json.dumps(params)
 
     async def upsert_algo_state(self, name: str, state: dict[str, object]) -> None:
+        # A SELECT-then-INSERT/UPDATE here has a TOCTOU race: SignalGenerator
+        # fires one of these per candle bar without awaiting the previous
+        # call, so two overlapping calls for the same algo can both see no
+        # existing row and both attempt INSERT, raising a duplicate-key
+        # error. INSERT ... ON CONFLICT is atomic at the database level and
+        # closes the window entirely.
+        stmt = pg_insert(AlgoState).values(
+            name=name, state=json.dumps(state), updated_at=datetime.now(UTC)
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[AlgoState.name],
+            set_={"state": stmt.excluded.state, "updated_at": stmt.excluded.updated_at},
+        )
         async with self._sf() as session:
             async with session.begin():
-                existing = await session.get(AlgoState, name)
-                if existing is None:
-                    session.add(AlgoState(name=name, state=json.dumps(state)))
-                else:
-                    existing.state = json.dumps(state)
-                    existing.updated_at = datetime.now(UTC)
+                await session.execute(stmt)
 
     async def get_algo_configs_with_state(self) -> list[dict[str, object]]:
         async with self._sf() as session:
