@@ -11,7 +11,6 @@ dependencies = [
     "kiteconnect>=5.0.1",
     "numpy>=2.2.6",
     "polars>=1.38.1",
-    "pyarrow>=23.0.1",
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "python-dotenv>=1.2.1",
