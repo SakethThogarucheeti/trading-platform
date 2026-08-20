@@ -140,7 +140,7 @@ class RiskFilter(AbstractRegistry):
         try:
             await self._audit.log_decision(
                 step=step, symbol=event.symbol, tick_log_id=event.tick_log_id,
-                context=context, signal_id=event.signal_id,
+                context=context, algo_name=event.algo_name, signal_id=event.signal_id,
             )
         except Exception:
             logger.exception("RiskFilter: decision log failed for signal %s", event.signal_id)

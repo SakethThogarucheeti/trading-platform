@@ -490,7 +490,7 @@ async def test_log_decision_writes_when_tick_log_id_positive(engine: AsyncEngine
     from trading.core.models import DecisionLog
 
     reg, factory = make_registry(engine)
-    sig = make_signal(tick_log_id=99)
+    sig = make_signal(tick_log_id=99, algo_name="rsi_mean_reversion")
     from trading.risk.service.filter import SignalAcceptedContext
     await reg._log_decision("SIGNAL_ACCEPTED", sig, SignalAcceptedContext(qty=5, order_type="MARKET"))
 
@@ -501,7 +501,12 @@ async def test_log_decision_writes_when_tick_log_id_positive(engine: AsyncEngine
     async with get_session(engine) as s:
         result = await s.execute(select(DecisionLog))
         logs = result.scalars().all()
-    assert any(log.step == "SIGNAL_ACCEPTED" for log in logs)
+    accepted = [log for log in logs if log.step == "SIGNAL_ACCEPTED"]
+    assert accepted
+    # algo_name must be threaded through onto the DecisionLog row itself
+    # (not just embedded in the context blob) so /api/signals can attribute
+    # and filter SIGNAL_ACCEPTED/SIGNAL_REJECTED entries by algo.
+    assert accepted[0].algo_name == "rsi_mean_reversion"
 
 
 # ---------------------------------------------------------------------------
