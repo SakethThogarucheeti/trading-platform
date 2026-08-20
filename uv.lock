@@ -1672,7 +1672,7 @@ wheels = [
 [[package]]
 name = "quantindicators"
 version = "0.1.0"
-source = { git = "https://github.com/SakethThogarucheeti/quantindicators.git?tag=v0.1.0#1f9187e65c47c74f8357e2a2738f705e8f16f212" }
+source = { git = "https://github.com/SakethThogarucheeti/quantindicators.git?tag=v0.1.1#617d3bed7fa0432a43ae0837d7b05a0f126e0607" }
 dependencies = [
     { name = "numpy" },
     { name = "pydantic" },
@@ -1990,12 +1990,12 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "pytz", specifier = ">=2025.2" },
-    { name = "quantindicators", extras = ["scipy"], git = "https://github.com/SakethThogarucheeti/quantindicators.git?tag=v0.1.0" },
+    { name = "quantindicators", extras = ["scipy"], git = "https://github.com/SakethThogarucheeti/quantindicators.git?tag=v0.1.1" },
     { name = "redis", extras = ["hiredis"], specifier = ">=5.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "tenacity", specifier = ">=9.1.4" },
     { name = "trading-risk-sdk", git = "https://github.com/SakethThogarucheeti/trading-risk-sdk.git?tag=v0.1.0" },
-    { name = "trading-strategy-sdk", git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git?tag=v0.1.2" },
+    { name = "trading-strategy-sdk", git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git?tag=v0.1.3" },
     { name = "trading-types", git = "https://github.com/SakethThogarucheeti/trading-types.git?tag=v0.1.0" },
     { name = "tzdata", specifier = ">=2026.1" },
     { name = "uvicorn", specifier = ">=0.29" },
@@ -2029,7 +2029,7 @@ dependencies = [
 [[package]]
 name = "trading-strategy-sdk"
 version = "0.1.0"
-source = { git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git?tag=v0.1.2#a537c2472888dcea97640a17838b5e30beb4b3a9" }
+source = { git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git?tag=v0.1.3#9a1a8f7bd57eb602c46cc34da7e6a28a60cc1abe" }
 dependencies = [
     { name = "pydantic" },
     { name = "quantindicators", extra = ["scipy"] },
