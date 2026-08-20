@@ -178,7 +178,13 @@ class AlgoConfig(Base):
 
     name: Mapped[str] = mapped_column(String, primary_key=True)
     strategy_id: Mapped[str] = mapped_column(String)
-    warmup_candles: Mapped[int] = mapped_column(default=30)
+    # Must be large enough that the slowest indicator any strategy uses (up
+    # to period*3, per quantindicators' EWM/Wilder seed-bias decay design)
+    # has fully warmed up by the time the algo starts trading — matches
+    # Settings.warmup_candles' own default. A too-small value here is only
+    # ever hit if a row is created bypassing ConfigStore.seed_algo_config
+    # (which always passes Settings.warmup_candles explicitly).
+    warmup_candles: Mapped[int] = mapped_column(default=200)
     candle_intervals: Mapped[str] = mapped_column(String)  # JSON-encoded list
     equity: Mapped[float]
     enabled: Mapped[bool] = mapped_column(default=True)

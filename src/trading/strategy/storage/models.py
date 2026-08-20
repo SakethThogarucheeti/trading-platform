@@ -31,7 +31,9 @@ class AlgoConfig(Base):
 
     name: Mapped[str] = mapped_column(String, primary_key=True)
     strategy_id: Mapped[str] = mapped_column(String)
-    warmup_candles: Mapped[int] = mapped_column(default=30)
+    # See trading.core.models.AlgoConfig.warmup_candles for why this must be
+    # large enough to cover the slowest indicator's lookback (period*3).
+    warmup_candles: Mapped[int] = mapped_column(default=200)
     candle_intervals: Mapped[str] = mapped_column(String)
     equity: Mapped[float]
     enabled: Mapped[bool] = mapped_column(default=True)
