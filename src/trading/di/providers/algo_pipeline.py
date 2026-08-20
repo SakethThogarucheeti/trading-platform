@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from quantindicators.polars_store import PolarsStore
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from trading_risk_sdk.registry import create_gate
+from trading_strategy_sdk.factory import create_strategy
 
 from trading.app.pipeline import AlgoPipeline, TickPipeline
 from trading.broker.api import Broker
@@ -11,7 +13,6 @@ from trading.candles.api import CandleAggregator
 from trading.config.settings import AlgoSettings, GateConfig, Settings
 from trading.core.messaging import AbstractCircuitBreaker
 from trading.core.schemas import InstrumentType
-from trading.di.containers.algo_steps import AlgoSteps
 from trading.execution.api import ExecConfig, FillHandler, OrderExecutor, PositionAccountant
 from trading.execution.storage.store import PositionStore, TradingStore
 from trading.risk.service.filter import RiskConfig, RiskFilter
@@ -33,7 +34,6 @@ class SharedAlgoDeps:
     polars_store: PolarsStore
     settings: Settings
     factory: CacherFactory
-    steps: AlgoSteps
 
 
 class AlgoPipelineFactory:
@@ -46,9 +46,10 @@ class AlgoPipelineFactory:
 
     Strategy and risk gate selection is config-driven: `algo.strategy_id` +
     `algo.strategy_params`, and `algo.risk_gates` (an ordered list of
-    {gate_id, params}), are resolved through `SharedAlgoDeps.steps`
-    (AlgoSteps) rather than hardcoded here -- swapping a strategy or
-    changing a gate's threshold is a config change, not a code change.
+    {gate_id, params}), are resolved via trading_strategy_sdk.factory.create_strategy()
+    / trading_risk_sdk.registry.create_gate() rather than hardcoded here --
+    swapping a strategy or changing a gate's threshold is a config change,
+    not a code change.
     """
 
     def __init__(self, shared: SharedAlgoDeps) -> None:
@@ -67,7 +68,7 @@ class AlgoPipelineFactory:
 
         algo_instances: dict[str, AlgoInstance] = {
             sym: AlgoInstance(
-                strategy=s.steps.strategy(algo.strategy_id, algo.strategy_params),
+                strategy=create_strategy(algo.strategy_id, algo.strategy_params),
                 instrument_type=InstrumentType(
                     instrument_type_map.get(sym, InstrumentType.EQUITY.value)
                 ),
@@ -137,11 +138,11 @@ class AlgoPipelineFactory:
         params = dict(gate_config.params)
         if gate_config.gate_id == "daily_loss" and settings.paper_trading:
             params.setdefault("enabled", False)
-        return self._s.steps.gate(gate_config.gate_id, params)
+        return create_gate(gate_config.gate_id, params)
 
     async def seed_state(self, algo: AlgoSettings, intervals: list[str]) -> None:
         s = self._s
-        strategy = s.steps.strategy(algo.strategy_id, algo.strategy_params)
+        strategy = create_strategy(algo.strategy_id, algo.strategy_params)
 
         params = strategy.get_params()
         await s.config_store.seed_algo_config(

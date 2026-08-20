@@ -9,15 +9,14 @@ container wiped out a running algo's real 398-candle warmup progress, and
 the dashboard/daily report kept showing it as cold until the next actual
 candle close.
 
-Uses the real ConfigStore + real strategy registry (build_algo_steps())
-against the test Postgres container — no mocks on the path this bug
-actually lived on.
+Uses the real ConfigStore + real strategy factory (trading_strategy_sdk's
+create_strategy(), called directly by AlgoPipelineFactory) against the test
+Postgres container — no mocks on the path this bug actually lived on.
 """
 
 from __future__ import annotations
 
 from trading.config.settings import AlgoSettings, Settings
-from trading.di.containers.algo_steps import build_algo_steps
 from trading.di.providers.algo_pipeline import AlgoPipelineFactory, SharedAlgoDeps
 from trading.strategy.storage.store import ConfigStore
 
@@ -42,7 +41,6 @@ def _make_factory(session_factory, settings: Settings) -> AlgoPipelineFactory:
         polars_store=None,
         settings=settings,
         factory=None,
-        steps=build_algo_steps(),
     )
     return AlgoPipelineFactory(shared)
 

@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 from dependency_injector import containers, providers
 
 from trading.config.settings import get_settings
-from trading.di.containers.algo_steps import build_algo_steps
 from trading.di.containers.broker import BrokerContainer
 from trading.di.containers.components import ComponentContainer
 from trading.di.containers.infra import InfrastructureContainer
@@ -17,10 +16,10 @@ class AppContainer(containers.DeclarativeContainer):
     """
     Top-level container for the ingestor process.
 
-    Composes InfrastructureContainer -> BrokerContainer -> AlgoSteps ->
-    ComponentContainer, wiring each sub-container's declared Dependency
-    providers to the providers that satisfy them, mirroring the single
-    make_async_container(...) call Dishka used before this migration.
+    Composes InfrastructureContainer -> BrokerContainer -> ComponentContainer,
+    wiring each sub-container's declared Dependency providers to the providers
+    that satisfy them, mirroring the single make_async_container(...) call
+    Dishka used before this migration.
     """
 
     settings = providers.Singleton(get_settings)
@@ -32,8 +31,6 @@ class AppContainer(containers.DeclarativeContainer):
         settings=infra.settings,
         price_store=infra.price_store,
     )
-
-    steps = providers.Singleton(build_algo_steps)
 
     components = providers.Container(
         ComponentContainer,
@@ -53,7 +50,6 @@ class AppContainer(containers.DeclarativeContainer):
         heartbeat_store=infra.heartbeat_store,
         position_store=infra.position_store,
         cacher_factory=infra.cacher_factory,
-        steps=steps,
     )
 
 
@@ -77,8 +73,6 @@ class WorkerAppContainer(containers.DeclarativeContainer):
         price_store=infra.price_store,
     )
 
-    steps = providers.Singleton(build_algo_steps)
-
     worker_components = providers.Container(
         WorkerComponentContainer,
         algo_name=algo_name,
@@ -94,7 +88,6 @@ class WorkerAppContainer(containers.DeclarativeContainer):
         price_store=infra.price_store,
         heartbeat_store=infra.heartbeat_store,
         cacher_factory=infra.cacher_factory,
-        steps=steps,
     )
 
 

@@ -22,7 +22,6 @@ from trading.candles.service.aggregator import CandleAggregator
 from trading.config.settings import AlgoSettings, Settings
 from trading.core.lifecycle.runtime import AbstractRuntime, Runtime
 from trading.core.schemas import InstrumentType
-from trading.di.containers.algo_steps import AlgoSteps
 from trading.di.providers.algo_pipeline import AlgoPipelineFactory, SharedAlgoDeps
 from trading.execution.storage.store import TradingStore
 from trading.monitoring.service.heartbeat import HeartbeatMonitor
@@ -78,7 +77,6 @@ def _build_heartbeat(
 
 async def _worker_runtime(
     algo_name: str,
-    steps: AlgoSteps,
     sf: async_sessionmaker[AsyncSession],
     broker: Broker,
     candle_data_store: CandleDataStore,
@@ -150,7 +148,6 @@ async def _worker_runtime(
         polars_store=polars_store,
         settings=settings,
         factory=cacher_factory,
-        steps=steps,
     ))
 
     tick_pipeline = factory.build_pipeline(
@@ -215,12 +212,10 @@ class WorkerComponentContainer(containers.DeclarativeContainer):
     price_store = providers.Dependency(instance_of=AbstractPriceStore)
     heartbeat_store = providers.Dependency(instance_of=HeartbeatStore)
     cacher_factory = providers.Dependency(instance_of=CacherFactory)
-    steps = providers.Dependency(instance_of=AlgoSteps)
 
     runtime = providers.Resource(
         _worker_runtime,
         algo_name=algo_name,
-        steps=steps,
         sf=sf,
         broker=broker,
         candle_data_store=candle_data_store,

@@ -19,13 +19,6 @@ from trading.di.providers.algo_pipeline import AlgoPipelineFactory, SharedAlgoDe
 
 
 def _make_factory(config_store: MagicMock) -> AlgoPipelineFactory:
-    strategy = MagicMock()
-    strategy.get_params.return_value = {}
-    strategy.get_state.return_value = {}
-
-    steps = MagicMock()
-    steps.strategy.return_value = strategy
-
     shared = SharedAlgoDeps(
         chart=MagicMock(),
         config_store=config_store,
@@ -36,7 +29,6 @@ def _make_factory(config_store: MagicMock) -> AlgoPipelineFactory:
         polars_store=MagicMock(),
         settings=MagicMock(warmup_candles=200),
         factory=MagicMock(),
-        steps=steps,
     )
     return AlgoPipelineFactory(shared)
 

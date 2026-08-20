@@ -25,7 +25,6 @@ from trading.core.clock import Clock
 from trading.core.lifecycle.runtime import AbstractRuntime, Runtime
 from trading.core.messaging import AbstractCircuitBreaker
 from trading.core.schemas import InstrumentType
-from trading.di.containers.algo_steps import AlgoSteps
 from trading.di.providers.algo_pipeline import AlgoPipelineFactory, SharedAlgoDeps
 from trading.execution.api import OrderExecutor
 from trading.execution.storage.store import PositionStore, TradingStore
@@ -153,8 +152,7 @@ class _RuntimeAssembler:
     forced into a stateless provider shape.
     """
 
-    def __init__(self, steps: AlgoSteps) -> None:
-        self._steps = steps
+    def __init__(self) -> None:
         self.kite_ingestor: KiteIngestor | None = None
         # Fills post back to a single shared /api/postback endpoint regardless
         # of which algo placed the order (handle_fill() is a stateless DB
@@ -230,7 +228,6 @@ class _RuntimeAssembler:
             polars_store=polars_store,
             settings=settings,
             factory=cacher_factory,
-            steps=self._steps,
         ))
 
         for algo in algo_configs:
@@ -259,8 +256,8 @@ class _RuntimeAssembler:
         return Runtime([ingestor, candle_aggregator, heartbeat_monitor])
 
 
-def _runtime_assembler(steps: AlgoSteps) -> _RuntimeAssembler:
-    return _RuntimeAssembler(steps)
+def _runtime_assembler() -> _RuntimeAssembler:
+    return _RuntimeAssembler()
 
 
 async def _runtime(
@@ -380,7 +377,6 @@ class ComponentContainer(containers.DeclarativeContainer):
     heartbeat_store = providers.Dependency(instance_of=HeartbeatStore)
     position_store = providers.Dependency(instance_of=PositionStore)
     cacher_factory = providers.Dependency(instance_of=CacherFactory)
-    steps = providers.Dependency(instance_of=AlgoSteps)
 
     circuit_breaker = providers.Singleton(_circuit_breaker)
 
@@ -400,7 +396,7 @@ class ComponentContainer(containers.DeclarativeContainer):
         _heartbeat_monitor, heartbeat=heartbeat_store, sf=sf, settings=settings
     )
 
-    _runtime_assembler_provider = providers.Singleton(_runtime_assembler, steps=steps)
+    _runtime_assembler_provider = providers.Singleton(_runtime_assembler)
 
     runtime = providers.Resource(
         _runtime,

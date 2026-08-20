@@ -28,7 +28,7 @@ from trading.broker.service.paper_broker import PriceStore
 from trading.core.clock import SimulatedClock
 from trading.app.database import build_session_factory, init_db
 from trading.core.schemas import CandleEvent, InstrumentType
-from trading.di.providers.strategy import make_strategy
+from trading_strategy_sdk.factory import create_strategy
 from quantindicators.polars_store import PolarsStore
 from trading.strategy.service.generator import AlgoInstance, AlgoRunConfig, SignalGenerator
 from trading.candles.service.bar_accumulator import SymbolConfig
@@ -151,7 +151,7 @@ class BacktestSession(TestingSession):
             # ------------------------------------------------------------------
             algo_instances: dict[str, AlgoInstance] = {
                 s: AlgoInstance(
-                    strategy=make_strategy(
+                    strategy=create_strategy(
                         algo.strategy_id, config.strategy_params or None, clock=sim_clock
                     ),
                     instrument_type=InstrumentType.EQUITY,

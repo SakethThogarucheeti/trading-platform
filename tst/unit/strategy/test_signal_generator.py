@@ -6,17 +6,17 @@ import datetime as dt
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
-
-from trading.core.clock import SYSTEM_CLOCK
-from trading.app.database import build_session_factory, init_db
-from trading.core.schemas import CandleEvent, InstrumentType, SignalEvent
-from trading.di.providers.strategy import make_strategy
 from quantindicators.polars_store import PolarsStore
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from trading_strategy_sdk.factory import create_strategy
+
+from trading.app.database import build_session_factory, init_db
+from trading.core.clock import SYSTEM_CLOCK
+from trading.core.schemas import CandleEvent, InstrumentType, SignalEvent
 from trading.storage.cache import CacherFactory, ValueCache, setup_cache
 from trading.strategy.service.generator import AlgoInstance, AlgoRunConfig, SignalGenerator
-from trading.tick_ingest.storage.store import AuditStore
 from trading.strategy.storage.store import ChartStore, ConfigStore
+from trading.tick_ingest.storage.store import AuditStore
 
 BASE_TIME = datetime(2025, 1, 6, 9, 15, tzinfo=UTC)
 
@@ -40,7 +40,7 @@ def _build_algos(
 ) -> dict[str, AlgoInstance]:
     return {
         symbol: AlgoInstance(
-            strategy=make_strategy(strategy_id),
+            strategy=create_strategy(strategy_id),
             instrument_type=InstrumentType(
                 instrument_types.get(symbol, InstrumentType.EQUITY.value)
             ),
@@ -319,6 +319,7 @@ async def test_log_signal_audit_failure_is_swallowed() -> None:
     mock_config_store = AsyncMock()
 
     from quantindicators.polars_store import PolarsStore
+
     from trading.strategy.service.generator import AlgoRunConfig, SignalGenerator
 
     config = AlgoRunConfig(
@@ -412,7 +413,7 @@ async def test_handle_without_setup_returns_empty(engine: AsyncEngine) -> None:
 
 def _make_instance() -> AlgoInstance:
     return AlgoInstance(
-        strategy=make_strategy("ema_crossover"),
+        strategy=create_strategy("ema_crossover"),
         instrument_type=InstrumentType.EQUITY,
     )
 
