@@ -14,6 +14,10 @@ class AlgoPipeline:
         self._risk_filter = risk_filter
         self._executor = executor
 
+    @property
+    def executor(self) -> OrderExecutor:
+        return self._executor
+
     async def run(self, signals: list[SignalEvent]) -> None:
         for signal in signals:
             order: ValidatedOrderEvent | None = await self._risk_filter.handle(signal)
@@ -37,6 +41,10 @@ class TickPipeline:
     @property
     def signal_generator(self) -> SignalGenerator:
         return self._signal_generator
+
+    @property
+    def order_executor(self) -> OrderExecutor:
+        return self._algo_pipeline.executor
 
     async def run(self, tick: TickEvent) -> None:
         candles = await self._candle_registry.handle(tick)

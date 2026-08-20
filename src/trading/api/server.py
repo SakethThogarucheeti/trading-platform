@@ -9,6 +9,7 @@ from trading.broker.service.zerodha.kite_client import KiteClient
 from trading.candles.api import HistoricalDataService
 from trading.core.clock import SYSTEM_CLOCK, Clock
 from trading.core.lifecycle.component import Component
+from trading.execution.api import OrderExecutor
 from trading.storage.cache import CacherFactory
 from trading.tick_ingest.api import KiteIngestor
 
@@ -38,6 +39,7 @@ class ApiServer(Component):
         token_secret_key: str = "",
         kite_client: KiteClient | None = None,
         kite_ingestor: KiteIngestor | None = None,
+        order_executor: OrderExecutor | None = None,
         cacher_factory: CacherFactory | None = None,
         historical_data_service: HistoricalDataService | None = None,
         heartbeat_stale_secs: int = 30,
@@ -53,6 +55,7 @@ class ApiServer(Component):
         self._token_secret_key = token_secret_key
         self._kite_client = kite_client
         self._kite_ingestor = kite_ingestor
+        self._order_executor = order_executor
         self._cacher_factory = cacher_factory
         self._historical_data_service = historical_data_service
         self._heartbeat_stale_secs = heartbeat_stale_secs
@@ -72,6 +75,7 @@ class ApiServer(Component):
             token_secret_key=self._token_secret_key,
             kite_client=self._kite_client,
             kite_ingestor=self._kite_ingestor,
+            order_executor=self._order_executor,
             cacher_factory=self._cacher_factory,
             historical_data_service=self._historical_data_service,
             heartbeat_stale_secs=self._heartbeat_stale_secs,
