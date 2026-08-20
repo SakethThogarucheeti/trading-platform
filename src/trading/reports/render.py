@@ -64,15 +64,7 @@ def pnl_str(value: float) -> str:
 # ---------------------------------------------------------------------------
 
 
-def print_strategy_section(
-    signals: list[Signal],
-    decisions: list[DecisionLog],
-    algo_configs: list[AlgoConfigSnapshot],
-    nifty_benchmark: NiftyBenchmark | None = None,
-) -> None:
-    section("STRATEGY PERFORMANCE")
-
-    # --- Signal funnel ---
+def _print_signal_funnel(decisions: list[DecisionLog]) -> None:
     subsection("Signal Funnel")
 
     step_counts: dict[str, int] = defaultdict(int)
@@ -100,7 +92,8 @@ def print_strategy_section(
         for reason, count in sorted(rejection_reasons.items(), key=lambda x: -x[1]):
             print(f"      {reason:<32}{count}")
 
-    # --- Order funnel ---
+
+def _print_order_funnel(signals: list[Signal]) -> None:
     subsection("Order Funnel")
 
     all_orders = [o for s in signals for o in s.orders]
@@ -118,7 +111,8 @@ def print_strategy_section(
     row("  Cancelled", by_status.get(OrderStatus.CANCELLED.value, 0))
     row("Fill rate", f"{fill_rate:.1f}%")
 
-    # --- Per-symbol trade summary ---
+
+def _print_trades_by_symbol(signals: list[Signal]) -> None:
     subsection("Trades by Symbol")
 
     from dataclasses import dataclass
@@ -155,7 +149,10 @@ def print_strategy_section(
     else:
         print("    No filled orders in this period.")
 
-    # --- P&L ---
+
+def _print_realized_pnl(signals: list[Signal]) -> tuple[dict[str, dict[str, object]], float]:
+    """Prints the FIFO-matched P&L section; returns (pnl_map, total_net) for
+    the benchmark section, which needs both to compute alpha vs Nifty."""
     subsection("Realized P&L (FIFO matched, after costs)")
 
     pnl_map = compute_pnl(signals)
@@ -195,27 +192,35 @@ def print_strategy_section(
     else:
         print("    No matched trades in this period.")
 
-    # --- Nifty 50 benchmark ---
-    if nifty_benchmark is not None:
-        subsection("Benchmark: Nifty 50 Buy-and-Hold")
-        row("Nifty 50 open", f"{nifty_benchmark.open:,.2f}")
-        row("Nifty 50 close", f"{nifty_benchmark.close:,.2f}")
-        b_pct = nifty_benchmark.pct_return
-        row("Buy-and-hold return", f"{'+' if b_pct >= 0 else ''}{b_pct:.2f}%")
-        if pnl_map:
-            total_capital = sum(cfg.equity for cfg in algo_configs if cfg.enabled)
-            if total_capital:
-                algo_pct = total_net / total_capital * 100
-                sign = "+" if algo_pct >= 0 else ""
-                row("Algo net return (on capital)", f"{sign}{algo_pct:.2f}%")
-                diff = algo_pct - b_pct
-                row(
-                    "Alpha vs Nifty 50",
-                    f"{'+' if diff >= 0 else ''}{diff:.2f}%  "
-                    f"({'outperforming' if diff >= 0 else 'underperforming'})",
-                )
+    return pnl_map, total_net
 
-    # --- Algo configuration snapshot ---
+
+def _print_nifty_benchmark(
+    nifty_benchmark: NiftyBenchmark,
+    pnl_map: dict[str, dict[str, object]],
+    total_net: float,
+    algo_configs: list[AlgoConfigSnapshot],
+) -> None:
+    subsection("Benchmark: Nifty 50 Buy-and-Hold")
+    row("Nifty 50 open", f"{nifty_benchmark.open:,.2f}")
+    row("Nifty 50 close", f"{nifty_benchmark.close:,.2f}")
+    b_pct = nifty_benchmark.pct_return
+    row("Buy-and-hold return", f"{'+' if b_pct >= 0 else ''}{b_pct:.2f}%")
+    if pnl_map:
+        total_capital = sum(cfg.equity for cfg in algo_configs if cfg.enabled)
+        if total_capital:
+            algo_pct = total_net / total_capital * 100
+            sign = "+" if algo_pct >= 0 else ""
+            row("Algo net return (on capital)", f"{sign}{algo_pct:.2f}%")
+            diff = algo_pct - b_pct
+            row(
+                "Alpha vs Nifty 50",
+                f"{'+' if diff >= 0 else ''}{diff:.2f}%  "
+                f"({'outperforming' if diff >= 0 else 'underperforming'})",
+            )
+
+
+def _print_algo_configuration(algo_configs: list[AlgoConfigSnapshot]) -> None:
     subsection("Algo Configuration")
 
     if algo_configs:
@@ -236,14 +241,23 @@ def print_strategy_section(
         print("    No algo configs found.")
 
 
-def print_system_section(
+def print_strategy_section(
+    signals: list[Signal],
     decisions: list[DecisionLog],
-    audit_logs: list[AuditLog],
-    heartbeats: list[Heartbeat],
+    algo_configs: list[AlgoConfigSnapshot],
+    nifty_benchmark: NiftyBenchmark | None = None,
 ) -> None:
-    section("SYSTEM PERFORMANCE")
+    section("STRATEGY PERFORMANCE")
+    _print_signal_funnel(decisions)
+    _print_order_funnel(signals)
+    _print_trades_by_symbol(signals)
+    pnl_map, total_net = _print_realized_pnl(signals)
+    if nifty_benchmark is not None:
+        _print_nifty_benchmark(nifty_benchmark, pnl_map, total_net, algo_configs)
+    _print_algo_configuration(algo_configs)
 
-    # --- Pipeline throughput ---
+
+def _print_pipeline_throughput(decisions: list[DecisionLog]) -> None:
     subsection("Pipeline Throughput")
 
     step_counts: dict[str, int] = defaultdict(int)
@@ -263,7 +277,8 @@ def print_system_section(
         for algo, count in sorted(algo_candles.items()):
             print(f"      {algo:<30}{count}")
 
-    # --- Heartbeat status ---
+
+def _print_heartbeat_status(heartbeats: list[Heartbeat]) -> None:
     subsection("Module Heartbeat Status")
 
     cutoff_live = datetime.now(UTC) - timedelta(minutes=5)
@@ -280,7 +295,8 @@ def print_system_section(
     else:
         print("    No heartbeat records found.")
 
-    # --- Audit log summary ---
+
+def _print_audit_log_summary(audit_logs: list[AuditLog]) -> None:
     subsection("Audit Log Summary")
 
     by_level: dict[str, list[AuditLog]] = defaultdict(list)
@@ -302,7 +318,8 @@ def print_system_section(
             if len(entries) > limit:
                 print(f"      ... and {len(entries) - limit} more")
 
-    # --- Risk controller summary ---
+
+def _print_risk_controller_activity(decisions: list[DecisionLog]) -> None:
     subsection("Risk Controller Activity")
 
     risk_hits: dict[str, int] = defaultdict(int)
@@ -324,3 +341,15 @@ def print_system_section(
             print(f"\n    Circuit breaker fired {circuit_events} time(s) in this period.")
     else:
         print("    No risk rejections in this period.")
+
+
+def print_system_section(
+    decisions: list[DecisionLog],
+    audit_logs: list[AuditLog],
+    heartbeats: list[Heartbeat],
+) -> None:
+    section("SYSTEM PERFORMANCE")
+    _print_pipeline_throughput(decisions)
+    _print_heartbeat_status(heartbeats)
+    _print_audit_log_summary(audit_logs)
+    _print_risk_controller_activity(decisions)
