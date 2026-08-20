@@ -70,12 +70,31 @@ def test_lower_price_updates_low() -> None:
     assert bar.high == 100.0
 
 
-def test_volume_accumulates() -> None:
+def test_volume_tracks_latest_cumulative_value() -> None:
+    """
+    tick.volume is Zerodha's cumulative day volume, not a per-tick increment —
+    within a bar it's overwritten with the latest value, never summed.
+    """
     acc = BarAccumulator()
     acc.process(_SC, "1min", tick(100.0, t(0), volume=50))
     acc.process(_SC, "1min", tick(101.0, t(10), volume=75))
     bar = acc._bars[("INFY", "1min")]
-    assert bar.volume == 125
+    assert bar.volume == 75
+
+
+def test_closed_bar_volume_is_delta_from_previous_close() -> None:
+    """A closed bar's volume is the cumulative-day-volume delta since the previous bar closed."""
+    acc = BarAccumulator()
+    acc.process(_SC, "1min", tick(100.0, BASE_TIME, volume=50))
+    # First-ever bar for this symbol/interval — no prior baseline, delta is 0.
+    first_candle = acc.process(_SC, "1min", tick(101.0, BASE_TIME + timedelta(minutes=1), volume=75))
+    assert first_candle is not None
+    assert first_candle.volume == 0
+
+    acc.process(_SC, "1min", tick(102.0, BASE_TIME + timedelta(minutes=1, seconds=30), volume=125))
+    second_candle = acc.process(_SC, "1min", tick(103.0, BASE_TIME + timedelta(minutes=2), volume=200))
+    assert second_candle is not None
+    assert second_candle.volume == 50  # 125 (2nd bar's cumulative) - 75 (1st bar's close)
 
 
 # ---------------------------------------------------------------------------

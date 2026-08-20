@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from trading.app.database import build_session_factory, init_db
-from trading.core.models import Instrument
+from trading.candles.storage.models import Instrument
 from trading.core.schemas import CandleEvent, InstrumentType, TickEvent
 from trading.candles.service.bar_accumulator import bar_open_time
 from trading.candles.service.aggregator import CandleAggregator
@@ -144,14 +144,15 @@ async def test_lower_price_tick_updates_low(engine: AsyncEngine) -> None:
     assert bar.high == 100.0
 
 
-async def test_volume_accumulates_within_bar(engine: AsyncEngine) -> None:
+async def test_volume_tracks_latest_cumulative_value_within_bar(engine: AsyncEngine) -> None:
+    """tick.volume is Zerodha's cumulative day volume — overwritten within a bar, never summed."""
     reg = make_registry(engine)
 
     await reg.handle(tick(1, 100.0, t(0), volume=50))
     await reg.handle(tick(1, 101.0, t(10), volume=75))
 
     bar = reg._accumulator._bars[("SYM1", "1min")]
-    assert bar.volume == 125
+    assert bar.volume == 75
 
 
 async def test_tick_crossing_bar_boundary_emits_candle(engine: AsyncEngine) -> None:
