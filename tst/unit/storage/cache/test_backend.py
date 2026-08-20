@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import time
+from unittest.mock import patch
+
 import pytest
 import pytest_asyncio
 
@@ -52,6 +55,44 @@ class TestValueCacheAsync:
     @pytest.mark.asyncio
     async def test_delete_nonexistent_key_no_error(self, cache: ValueCache) -> None:
         await cache.delete("no_such_key")  # must not raise
+
+    @pytest.mark.asyncio
+    async def test_ttl_expires_in_memory_entry(self, cache: ValueCache) -> None:
+        """
+        Regression: the in-memory tier used to ignore ttl entirely (only the
+        Redis side honored `expire=`), so a value set with a short ttl was
+        served forever from memory within a warm process — the real cause of
+        /api/pnl appearing frozen even though its cache key was invalidated.
+
+        The real cashews backend tracks its own expiry against real wall
+        time, so it wouldn't have expired within this mocked window either —
+        patch it out as a miss to isolate the in-memory tier being tested.
+        """
+        with patch("trading.storage.cache.backend.time.monotonic", return_value=1000.0):
+            await cache.set("k", {"x": 1}, ttl=30)
+            assert await cache.get("k") == {"x": 1}
+
+        with (
+            patch("trading.storage.cache.backend.time.monotonic", return_value=1000.0 + 31),
+            patch.object(_backend, "get", return_value=None),
+        ):
+            assert await cache.get("k") is None
+
+    @pytest.mark.asyncio
+    async def test_ttl_not_yet_expired_still_served(self, cache: ValueCache) -> None:
+        with patch("trading.storage.cache.backend.time.monotonic", return_value=1000.0):
+            await cache.set("k", {"x": 1}, ttl=30)
+
+        with patch("trading.storage.cache.backend.time.monotonic", return_value=1000.0 + 10):
+            assert await cache.get("k") == {"x": 1}
+
+    @pytest.mark.asyncio
+    async def test_no_ttl_never_expires(self, cache: ValueCache) -> None:
+        with patch("trading.storage.cache.backend.time.monotonic", return_value=1000.0):
+            await cache.set("k", {"x": 1})  # ttl=None
+
+        with patch("trading.storage.cache.backend.time.monotonic", return_value=1000.0 + 10_000):
+            assert await cache.get("k") == {"x": 1}
 
     @pytest.mark.asyncio
     async def test_memory_populated_from_redis_on_miss(self, cache: ValueCache) -> None:

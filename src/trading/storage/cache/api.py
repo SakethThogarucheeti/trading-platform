@@ -38,5 +38,13 @@ class ApiResponseCacher(BaseCacher[str]):
         Explicit factory call makes the dependency on ApiResponseCacher visible at
         the call site (e.g. OrderExecutor.handle_fill) for easy tracing.
         """
-        await self.invalidate("pnl", for_date.isoformat())
+        # /api/pnl's cache key is ("pnl", date, session_id, algo_name) — the
+        # 2-arg key below only ever matched the (non-existent) unfiltered
+        # key, so this invalidation silently never hit the actual cached
+        # response for the common case (empty session_id/algo_name, used by
+        # the main dashboard), leaving it frozen until its TTL expired.
+        # Invalidate that common variant explicitly for immediate accuracy;
+        # rarer per-session/per-algo filtered variants still self-correct
+        # via TTL (now properly enforced — see ValueCache._mem_get).
+        await self.invalidate("pnl", for_date.isoformat(), "", "")
         await self.invalidate("pnl:by_algo", for_date.isoformat())

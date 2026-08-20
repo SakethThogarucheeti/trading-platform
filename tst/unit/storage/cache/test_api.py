@@ -77,14 +77,19 @@ class TestGetOrSetResponse:
 class TestInvalidatePnl:
     @pytest.mark.asyncio
     async def test_invalidate_pnl_clears_both_keys(self, cacher: ApiResponseCacher) -> None:
+        # Matches the real /api/pnl router's key shape (date, session_id, algo_name).
         body = json.dumps({"pnl": 100})
-        await cacher.get_or_set_response(("pnl", TODAY.isoformat()), producer=AsyncMock(return_value=body), ttl=30)
+        await cacher.get_or_set_response(
+            ("pnl", TODAY.isoformat(), "", ""), producer=AsyncMock(return_value=body), ttl=30
+        )
         await cacher.get_or_set_response(("pnl:by_algo", TODAY.isoformat()), producer=AsyncMock(return_value=body), ttl=30)
 
         await cacher.invalidate_pnl(TODAY)
 
         producer = AsyncMock(return_value=json.dumps({"pnl": 999}))
-        result = await cacher.get_or_set_response(("pnl", TODAY.isoformat()), producer=producer, ttl=30)
+        result = await cacher.get_or_set_response(
+            ("pnl", TODAY.isoformat(), "", ""), producer=producer, ttl=30
+        )
         assert result == json.dumps({"pnl": 999})
         producer.assert_awaited_once()
 
