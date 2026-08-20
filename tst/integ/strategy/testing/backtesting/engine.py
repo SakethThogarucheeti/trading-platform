@@ -6,9 +6,9 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from quantindicators.polars_store import PolarsStore
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
-
 from testing.backtesting.data_loader import DataLoader
 from testing.backtesting.metrics import (
     cagr,
@@ -24,29 +24,27 @@ from testing.backtesting.report import BacktestConfig, BacktestReport
 from testing.registry import session_type
 from testing.session import TestingSession
 from testing.simulators.execution_sim import SlippageFillSimulator
-from trading.broker.service.paper_broker import PriceStore
-from trading.core.clock import SimulatedClock
-from trading.app.database import build_session_factory, init_db
-from trading.core.schemas import CandleEvent, InstrumentType
+from trading_risk_sdk.gates.circuit_breaker import CircuitBreakerGate
+from trading_risk_sdk.gates.daily_loss import DailyLossGate
+from trading_risk_sdk.gates.duplicate_position import DuplicatePositionGate
+from trading_risk_sdk.gates.time_cutoff import TimeCutoffGate
 from trading_strategy_sdk.factory import create_strategy
-from quantindicators.polars_store import PolarsStore
-from trading.strategy.service.generator import AlgoInstance, AlgoRunConfig, SignalGenerator
+
+from trading.app.database import build_session_factory, init_db
+from trading.broker.service.paper_broker import PriceStore
 from trading.candles.service.bar_accumulator import SymbolConfig
-from trading.execution.service.fill_handler import FillHandler
+from trading.core.clock import SimulatedClock
+from trading.core.schemas import CandleEvent, InstrumentType
 from trading.execution.service.executor import ExecConfig, OrderExecutor
+from trading.execution.service.fill_handler import FillHandler
 from trading.execution.service.position_accountant import PositionAccountant
-from trading.risk.gates.circuit_breaker import CircuitBreakerGate
-from trading.risk.gates.daily_loss import DailyLossGate
-from trading.risk.gates.duplicate_position import DuplicatePositionGate
-from trading.risk.gates.time_cutoff import TimeCutoffGate
+from trading.execution.storage.store import PositionStore, TradingStore
 from trading.risk.service.filter import RiskConfig, RiskFilter
-from trading.tick_ingest.service.ingestor import CircuitBreaker
 from trading.storage.cache import CacherFactory, ValueCache, setup_cache
+from trading.strategy.service.generator import AlgoInstance, AlgoRunConfig, SignalGenerator
+from trading.strategy.storage.store import ChartStore, ConfigStore
+from trading.tick_ingest.service.ingestor import CircuitBreaker
 from trading.tick_ingest.storage.store import AuditStore
-from trading.strategy.storage.store import ChartStore
-from trading.strategy.storage.store import ConfigStore
-from trading.execution.storage.store import PositionStore
-from trading.execution.storage.store import TradingStore
 
 logger = logging.getLogger(__name__)
 
@@ -253,6 +251,7 @@ class BacktestSession(TestingSession):
                 sim_clock.advance(bar_ts)
 
             from testing.simulators.candle_player import CandlePlayer
+
             from trading.core.lifecycle.runtime import Runtime
 
             runtime = Runtime([])  # no components — pipeline is driven inline

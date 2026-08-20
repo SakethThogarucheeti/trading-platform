@@ -5,12 +5,12 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from quantindicators.polars_store import PolarsStore
+from trading_strategy_sdk.base import RuntimeContext
+from trading_strategy_sdk.vwap_reversion import VwapReversionStrategy
 
 from trading.core.clock import SimulatedClock
 from trading.core.schemas import CandleEvent, InstrumentType, Side
-from quantindicators.polars_store import PolarsStore
-from trading.strategy.base import RuntimeContext
-from trading.strategy.vwap_reversion import VwapReversionStrategy
 
 BASE_TIME = datetime(2025, 1, 6, 9, 15, tzinfo=UTC)
 INFY = "INFY"

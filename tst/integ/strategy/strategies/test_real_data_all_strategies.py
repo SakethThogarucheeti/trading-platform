@@ -12,12 +12,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from testing.backtesting.data_loader import FileDataLoader
 from testing.backtesting.engine import BacktestSession
 from testing.backtesting.report import BacktestConfig
-from testing.backtesting.data_loader import FileDataLoader
+from trading_strategy_sdk.factory import registered_strategies
 
 from trading.config.settings import AlgoSettings
-from trading.strategy.factory import registered_strategies
 
 _DATA_DIR = Path(__file__).parents[4] / "data"
 _ALL_STRATEGIES = list(registered_strategies().keys())

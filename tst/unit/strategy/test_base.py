@@ -6,11 +6,11 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
+from quantindicators.polars_store import PolarsStore
+from trading_strategy_sdk.base import Strategy
+from trading_strategy_sdk.ema_crossover import EmaCrossoverStrategy
 
 from trading.core.schemas import CandleEvent, InstrumentType, Side, SignalType
-from quantindicators.polars_store import PolarsStore
-from trading.strategy.ema_crossover import EmaCrossoverStrategy
-from trading.strategy.base import Strategy
 
 BASE_TIME = datetime(2025, 1, 6, 3, 45, 0, tzinfo=UTC)
 INFY = "INFY"

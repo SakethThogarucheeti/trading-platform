@@ -8,11 +8,12 @@ from datetime import datetime
 from quantindicators.polars_store import PolarsStore
 from quantindicators.store import AbstractCandleStore
 from quantindicators.types import CandleRow
+from trading_strategy_sdk.base import AlgoInstance, AlgoRunConfig
 
+from trading.app.tasks import fire
 from trading.candles.api.schemas import CandleEvent
 from trading.core.clock import Clock, SystemClock
 from trading.core.messaging import AbstractRegistry
-from trading.app.tasks import fire
 from trading.strategy.api.interfaces import (
     AbstractAuditStore,
     AbstractChartStore,
@@ -20,7 +21,6 @@ from trading.strategy.api.interfaces import (
     CacherFactory,
 )
 from trading.strategy.api.schemas import SignalEvent
-from trading.strategy.service.base import AlgoInstance, AlgoRunConfig, Strategy
 
 logger = logging.getLogger(__name__)
 

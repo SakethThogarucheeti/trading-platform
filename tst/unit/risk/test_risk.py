@@ -8,9 +8,14 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from trading_risk_sdk.gates.circuit_breaker import CircuitBreakerGate
+from trading_risk_sdk.gates.daily_loss import DailyLossGate
+from trading_risk_sdk.gates.duplicate_position import DuplicatePositionGate
+from trading_risk_sdk.gates.time_cutoff import TimeCutoffGate
+from trading_risk_sdk.sizer import calculate_quantity
 
-from trading.core.clock import SYSTEM_CLOCK
 from trading.app.database import build_session_factory, init_db
+from trading.core.clock import SYSTEM_CLOCK
 from trading.core.models import Order, Position, Signal
 from trading.core.schemas import (
     InstrumentType,
@@ -20,16 +25,11 @@ from trading.core.schemas import (
     SignalType,
     ValidatedOrderEvent,
 )
-from trading.risk.gates.circuit_breaker import CircuitBreakerGate
-from trading.risk.gates.daily_loss import DailyLossGate
-from trading.risk.gates.duplicate_position import DuplicatePositionGate
-from trading.risk.gates.time_cutoff import TimeCutoffGate
-from trading.risk.service.filter import RiskConfig, RiskFilter
-from trading.tick_ingest.service.ingestor import CircuitBreaker
-from trading.risk.service.sizer import calculate_quantity
-from trading.tick_ingest.storage.store import AuditStore
-from trading.storage.cache import CacherFactory, ValueCache, setup_cache
 from trading.execution.storage.store import PositionStore, TradingStore
+from trading.risk.service.filter import RiskConfig, RiskFilter
+from trading.storage.cache import CacherFactory, ValueCache, setup_cache
+from trading.tick_ingest.service.ingestor import CircuitBreaker
+from trading.tick_ingest.storage.store import AuditStore
 
 NOW = datetime.now(UTC)
 TODAY = NOW.date()
@@ -517,8 +517,8 @@ async def test_log_decision_writes_when_tick_log_id_positive(engine: AsyncEngine
 async def test_time_cutoff_gate_rejects_after_cutoff() -> None:
     from datetime import UTC, datetime, time
 
-    from trading.risk.gates.time_cutoff import TimeCutoffGate
-    from trading.risk.service.policy import RiskContext
+    from trading_risk_sdk.gates.time_cutoff import TimeCutoffGate
+    from trading_risk_sdk.policy import RiskContext
 
     gate = TimeCutoffGate()
     ctx = RiskContext(
@@ -537,8 +537,8 @@ async def test_time_cutoff_gate_rejects_after_cutoff() -> None:
 async def test_time_cutoff_gate_passes_before_cutoff() -> None:
     from datetime import UTC, datetime, time
 
-    from trading.risk.gates.time_cutoff import TimeCutoffGate
-    from trading.risk.service.policy import RiskContext
+    from trading_risk_sdk.gates.time_cutoff import TimeCutoffGate
+    from trading_risk_sdk.policy import RiskContext
 
     gate = TimeCutoffGate()
     ctx = RiskContext(
@@ -555,13 +555,13 @@ async def test_time_cutoff_gate_passes_before_cutoff() -> None:
 
 
 async def test_circuit_breaker_gate_rejects_when_open() -> None:
-    from trading.risk.gates.circuit_breaker import CircuitBreakerGate
+    from trading_risk_sdk.gates.circuit_breaker import CircuitBreakerGate
 
     gate = CircuitBreakerGate()
 
     from datetime import UTC, datetime, time
 
-    from trading.risk.service.policy import RiskContext
+    from trading_risk_sdk.policy import RiskContext
 
     ctx = RiskContext(
         now=datetime(2024, 1, 1, 10, 0, tzinfo=UTC),
@@ -580,8 +580,8 @@ async def test_circuit_breaker_gate_rejects_when_open() -> None:
 async def test_daily_loss_gate_rejects_when_limit_exceeded() -> None:
     from datetime import UTC, datetime, time
 
-    from trading.risk.gates.daily_loss import DailyLossGate
-    from trading.risk.service.policy import RiskContext
+    from trading_risk_sdk.gates.daily_loss import DailyLossGate
+    from trading_risk_sdk.policy import RiskContext
 
     gate = DailyLossGate(enabled=True)
     ctx = RiskContext(
@@ -601,9 +601,10 @@ async def test_duplicate_position_gate_rejects_same_direction() -> None:
     from datetime import UTC, datetime, time
     from decimal import Decimal
 
+    from trading_risk_sdk.gates.duplicate_position import DuplicatePositionGate
+    from trading_risk_sdk.policy import RiskContext
+
     from trading.core.models import Position
-    from trading.risk.gates.duplicate_position import DuplicatePositionGate
-    from trading.risk.service.policy import RiskContext
 
     gate = DuplicatePositionGate()
     pos = Position(symbol="INFY", instrument_type="EQUITY", net_qty=10, avg_price=Decimal("100"), updated_at=NOW)

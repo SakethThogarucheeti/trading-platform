@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from quantindicators.polars_store import PolarsStore
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from trading_risk_sdk.policy import RiskGate
 from trading_risk_sdk.registry import create_gate
 from trading_strategy_sdk.factory import create_strategy
 
@@ -16,7 +17,6 @@ from trading.core.schemas import InstrumentType
 from trading.execution.api import ExecConfig, FillHandler, OrderExecutor, PositionAccountant
 from trading.execution.storage.store import PositionStore, TradingStore
 from trading.risk.service.filter import RiskConfig, RiskFilter
-from trading.risk.service.policy import RiskGate
 from trading.storage.cache import CacherFactory
 from trading.strategy.api import AlgoInstance, AlgoRunConfig, SignalGenerator
 from trading.strategy.storage.store import ChartStore, ConfigStore

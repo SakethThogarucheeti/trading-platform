@@ -5,15 +5,15 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from quantindicators.polars_store import PolarsStore
+from trading_strategy_sdk.base import RuntimeContext, Strategy
+from trading_strategy_sdk.ema_crossover import EmaCrossoverStrategy
+from trading_strategy_sdk.opening_range_breakout import OpeningRangeBreakoutStrategy
+from trading_strategy_sdk.rsi_mean_reversion import RsiMeanReversionStrategy
+from trading_strategy_sdk.vwap_reversion import VwapReversionStrategy
 
 from trading.core.clock import SimulatedClock
 from trading.core.schemas import CandleEvent, InstrumentType, Side
-from quantindicators.polars_store import PolarsStore
-from trading.strategy.base import RuntimeContext, Strategy
-from trading.strategy.ema_crossover import EmaCrossoverStrategy
-from trading.strategy.opening_range_breakout import OpeningRangeBreakoutStrategy
-from trading.strategy.rsi_mean_reversion import RsiMeanReversionStrategy
-from trading.strategy.vwap_reversion import VwapReversionStrategy
 
 EQUITY = InstrumentType.EQUITY
 BASE_TS = datetime(2025, 1, 6, 4, 15, tzinfo=UTC)  # 09:45 IST

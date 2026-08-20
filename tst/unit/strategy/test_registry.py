@@ -18,14 +18,14 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+from trading_strategy_sdk.base import Strategy
+from trading_strategy_sdk.ema_crossover import EmaCrossoverStrategy
+from trading_strategy_sdk.factory import create_strategy, get_strategy, registered_strategies
+from trading_strategy_sdk.opening_range_breakout import OpeningRangeBreakoutStrategy
+from trading_strategy_sdk.rsi_mean_reversion import RsiMeanReversionStrategy
+from trading_strategy_sdk.vwap_reversion import VwapReversionStrategy
 
 from trading.core.clock import Clock
-from trading.strategy.base import Strategy
-from trading.strategy.ema_crossover import EmaCrossoverStrategy
-from trading.strategy.factory import create_strategy, get_strategy, registered_strategies
-from trading.strategy.opening_range_breakout import OpeningRangeBreakoutStrategy
-from trading.strategy.rsi_mean_reversion import RsiMeanReversionStrategy
-from trading.strategy.vwap_reversion import VwapReversionStrategy
 
 _BUILTIN_ALIASES = [
     "ema_crossover",

@@ -6,15 +6,20 @@ from datetime import time
 from typing import Callable
 
 from pydantic import BaseModel, Field
+from trading_risk_sdk.policy import RiskContext, RiskGate, RiskSizer
+from trading_risk_sdk.sizer import VolatilitySizer
 
+from trading.app.tasks import fire
 from trading.core.clock import Clock, SystemClock
 from trading.core.messaging import AbstractCircuitBreaker, AbstractRegistry
 from trading.core.schemas import SignalType
-from trading.app.tasks import fire
-from trading.risk.api.interfaces import AbstractAuditStore, AbstractPositionStore, AbstractTradingStore, CacherFactory
+from trading.risk.api.interfaces import (
+    AbstractAuditStore,
+    AbstractPositionStore,
+    AbstractTradingStore,
+    CacherFactory,
+)
 from trading.risk.api.schemas import ValidatedOrderEvent
-from trading.risk.service.policy import RiskContext, RiskGate, RiskSizer
-from trading.risk.service.sizer import VolatilitySizer
 from trading.strategy.api.schemas import SignalEvent
 
 logger = logging.getLogger(__name__)
