@@ -15,7 +15,7 @@ from trading.broker.api import Broker
 from trading.candles.service.bar_accumulator import SymbolConfig
 from trading.candles.service.historical import HistoricalDataResult, HistoricalDataService
 from trading.app.database import build_session_factory, init_db
-from trading.core.models import Instrument
+from trading.candles.storage.models import Instrument
 from trading.core.schemas import CandleEvent, InstrumentType, TickEvent
 from trading.candles.service.aggregator import CandleAggregator, CandleAggregatorComponent
 from trading.candles.service.persister import CandleConfig

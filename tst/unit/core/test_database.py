@@ -11,7 +11,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
 from trading.app.database import build_engine, drop_db, get_session, init_db
-from trading.core.models import AuditLog, Instrument, Order, Position, Signal
+from trading.candles.storage.models import Instrument
+from trading.core.models import AuditLog, Order, Position, Signal
 
 NOW = datetime.now(UTC)
 

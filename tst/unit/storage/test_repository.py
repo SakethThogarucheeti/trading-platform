@@ -11,7 +11,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from trading.app.database import build_session_factory, get_session, init_db
-from trading.core.models import Instrument, Order, Signal
+from trading.candles.storage.models import Instrument
+from trading.core.models import Order, Signal
 from trading.core.schemas import (
     FillEvent,
     InstrumentType,

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from trading.candles.api.interfaces import AbstractAuditStore, AbstractCandleStore
 from trading.candles.api.schemas import CandleEvent
-from trading.core.models import Instrument
+from trading.candles.storage.models import Instrument
 
 logger = logging.getLogger(__name__)
 

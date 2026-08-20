@@ -5,9 +5,9 @@ import logging
 from pydantic import BaseModel
 
 from trading.broker.api import BrokerStream, Tick
+from trading.candles.storage.models import Instrument
 from trading.core.clock import Clock, SystemClock
 from trading.core.messaging import AbstractCircuitBreaker, AbstractRegistry
-from trading.core.models import Instrument
 from trading.core.schemas import InstrumentType
 from trading.tick_ingest.api.interfaces import AbstractAuditStore
 from trading.tick_ingest.api.schemas import TickEvent
