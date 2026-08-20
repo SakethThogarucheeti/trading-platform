@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.monitoring.storage.models import Heartbeat
@@ -13,14 +14,22 @@ class HeartbeatStore:
         self._sf = session_factory
 
     async def update_heartbeat(self, module: str) -> None:
+        # A SELECT-then-INSERT/UPDATE here has a TOCTOU race: the beat loop
+        # fires on its own timer without awaiting prior calls, so two
+        # overlapping calls for the same module can both see no existing row
+        # and both attempt INSERT, raising a duplicate-key error (or one
+        # INSERTs while the other's stale UPDATE matches zero rows). INSERT
+        # ... ON CONFLICT is atomic at the database level and closes the
+        # window entirely — mirrors ConfigStore.upsert_algo_state.
         now = datetime.now(UTC)
+        stmt = pg_insert(Heartbeat).values(module=module, last_seen=now)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[Heartbeat.module],
+            set_={"last_seen": stmt.excluded.last_seen},
+        )
         async with self._sf() as session:
             async with session.begin():
-                existing = await session.get(Heartbeat, module)
-                if existing is None:
-                    session.add(Heartbeat(module=module, last_seen=now))
-                else:
-                    existing.last_seen = now
+                await session.execute(stmt)
 
     async def get_stale_modules(
         self, timeout_secs: int, modules: list[str] | None = None

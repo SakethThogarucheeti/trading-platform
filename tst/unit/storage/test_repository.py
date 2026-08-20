@@ -416,8 +416,13 @@ async def test_seed_algo_config_creates_new(engine: AsyncEngine, config_store: C
     assert cfg.strategy_id == "ema_crossover"
 
 
-async def test_seed_algo_config_skips_existing(engine: AsyncEngine, config_store: ConfigStore) -> None:
-    """Calling seed_algo_config twice should not overwrite or error."""
+async def test_seed_algo_config_syncs_existing(engine: AsyncEngine, config_store: ConfigStore) -> None:
+    """Calling seed_algo_config again should sync config to the latest values, not error.
+
+    Config (equity, strategy_id, warmup, intervals) comes from ALGOS/.env and
+    can change between restarts; the DB row must reflect the current config,
+    not whatever was true the first time this algo's row was created.
+    """
     from trading.core.models import AlgoConfig as AlgoConfigModel
 
     await config_store.seed_algo_config(
@@ -439,7 +444,9 @@ async def test_seed_algo_config_skips_existing(engine: AsyncEngine, config_store
     async with get_session(engine) as s:
         cfg = await s.get(AlgoConfigModel, "dup_algo")
     assert cfg is not None
-    assert cfg.strategy_id == "ema_crossover"  # original preserved
+    assert cfg.strategy_id == "rsi_mean_reversion"
+    assert cfg.warmup_candles == 100
+    assert cfg.equity == 5_000.0
 
 
 async def test_upsert_algo_state_insert_then_update(

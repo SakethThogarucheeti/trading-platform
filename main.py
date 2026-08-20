@@ -188,6 +188,31 @@ def _is_market_hours() -> bool:
     return _MARKET_OPEN <= t < _MARKET_CLOSE
 
 
+async def _load_kite_token(container: object, settings: "Settings") -> None:
+    """Load the Zerodha access token from the DB onto this container's KiteClient.
+
+    Every process that talks to Kite (ingestor, and each worker — workers hit
+    the historical-candles REST API directly for warmup) needs this; it isn't
+    inherited across processes since each builds its own KiteClient instance.
+    """
+    from trading.broker.service.zerodha.kite_client import KiteClient
+    from trading.app.database import build_engine, build_session_factory
+    from trading.execution.storage.store import TradingStore
+
+    _engine = build_engine(str(settings.postgres_url))
+    _sf = build_session_factory(_engine)
+    _trading = TradingStore(_sf)
+    _token = await _trading.get_broker_token("zerodha", settings.token_secret_key)
+    await _engine.dispose()
+
+    kite_client: KiteClient = container.broker.kite_client()  # type: ignore[attr-defined]
+    if _token:
+        kite_client.set_access_token(_token)
+        logger.info("Loaded Zerodha token from DB")
+    else:
+        logger.warning("No Zerodha token in DB — complete login before trading starts")
+
+
 async def _main() -> None:
     from trading.config.settings import get_settings
 
@@ -199,22 +224,7 @@ async def _main() -> None:
     await _sync_instruments(settings)
 
     async with build_container() as container:
-        from trading.broker.service.zerodha.kite_client import KiteClient
-        from trading.app.database import build_engine, build_session_factory
-        from trading.execution.storage.store import TradingStore
-
-        _engine = build_engine(str(settings.postgres_url))
-        _sf = build_session_factory(_engine)
-        _trading = TradingStore(_sf)
-        _token = await _trading.get_broker_token("zerodha", settings.token_secret_key)
-        await _engine.dispose()
-
-        kite_client: KiteClient = container.broker.kite_client()
-        if _token:
-            kite_client.set_access_token(_token)
-            logger.info("Loaded Zerodha token from DB")
-        else:
-            logger.warning("No Zerodha token in DB — complete login before trading starts")
+        await _load_kite_token(container, settings)
 
         runtime: AbstractRuntime = await container.components.runtime()
         scheduler: Scheduler = await container.components.scheduler()
@@ -259,10 +269,14 @@ async def _run_worker(algo_name: str) -> None:
 
     Does NOT run migrations or instrument sync — the ingestor owns those.
     """
+    from trading.config.settings import get_settings
     from trading.di.containers.app import build_worker_container
 
+    settings = get_settings()
     logger.info("Worker starting: algo=%r", algo_name)
     async with build_worker_container(algo_name) as container:
+        await _load_kite_token(container, settings)
+
         runtime: AbstractRuntime = await container.worker_components.runtime()
         scheduler: Scheduler = await container.worker_components.scheduler()
         scheduler.start()
