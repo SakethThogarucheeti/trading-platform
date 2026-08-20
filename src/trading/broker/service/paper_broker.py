@@ -22,6 +22,7 @@ Enable by adding  PAPER_TRADING=true  to .env.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -30,10 +31,21 @@ from uuid import uuid4
 import httpx
 import polars as pl
 
+from trading.app.tasks import fire
 from trading.broker.service.broker import Broker
 from trading.core.schemas import OrderType, Side
 
 _DEFAULT_SLIPPAGE_PCT = 0.05 / 100  # 0.05% per leg — overridden by settings
+
+# Real broker fills always arrive as a separate, later, async webhook call —
+# never before OrderExecutor has persisted the broker's order id to our own
+# `orders` row. A synchronous simulated postback here would violate that
+# ordering (OrderExecutor hasn't persisted our id yet when place_order()
+# returns), causing FillHandler's kite_order_id lookup to race and silently
+# drop every paper fill. Deferring the postback lets OrderExecutor's own
+# `await` on _persist_order_status win the race deterministically in practice
+# — this delay is comfortably larger than one local DB round trip.
+_SIMULATED_FILL_DELAY_SECS = 0.25
 
 logger = logging.getLogger(__name__)
 
@@ -99,11 +111,13 @@ class PaperBroker(Broker):
         price_store: AbstractPriceStore,
         postback_url: str,
         http_client: httpx.AsyncClient,
+        fill_delay_secs: float = _SIMULATED_FILL_DELAY_SECS,
     ) -> None:
         self._real = real_broker
         self._price_store = price_store
         self._postback_url = postback_url
         self._http_client = http_client
+        self._fill_delay_secs = fill_delay_secs
 
     def get_instruments(self) -> pl.DataFrame:
         return self._real.get_instruments()
@@ -136,10 +150,29 @@ class PaperBroker(Broker):
             order_type.value,
             order_id,
         )
+        fire(
+            self._simulate_fill(order_id, symbol, side, qty, instrument_type, tick_log_id),
+            on_error=lambda exc: logger.error(
+                "PaperBroker: simulated fill failed for %s — %s", order_id, exc
+            ),
+        )
+        return order_id
+
+    async def _simulate_fill(
+        self,
+        order_id: str,
+        symbol: str,
+        side: Side,
+        qty: int,
+        instrument_type: str,
+        tick_log_id: int,
+    ) -> None:
+        await asyncio.sleep(self._fill_delay_secs)
+
         fill_price = self._price_store.fill_price(symbol, side)
         if fill_price is None:
             logger.warning("PaperBroker: no price known for %s — fill skipped", symbol)
-            return order_id
+            return
 
         payload = {
             "status": "COMPLETE",
@@ -153,5 +186,3 @@ class PaperBroker(Broker):
         }
         response = await self._http_client.post(self._postback_url, json=payload)
         response.raise_for_status()
-
-        return order_id

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 
@@ -85,7 +86,30 @@ def _make_paper_broker(
     for sym, price in (prices or {}).items():
         ps.update(sym, price)
     client = httpx.AsyncClient(transport=transport or httpx.MockTransport(lambda r: httpx.Response(200, json={"ok": True})))
-    return PaperBroker(_FakeBroker(), price_store=ps, postback_url=_POSTBACK_URL, http_client=client)
+    # fill_delay_secs=0: the real default defers the postback to a background
+    # task (see paper_broker.py) so it can't race OrderExecutor's own DB
+    # write; tests instead await `_flush_background_tasks` to observe it.
+    return PaperBroker(_FakeBroker(), price_store=ps, postback_url=_POSTBACK_URL, http_client=client, fill_delay_secs=0)
+
+
+async def _flush_background_tasks() -> None:
+    """
+    Let PaperBroker's fire()-scheduled simulated fill run to completion.
+
+    Filters strictly by fire()'s task name ("trading.fire") rather than
+    "every task not already known" — asyncio.all_tasks() also surfaces
+    long-lived service tasks (e.g. the cashews in-memory cache's periodic
+    expiry sweep, spawned lazily on first cache use deep in this call chain)
+    that loop forever and are never meant to be awaited to completion;
+    gathering one of those hangs the test forever. return_exceptions=True
+    mirrors fire()'s own contract — a failed background task logs and does
+    not propagate.
+    """
+    for _ in range(10):
+        pending = [t for t in asyncio.all_tasks() if t.get_name() == "trading.fire" and not t.done()]
+        if not pending:
+            return
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +166,7 @@ async def test_paper_broker_posts_fill_to_postback_url() -> None:
 
     pb = _make_paper_broker(prices={"INFY": 1500.0}, transport=httpx.MockTransport(handler))
     returned_id = await pb.place_order("INFY", Side.BUY, 10, OrderType.MARKET, instrument_type="EQUITY", tick_log_id=42)
+    await _flush_background_tasks()
 
     assert len(captured) == 1
     req = captured[0]
@@ -167,19 +192,48 @@ async def test_paper_broker_no_post_when_price_unknown() -> None:
 
     pb = _make_paper_broker(prices={}, transport=httpx.MockTransport(handler))
     returned_id = await pb.place_order("INFY", Side.BUY, 10, OrderType.MARKET)
+    await _flush_background_tasks()
 
     assert len(captured) == 0
     assert returned_id.startswith("PAPER_")
 
 
-async def test_paper_broker_raises_on_postback_http_error() -> None:
-    """place_order raises when the postback endpoint returns an error status."""
+async def test_paper_broker_place_order_returns_before_postback_completes() -> None:
+    """
+    place_order must return the order id immediately, without waiting on the
+    postback — otherwise OrderExecutor can't persist kite_order_id before the
+    simulated fill's postback tries to look it up, and every paper fill is lost.
+    """
+    release = asyncio.Event()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        await release.wait()
+        return httpx.Response(200, json={"ok": True})
+
+    pb = _make_paper_broker(prices={"INFY": 1500.0}, transport=httpx.MockTransport(handler))
+    order_id = await asyncio.wait_for(
+        pb.place_order("INFY", Side.BUY, 10, OrderType.MARKET), timeout=1.0
+    )
+    assert order_id.startswith("PAPER_")
+
+    release.set()
+    await _flush_background_tasks()
+
+
+async def test_paper_broker_logs_postback_http_error_without_raising() -> None:
+    """
+    A failed simulated postback must not surface as a place_order() exception
+    (it runs in a background task) — it should be logged instead so a paper
+    order is never wrongly marked REJECTED due to a postback-side failure.
+    """
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, json={"detail": "unavailable"})
 
     pb = _make_paper_broker(prices={"INFY": 1500.0}, transport=httpx.MockTransport(handler))
-    with pytest.raises(httpx.HTTPStatusError):
-        await pb.place_order("INFY", Side.BUY, 10, OrderType.MARKET)
+    order_id = await pb.place_order("INFY", Side.BUY, 10, OrderType.MARKET)
+    assert order_id.startswith("PAPER_")
+
+    await _flush_background_tasks()
 
 
 # ---------------------------------------------------------------------------

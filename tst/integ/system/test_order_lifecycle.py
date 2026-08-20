@@ -80,16 +80,21 @@ def _make_paper_pair(
             if payload.get("status") != "COMPLETE":
                 return httpx.Response(200, json={"ok": True, "skipped": True})
             # Schedule fill processing as a task so it runs after place_order() returns
-            # and after the executor has written kite_order_id to the DB.
-            task = asyncio.ensure_future(exec_reg.handle_fill(
-                kite_order_id=payload["order_id"],
-                avg_price=float(payload["average_price"]),
-                filled_qty=int(payload["filled_quantity"]),
-                symbol=payload["tradingsymbol"],
-                instrument_type=payload.get("instrument_type", "EQUITY"),
-                side=payload["transaction_type"],
-                tick_log_id=int(payload.get("tick_log_id", 0)),
-            ))
+            # and after the executor has written kite_order_id to the DB. Named so
+            # _drain_tasks can wait on it specifically without touching unrelated
+            # long-lived tasks (e.g. cashews' cache-expiry sweeper) also live on the loop.
+            task = asyncio.get_running_loop().create_task(
+                exec_reg.handle_fill(
+                    kite_order_id=payload["order_id"],
+                    avg_price=float(payload["average_price"]),
+                    filled_qty=int(payload["filled_quantity"]),
+                    symbol=payload["tradingsymbol"],
+                    instrument_type=payload.get("instrument_type", "EQUITY"),
+                    side=payload["transaction_type"],
+                    tick_log_id=int(payload.get("tick_log_id", 0)),
+                ),
+                name="test.postback_fill",
+            )
             pending_fills.append(task)
             return httpx.Response(200, json={"ok": True})
 
@@ -98,9 +103,34 @@ def _make_paper_pair(
         price_store=price_store,
         postback_url=_POSTBACK_URL,
         http_client=httpx.AsyncClient(transport=_PostbackTransport()),
+        # PaperBroker itself now defers the simulated postback via fire() (see
+        # paper_broker.py) so it can never race OrderExecutor's own DB write —
+        # zero delay here keeps these tests fast since _drain_tasks below
+        # already waits out the whole chain deterministically.
+        fill_delay_secs=0,
     )
     exec_reg._broker = broker  # wire real broker now that both objects exist
     return exec_reg, broker, pending_fills
+
+
+_BACKGROUND_TASK_NAMES = {"trading.fire", "test.postback_fill"}
+
+
+async def _drain_tasks() -> None:
+    """
+    Wait out the background task chain: PaperBroker's own fire()-scheduled
+    simulated fill ("trading.fire"), then the fake transport's handle_fill
+    task ("test.postback_fill") that it schedules once the simulated postback
+    lands. Filters strictly by name rather than "every task on the loop" —
+    fixtures here (engine/session_factory, and the cache lazily initialized
+    deep inside PositionAccountant) own long-lived tasks that never finish on
+    their own, and gathering one of those hangs the test forever.
+    """
+    for _ in range(10):
+        pending = [t for t in asyncio.all_tasks() if t.get_name() in _BACKGROUND_TASK_NAMES and not t.done()]
+        if not pending:
+            return
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
 def _validated_order(
@@ -133,12 +163,12 @@ async def test_place_and_fill(engine, session_factory):
     price_store = PriceStore()
     price_store.update("INFY", 1500.0)
 
-    exec_reg, _, pending_fills = _make_paper_pair(session_factory, price_store)
+    exec_reg, _, _ = _make_paper_pair(session_factory, price_store)
 
     event = _validated_order()
     await seed_signal(session_factory, event)
     await exec_reg.handle(event)
-    await asyncio.gather(*pending_fills)
+    await _drain_tasks()
 
     async with session_factory() as session:
         result = await session.execute(select(Order).where(Order.signal_id == event.signal_id))
@@ -155,12 +185,12 @@ async def test_position_updated_after_fill(engine, session_factory):
     price_store = PriceStore()
     price_store.update("INFY", 1500.0)
 
-    exec_reg, _, pending_fills = _make_paper_pair(session_factory, price_store)
+    exec_reg, _, _ = _make_paper_pair(session_factory, price_store)
 
     ev = _validated_order(symbol="INFY", side=Side.BUY, qty=10)
     await seed_signal(session_factory, ev)
     await exec_reg.handle(ev)
-    await asyncio.gather(*pending_fills)
+    await _drain_tasks()
 
     async with session_factory() as session:
         result = await session.execute(

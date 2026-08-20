@@ -84,6 +84,10 @@ services:
       POSTGRES_URL: postgresql+asyncpg://trading:trading@postgres/trading
       REDIS_URL: redis://redis:6379
       KAFKA_BROKER_URL: kafka://kafka:9092
+      # Paper-trading postback target: workers run in their own container,
+      # so the pydantic default of 127.0.0.1 would point at themselves, not
+      # the ingestor container that actually serves /api/postback.
+      DASHBOARD_HOST: "ingestor"
     depends_on:
       ingestor:
         condition: service_started
@@ -99,6 +103,7 @@ services:
       POSTGRES_URL: postgresql+asyncpg://trading:trading@postgres/trading
       REDIS_URL: redis://redis:6379
       KAFKA_BROKER_URL: kafka://kafka:9092
+      DASHBOARD_HOST: "ingestor"
     depends_on:
       ingestor:
         condition: service_started
@@ -114,6 +119,7 @@ services:
       POSTGRES_URL: postgresql+asyncpg://trading:trading@postgres/trading
       REDIS_URL: redis://redis:6379
       KAFKA_BROKER_URL: kafka://kafka:9092
+      DASHBOARD_HOST: "ingestor"
     depends_on:
       ingestor:
         condition: service_started
@@ -129,6 +135,7 @@ services:
       POSTGRES_URL: postgresql+asyncpg://trading:trading@postgres/trading
       REDIS_URL: redis://redis:6379
       KAFKA_BROKER_URL: kafka://kafka:9092
+      DASHBOARD_HOST: "ingestor"
     depends_on:
       ingestor:
         condition: service_started

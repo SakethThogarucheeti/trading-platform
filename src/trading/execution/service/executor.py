@@ -50,7 +50,13 @@ class OrderExecutor(AbstractRegistry):
         order_id = uuid4()
         order = Order(
             id=order_id,
-            kite_order_id="",
+            # kite_order_id is UNIQUE — a shared "" placeholder collides
+            # (UniqueViolationError) the moment two orders are both between
+            # this insert and their later _persist_order_status() call, which
+            # happens routinely once more than one algo/worker can place
+            # orders concurrently. order_id is itself unique, so deriving the
+            # placeholder from it can never collide.
+            kite_order_id=f"PENDING_{order_id}",
             signal_id=event.signal_id,
             status=OrderStatus.PENDING.value,
             qty=event.quantity,
