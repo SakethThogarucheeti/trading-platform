@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -54,25 +54,38 @@ def create_reports_router(
         date: str = "",
     ) -> JSONResponse:
         if date:
-            target_date = datetime.fromisoformat(date).replace(tzinfo=UTC)
+            local_date = datetime.fromisoformat(date).replace(tzinfo=clock.tz)
         else:
-            today = clock.today()
-            target_date = datetime(today.year, today.month, today.day, tzinfo=clock.tz).astimezone(UTC)
+            now_tz = clock.now_tz()
+            if now_tz == datetime.min.replace(tzinfo=UTC):
+                local_date = now_tz  # SimulatedClock before first advance() — avoid tz overflow
+            else:
+                local_date = datetime(now_tz.year, now_tz.month, now_tz.day, tzinfo=clock.tz)
 
+        # All period math happens in the local (IST) calendar, converting to
+        # UTC only once at the end. Deriving day/week/month boundaries from a
+        # UTC-*converted* midnight is wrong: 00:00 IST is 18:30 UTC the
+        # previous day, so day/month/weekday read off that shifted value can
+        # land on the wrong calendar day — for "day" specifically, that used
+        # to make `end` only ~5.5 hours after `start`, ending the window at
+        # 05:29:59 IST, hours before the market even opens at 09:15 IST, so
+        # the entire trading session fell outside every daily report.
         if period == "day":
-            start = target_date
-            end = target_date.replace(hour=23, minute=59, second=59)
+            local_start = local_date
+            local_end = local_date.replace(hour=23, minute=59, second=59)
         elif period == "week":
-            import datetime as _dt
-            start = target_date - _dt.timedelta(days=target_date.weekday())
-            end = start + _dt.timedelta(days=6, hours=23, minutes=59, seconds=59)
+            local_start = local_date - timedelta(days=local_date.weekday())
+            local_end = local_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
         elif period == "month":
             import calendar
-            start = target_date.replace(day=1)
-            last_day = calendar.monthrange(target_date.year, target_date.month)[1]
-            end = target_date.replace(day=last_day, hour=23, minute=59, second=59)
+            local_start = local_date.replace(day=1)
+            last_day = calendar.monthrange(local_date.year, local_date.month)[1]
+            local_end = local_date.replace(day=last_day, hour=23, minute=59, second=59)
         else:
             raise HTTPException(status_code=400, detail=f"Unknown period: {period!r}")
+
+        start = local_start.astimezone(UTC)
+        end = local_end.astimezone(UTC)
 
         async def _produce() -> str:
             from trading.reports.engine import fetch_report_data
@@ -81,7 +94,7 @@ def create_reports_router(
 
         if cacher_factory is not None:
             body = await cacher_factory.api().get_or_set_response(  # type: ignore[reportUnknownMemberType]
-                key_args=("report", period, target_date.date().isoformat()),
+                key_args=("report", period, local_date.date().isoformat()),
                 producer=_produce,
                 ttl=60,
             )

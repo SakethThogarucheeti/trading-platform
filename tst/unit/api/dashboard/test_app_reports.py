@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import tempfile
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -210,6 +211,74 @@ async def test_get_live_report_with_explicit_date():
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/api/reports/live?period=day&date=2025-01-06")
     assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_get_live_report_day_period_spans_full_local_trading_day():
+    """Regression: the "day" window must cover the full IST calendar day,
+    including NSE market hours (09:15-15:30 IST). The old bug computed `end`
+    by replacing hour=23 on a midnight that had already been converted to
+    UTC (00:00 IST == 18:30 UTC the previous day), so `end` landed only
+    ~5.5 hours after `start` — around 05:30 IST, hours before the market
+    even opens — cutting the entire trading session out of every daily
+    report regardless of what day it was run."""
+    sf = _mock_sf(scalars_return=[])
+    clock = SimulatedClock()
+    clock.advance(datetime(2025, 1, 6, 6, 30, tzinfo=UTC))  # 2025-01-06 12:00 IST
+    mocks = _all_mocked()
+    with (
+        _apply_engine_patches(mocks),
+        patch(
+            "trading.reports.trades.fetch_filled_trades",
+            mocks["trading.reports.trades.fetch_filled_trades"],
+        ),
+    ):
+        app = build_app(sf, clock=clock)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/reports/live?period=day")
+
+    assert resp.status_code == 200
+    _, kwargs = mocks["trading.reports.trades.fetch_filled_trades"].call_args
+    start, end = kwargs["start"], kwargs["end"]
+
+    assert (end - start) > timedelta(hours=23)
+
+    ist = ZoneInfo("Asia/Kolkata")
+    market_open = datetime(2025, 1, 6, 9, 15, tzinfo=ist).astimezone(UTC)
+    market_close = datetime(2025, 1, 6, 15, 30, tzinfo=ist).astimezone(UTC)
+    assert start <= market_open <= end
+    assert start <= market_close <= end
+
+
+@pytest.mark.asyncio
+async def test_get_live_report_week_period_uses_local_weekday():
+    """Regression: the week's start-of-week must be derived from the IST
+    calendar weekday, not a UTC-shifted midnight that can land on the
+    previous UTC calendar day (and therefore a different weekday). 2025-01-06
+    is a Monday in IST; at 01:00 IST that instant is still 2025-01-05 19:30
+    UTC — a Sunday — exactly the boundary the old bug got wrong."""
+    sf = _mock_sf(scalars_return=[])
+    clock = SimulatedClock()
+    clock.advance(datetime(2025, 1, 5, 19, 30, tzinfo=UTC))  # 2025-01-06 01:00 IST
+    mocks = _all_mocked()
+    with (
+        _apply_engine_patches(mocks),
+        patch(
+            "trading.reports.trades.fetch_filled_trades",
+            mocks["trading.reports.trades.fetch_filled_trades"],
+        ),
+    ):
+        app = build_app(sf, clock=clock)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/reports/live?period=week")
+
+    assert resp.status_code == 200
+    _, kwargs = mocks["trading.reports.trades.fetch_filled_trades"].call_args
+    start = kwargs["start"]
+
+    ist = ZoneInfo("Asia/Kolkata")
+    expected_week_start = datetime(2025, 1, 6, tzinfo=ist).astimezone(UTC)  # Monday 00:00 IST
+    assert start == expected_week_start
 
 
 @pytest.mark.asyncio

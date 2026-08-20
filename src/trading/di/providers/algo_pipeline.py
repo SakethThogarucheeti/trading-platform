@@ -152,7 +152,16 @@ class AlgoPipelineFactory:
             equity=algo.equity,
             params=params,
         )
-        fresh = AlgoInstance(strategy=strategy, instrument_type=InstrumentType.EQUITY)
-        await s.config_store.upsert_algo_state(
-            algo.name, fresh.state_dict(s.settings.warmup_candles)
-        )
+        # Only write a fresh bars_seen=0 state for an algo that has never run
+        # before. Every process restart re-runs seed_state() unconditionally
+        # (it's not gated behind market hours) — writing the blank state here
+        # regardless of what already exists used to wipe out a running algo's
+        # real warmup progress on every restart, until the next candle close
+        # (possibly hours later, at the next market open) overwrote it again.
+        # In the meantime the dashboard and daily report showed a fully
+        # warmed-up algo as bars_seen=0 / warmup_complete=False.
+        if await s.config_store.get_algo_state(algo.name) is None:
+            fresh = AlgoInstance(strategy=strategy, instrument_type=InstrumentType.EQUITY)
+            await s.config_store.upsert_algo_state(
+                algo.name, fresh.state_dict(s.settings.warmup_candles)
+            )

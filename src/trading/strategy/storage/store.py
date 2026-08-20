@@ -144,6 +144,11 @@ class ConfigStore:
             async with session.begin():
                 await session.execute(stmt)
 
+    async def get_algo_state(self, name: str) -> dict[str, object] | None:
+        async with self._sf() as session:
+            state_obj = await session.get(AlgoState, name)
+            return json.loads(state_obj.state) if state_obj else None
+
     async def get_algo_configs_with_state(self) -> list[dict[str, object]]:
         async with self._sf() as session:
             result = await session.execute(select(AlgoConfig))
