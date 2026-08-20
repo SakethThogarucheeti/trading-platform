@@ -88,6 +88,7 @@ class KiteIngestor(Component):
         if tokens:
             await self._stream.subscribe(tokens)
             logger.info("KiteIngestor: reconnected and re-subscribed to %d tokens", len(tokens))
+        self._running = True
 
     async def _setup(self) -> None:
         self._loop = asyncio.get_running_loop()
@@ -104,10 +105,18 @@ class KiteIngestor(Component):
         try:
             with fail_after(self._connect_timeout_secs):
                 await self._connected.wait()
-        except TimeoutError as err:
-            raise RuntimeError(
-                f"KiteIngestor: WebSocket did not connect within {self._connect_timeout_secs}s"
-            ) from err
+        except TimeoutError:
+            # Don't raise: an unauthenticated startup (no Zerodha token yet — the
+            # normal state before the daily login completes) would otherwise take
+            # down the whole Runtime, including unrelated components. Start
+            # disconnected instead; reconnect_stream() (called from the auth
+            # callback once login completes) brings the feed up later.
+            logger.error(
+                "KiteIngestor: WebSocket did not connect within %.0fs — starting "
+                "disconnected. Complete Zerodha login to bring the feed up.",
+                self._connect_timeout_secs,
+            )
+            return
 
         tokens = self._tick_registry.get_tokens()
         if tokens:

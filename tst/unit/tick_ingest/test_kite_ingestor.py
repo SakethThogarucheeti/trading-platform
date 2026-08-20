@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from trading.broker.service.broker_stream import BrokerStream
 from trading.broker.service.paper_broker import AbstractPriceStore
 from trading.app.database import build_session_factory, init_db
-from trading.core.models import Instrument
+from trading.candles.storage.models import Instrument
 from trading.core.schemas import InstrumentType, TickEvent
 from trading.core.messaging import AbstractCircuitBreaker
 from trading.tick_ingest.service.kite_ingestor import KiteIngestor
@@ -399,8 +399,13 @@ async def test_ingestor_on_ws_ticks_no_op_when_loop_is_none(engine: AsyncEngine)
     # No crash
 
 
-async def test_ingestor_connect_timeout_raises_runtime_error(engine: AsyncEngine) -> None:
-    """TimeoutError in _setup() is re-raised as RuntimeError."""
+async def test_ingestor_connect_timeout_starts_disconnected(engine: AsyncEngine) -> None:
+    """
+    A connect timeout in _setup() must not raise — this is the normal state
+    before the daily Zerodha login completes, and raising here would take
+    down the whole Runtime (including unrelated components) rather than just
+    leaving this component disconnected until reconnect_stream() is called.
+    """
 
     class _NeverConnectsStream(MockBrokerStream):
         async def connect(self) -> None:
@@ -410,8 +415,8 @@ async def test_ingestor_connect_timeout_raises_runtime_error(engine: AsyncEngine
     reg = make_tick_registry(stream, engine, 1)
     ingestor = KiteIngestor(stream=stream, tick_registry=reg, circuit=reg.circuit, connect_timeout_secs=0.05)
 
-    with pytest.raises(RuntimeError, match="did not connect within"):
-        await ingestor._setup()
+    await ingestor._setup()  # completes without raising
+    assert ingestor._running is False
 
 
 async def test_ingestor_updates_price_store_on_valid_tick(engine: AsyncEngine) -> None:
