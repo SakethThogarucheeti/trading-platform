@@ -340,39 +340,18 @@ def _scheduler(
     trading: TradingStore,
     position_store: PositionStore,
     price_store: AbstractPriceStore,
+    cacher_factory: CacherFactory,
     clock: Clock,
 ) -> Scheduler:
     on_position_reset = None
     if settings.paper_trading:
-        from sqlalchemy import select
+        from trading.execution.service.eod_square_off import square_off_open_positions
+        from trading.execution.service.position_accountant import PositionAccountant
 
-        from trading.core.schemas import FillEvent, Side
-        from trading.execution.storage.models import Position
+        accountant = PositionAccountant(position_store, cacher_factory)
 
         async def eod_square_off() -> None:
-            sf: async_sessionmaker[AsyncSession] = trading._sf  # type: ignore[attr-defined]
-            async with sf() as session:
-                result = await session.execute(select(Position).where(Position.net_qty != 0))
-                open_positions = result.scalars().all()
-
-            if not open_positions:
-                return
-
-            for pos in open_positions:
-                raw_price = price_store.get(pos.symbol)
-                last_price = float(raw_price) if raw_price is not None else float(pos.avg_price)
-                side = Side.SELL if pos.net_qty > 0 else Side.BUY
-                qty = abs(pos.net_qty)
-                fill = FillEvent(
-                    kite_order_id=f"EOD_{pos.symbol}_{clock.today().isoformat()}",
-                    avg_price=last_price,
-                    filled_qty=qty,
-                    timestamp=clock.now(),
-                )
-                await position_store.update_position(fill, side, pos.symbol, pos.instrument_type)
-                logger.info(
-                    "EOD square-off: %s %s x%d @ %.2f", side.value, pos.symbol, qty, last_price
-                )
+            await square_off_open_positions(trading, accountant, price_store, clock)
 
         on_position_reset = eod_square_off
 
@@ -463,5 +442,6 @@ class ComponentContainer(containers.DeclarativeContainer):
         trading=trading,
         position_store=position_store,
         price_store=price_store,
+        cacher_factory=cacher_factory,
         clock=clock,
     )
