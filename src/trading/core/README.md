@@ -6,7 +6,7 @@ Minimal shared primitives used across all modules. No domain logic, no DB access
 
 **`clock.py`** — `Clock` protocol + `SystemClock` (uses `datetime.now(UTC)`) and `SimulatedClock` (for backtests). Injected everywhere time-of-day decisions are made.
 
-**`messaging.py`** — `AbstractRegistry` (async fan-out registry), `AbstractCircuitBreaker` (open/close interface), `FillObserver` (fill notification protocol).
+**`messaging.py`** — `AbstractRegistry` (async fan-out registry), `AbstractCircuitBreaker` (open/close interface).
 
 **`schemas.py`** — Canonical Pydantic event models shared across modules:
 - `TickEvent`, `CandleEvent`, `SignalEvent`, `ValidatedOrderEvent`, `FillEvent`

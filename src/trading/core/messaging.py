@@ -1,15 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Protocol
-
-from trading.core.schemas import Side
-
-
-class FillObserver(Protocol):
-    """Receives fill notifications from OrderExecutor."""
-
-    def on_fill(self, side: Side, avg_price: float, qty: int) -> None: ...
+from typing import Any
 
 
 class AbstractCircuitBreaker(ABC):
