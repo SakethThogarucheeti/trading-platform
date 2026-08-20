@@ -58,3 +58,28 @@ def test_buy_to_zero_qty_uses_fill_price() -> None:
     result = PositionLedger.apply_fill(current, fill_qty=10, fill_price=Decimal("98"), side=Side.BUY)
     assert result.net_qty == 0
     assert result.avg_price == Decimal("98")  # fill_price used when new_qty == 0
+
+
+def test_sell_extends_short_recomputes_weighted_avg() -> None:
+    # Regression: extending an existing short must weight-average against
+    # the prior cost basis, not discard it and reset to the latest fill.
+    current = _state(-5, 100.0)
+    result = PositionLedger.apply_fill(current, fill_qty=3, fill_price=Decimal("110"), side=Side.SELL)
+    assert result.net_qty == -8
+    assert result.avg_price == Decimal("103.75")  # (100*5 + 110*3) / 8
+
+
+def test_buy_covers_short_and_reduces_without_flipping() -> None:
+    current = _state(-10, 95.0)
+    result = PositionLedger.apply_fill(current, fill_qty=3, fill_price=Decimal("98"), side=Side.BUY)
+    assert result.net_qty == -7
+    assert result.avg_price == Decimal("95")  # remaining short keeps its original cost basis
+
+
+def test_buy_overshoots_short_flips_to_long_at_fill_price() -> None:
+    # Regression: a BUY that closes a short AND opens a long must not blend
+    # the closed short's cost basis into the new long's avg_price.
+    current = _state(-3, 100.0)
+    result = PositionLedger.apply_fill(current, fill_qty=10, fill_price=Decimal("105"), side=Side.BUY)
+    assert result.net_qty == 7
+    assert result.avg_price == Decimal("105")  # fresh long position at the fill price
