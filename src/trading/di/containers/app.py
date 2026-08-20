@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from dependency_injector import containers, providers
 
+from trading.config.settings import get_settings
 from trading.di.containers.algo_steps import build_algo_steps
 from trading.di.containers.broker import BrokerContainer
 from trading.di.containers.components import ComponentContainer
@@ -22,7 +23,9 @@ class AppContainer(containers.DeclarativeContainer):
     make_async_container(...) call Dishka used before this migration.
     """
 
-    infra = providers.Container(InfrastructureContainer)
+    settings = providers.Singleton(get_settings)
+
+    infra = providers.Container(InfrastructureContainer, settings=settings)
 
     broker = providers.Container(
         BrokerContainer,
@@ -64,7 +67,9 @@ class WorkerAppContainer(containers.DeclarativeContainer):
 
     algo_name = providers.Dependency(instance_of=str)
 
-    infra = providers.Container(InfrastructureContainer)
+    settings = providers.Singleton(get_settings)
+
+    infra = providers.Container(InfrastructureContainer, settings=settings)
 
     broker = providers.Container(
         BrokerContainer,

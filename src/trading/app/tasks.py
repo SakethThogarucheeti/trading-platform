@@ -22,7 +22,7 @@ def fire(
     when the task fails. Use it to route critical audit failures to monitoring
     without adding backpressure to the hot path.
     """
-    task = asyncio.get_running_loop().create_task(coro)
+    task = asyncio.get_running_loop().create_task(coro, name="trading.fire")
     task.add_done_callback(_make_done_callback(on_error))
     return task
 
