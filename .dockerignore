@@ -1,0 +1,16 @@
+.venv
+.git
+.github
+logs/
+*.log
+.env
+.env.*
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tst/
+.claude/
+*.md
+!README.md
