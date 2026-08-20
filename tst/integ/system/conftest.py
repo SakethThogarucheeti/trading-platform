@@ -38,7 +38,8 @@ async def engine(pg_container) -> AsyncEngine:
         await conn.execute(
             text(
                 "TRUNCATE TABLE orders, signals, positions, instruments, "
-                "heartbeats, audit_logs, decision_logs, tick_logs CASCADE"
+                "heartbeats, audit_logs, decision_logs, tick_logs, "
+                "algo_state, algo_configs, candles CASCADE"
             )
         )
     await eng.dispose()
@@ -48,3 +49,24 @@ async def engine(pg_container) -> AsyncEngine:
 async def session_factory(engine):
     """Async session factory for the test database."""
     return build_session_factory(engine)
+
+
+@pytest.fixture(scope="session")
+def redis_container():
+    """Start a real Redis container for the test session."""
+    from testcontainers.redis import RedisContainer
+
+    with RedisContainer("redis:7-alpine") as redis:
+        yield redis
+
+
+@pytest_asyncio.fixture
+async def redis_url(redis_container) -> str:
+    """redis:// URL for the test Redis container, flushed clean per test."""
+    import redis.asyncio as aioredis
+
+    url = f"redis://{redis_container.get_container_host_ip()}:{redis_container.get_exposed_port(6379)}"
+    yield url
+    client = aioredis.from_url(url)
+    await client.flushall()
+    await client.aclose()

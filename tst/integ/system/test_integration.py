@@ -20,7 +20,7 @@ from helpers import seed_signal
 from simulators.fault_injector import FaultInjector
 
 from trading.broker.service.paper_broker import PriceStore
-from trading.core.clock import SimulatedClock
+from trading.core.clock import SYSTEM_CLOCK, SimulatedClock
 from trading.core.models import Order
 from trading.core.schemas import (
     CandleEvent,
@@ -47,7 +47,9 @@ from trading.execution.storage.store import TradingStore
 
 def _make_fill_handler(session_factory):
     setup_cache(None)
-    accountant = PositionAccountant(PositionStore(session_factory), CacherFactory(ValueCache()))
+    accountant = PositionAccountant(
+        PositionStore(session_factory), CacherFactory(ValueCache(), SYSTEM_CLOCK)
+    )
     return FillHandler(TradingStore(session_factory), accountant)
 
 
