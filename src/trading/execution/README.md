@@ -24,13 +24,12 @@ execution/
 │   └── store.py          TradingStore (signals + orders + broker tokens), PositionStore
 ├── di/
 │   └── providers.py      ExecutionProvider
-├── base.py               ExecutionEngine ABC (legacy; kept for test compatibility)
 └── fill_webhook.py       FastAPI sub-router for Zerodha postback webhook
 ```
 
 ## Key concepts
 
-**`OrderExecutor`** receives a `ValidatedOrderEvent`, checks idempotency, calls `Broker.place_order`, saves the `Order` row, and notifies fill observers.
+**`OrderExecutor`** receives a `ValidatedOrderEvent`, checks idempotency, calls `Broker.place_order`, and saves the `Order` row. Fill notifications (from the postback webhook or the paper broker simulator) go through `OrderExecutor.handle_fill()`, which delegates to `FillHandler`.
 
 **`FillHandler`** is the entry point for fill confirmations — from the Zerodha webhook (`fill_webhook.py`) or from the paper broker's synchronous fill simulation. It calls `PositionAccountant.on_fill()`.
 
