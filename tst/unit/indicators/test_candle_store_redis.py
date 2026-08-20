@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from trading.storage.stores.candle_store import CandleStore
+from trading.storage.stores.candle_store import CandleStore, _cache_ttl_for
 
 
 def _pg_candle_store(rows=None):
@@ -95,3 +95,35 @@ async def test_fetch_no_redis_setex_when_rows_empty() -> None:
     result = await store.fetch("INFY", "5min", 10)
     assert result == []
     redis.setex.assert_not_awaited()  # empty rows → no cache write
+
+
+class TestCacheTtlForInterval:
+    """
+    Regression: a flat 90s TTL exceeded the 60s "1min" bar period with no
+    invalidation on new candle writes, so a "last N candles" fetch cached
+    right after one bar closed was often still served as the "current"
+    window when the NEXT bar closed a minute later — every indicator built
+    on this store (EMA, RSI, ATR, linreg, DPO, squeeze, ...) would silently
+    compute over a window missing the just-closed candle.
+    """
+
+    def test_ttl_capped_below_bar_duration_for_1min(self) -> None:
+        assert _cache_ttl_for("1min") < 60
+
+    def test_ttl_capped_below_bar_duration_for_5min(self) -> None:
+        assert _cache_ttl_for("5min") < 300
+
+    def test_ttl_never_exceeds_flat_ceiling_for_long_intervals(self) -> None:
+        assert _cache_ttl_for("60min") <= 90
+
+    def test_unknown_interval_falls_back_to_flat_ceiling(self) -> None:
+        assert _cache_ttl_for("weird_custom_interval") == 90
+
+    @pytest.mark.anyio
+    async def test_fetch_setex_uses_sub_bar_ttl_for_1min(self) -> None:
+        rows = [{"symbol": "INFY", "close": 1505.0}]
+        redis = _redis(cached=None)
+        store = CandleStore(candle_store=_pg_candle_store(rows), redis=redis)
+        await store.fetch("INFY", "1min", 78)
+        ttl_arg = redis.setex.call_args.args[1]
+        assert ttl_arg < 60

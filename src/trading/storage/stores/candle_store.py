@@ -17,6 +17,38 @@ _log = logging.getLogger(__name__)
 
 _CACHE_TTL = 90
 
+# Seconds per bar, by the interval strings used throughout this codebase
+# (see /api/settings candle_intervals). Used to cap the cache TTL below one
+# bar's duration — see _cache_ttl_for.
+_BAR_SECONDS = {
+    "1min": 60,
+    "3min": 180,
+    "5min": 300,
+    "10min": 600,
+    "15min": 900,
+    "30min": 1800,
+    "60min": 3600,
+}
+
+
+def _cache_ttl_for(interval: str) -> int:
+    """
+    Cap the cache TTL below one bar's duration for this interval.
+
+    A flat 90s TTL with no invalidation-on-write meant a "last N candles"
+    fetch cached right after one bar closed was often still "fresh" when the
+    NEXT bar closed a minute later (90s > 60s bar spacing) — every indicator
+    built on this store (EMA, RSI, ATR, linreg, DPO, squeeze, ...) would
+    silently compute over a window missing the just-closed candle on
+    whichever calls landed inside that stale window, roughly half the time
+    at 1min granularity. Unknown/custom intervals fall back to the original
+    flat ceiling.
+    """
+    bar_secs = _BAR_SECONDS.get(interval)
+    if bar_secs is None:
+        return _CACHE_TTL
+    return max(1, min(_CACHE_TTL, bar_secs - 5))
+
 
 @runtime_checkable
 class RedisClientProtocol(Protocol):
@@ -50,6 +82,7 @@ class CandleStore(AbstractCandleStore):
         return await self._get_or_fetch(
             cache_key,
             lambda: self._candle.get_candles(symbol, interval, limit),
+            ttl=_cache_ttl_for(interval),
         )
 
     async def fetch_since(self, symbol: str, interval: str, since: datetime) -> list[CandleRow]:
@@ -58,12 +91,14 @@ class CandleStore(AbstractCandleStore):
         return await self._get_or_fetch(
             cache_key,
             lambda: self._candle.get_candles_since(symbol, interval, since),
+            ttl=_cache_ttl_for(interval),
         )
 
     async def _get_or_fetch(
         self,
         key: str,
         query: Callable[[], Coroutine[Any, Any, list[CandleRow]]],
+        ttl: int,
     ) -> list[CandleRow]:
         if self._redis is not None:
             try:
@@ -77,7 +112,7 @@ class CandleStore(AbstractCandleStore):
 
         if self._redis is not None and rows:
             try:
-                await self._redis.setex(key, _CACHE_TTL, json.dumps(rows, default=str))
+                await self._redis.setex(key, ttl, json.dumps(rows, default=str))
             except Exception as exc:
                 _log.debug("CandleStore: Redis set failed for %r — %s", key, exc)
 
