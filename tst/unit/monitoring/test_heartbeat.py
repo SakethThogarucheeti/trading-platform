@@ -230,7 +230,71 @@ async def test_beat_loop_calls_update_heartbeat(engine: AsyncEngine, heartbeat_s
             tg.cancel_scope.cancel()
 
     await _run_one_beat()
-    assert "heartbeat_monitor" in calls, "beat loop must call update_heartbeat"
+    # Must beat under its own component_names identity ("hb_test"), not the
+    # generic Component name ("heartbeat_monitor") shared by every
+    # HeartbeatMonitor instance — otherwise every worker's beat collides on
+    # one shared row while its real, distinctly-named row is never updated.
+    assert "hb_test" in calls, "beat loop must call update_heartbeat with its own component name"
+    assert "heartbeat_monitor" not in calls
+
+
+async def test_beat_loop_falls_back_to_self_name_when_no_component_names(
+    engine: AsyncEngine, heartbeat_store: HeartbeatStore
+) -> None:
+    """With component_names=[] (the ingestor's case), beat under self.name."""
+    sf = build_session_factory(engine)
+    calls: list[str] = []
+
+    original = heartbeat_store.update_heartbeat
+
+    async def _spy(module: str) -> None:
+        calls.append(module)
+        return await original(module)
+
+    heartbeat_store.update_heartbeat = _spy  # type: ignore[method-assign]
+
+    monitor = HeartbeatMonitor(
+        heartbeat_store,
+        sf,
+        component_names=[],
+        beat_interval_secs=1,
+        timeout_secs=30,
+    )
+
+    async def _run_one_beat() -> None:
+        async with create_task_group() as tg:
+            tg.start_soon(monitor._beat_loop)
+            await anyio.sleep(0.05)
+            tg.cancel_scope.cancel()
+
+    await _run_one_beat()
+    assert "heartbeat_monitor" in calls
+
+
+async def test_setup_does_not_delete_other_processes_rows(
+    engine: AsyncEngine, heartbeat_store: HeartbeatStore
+) -> None:
+    """
+    _setup() must never delete heartbeat rows outside its own component_names —
+    the ingestor and every worker run their own HeartbeatMonitor against the
+    same shared table, so a per-process cleanup DELETE wipes sibling
+    processes' rows the moment any one of them (re)starts.
+    """
+    sf = build_session_factory(engine)
+    await heartbeat_store.update_heartbeat("some_other_process:heartbeat_monitor")
+
+    monitor = HeartbeatMonitor(
+        heartbeat_store,
+        sf,
+        component_names=["this_process:heartbeat_monitor"],
+        beat_interval_secs=60,
+        timeout_secs=30,
+    )
+    await monitor._setup()
+
+    async with sf() as session:
+        other = await session.get(Heartbeat, "some_other_process:heartbeat_monitor")
+    assert other is not None, "another process's heartbeat row must survive _setup()"
 
 
 async def test_monitor_loop_checks_stale_immediately(engine: AsyncEngine, heartbeat_store: HeartbeatStore) -> None:

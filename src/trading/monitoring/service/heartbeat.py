@@ -4,11 +4,9 @@ import logging
 from collections.abc import Awaitable, Callable
 
 from anyio import create_task_group, sleep
-from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.core.lifecycle.component import Component
-from trading.core.models import Heartbeat
 from trading.monitoring.api.interfaces import AbstractHeartbeatStore
 
 logger = logging.getLogger(__name__)
@@ -33,14 +31,13 @@ class HeartbeatMonitor(Component):
         self._alerter = alerter
 
     async def _setup(self) -> None:
-        async with self._session_factory() as session:
-            async with session.begin():
-                if self._component_names:
-                    await session.execute(
-                        delete(Heartbeat).where(Heartbeat.module.not_in(self._component_names))
-                    )
-                else:
-                    await session.execute(delete(Heartbeat))
+        # No cleanup DELETE here: the ingestor and every worker each run their
+        # own HeartbeatMonitor against the SAME shared heartbeats table, so a
+        # per-process "delete anything not in my own component_names" wipes
+        # every OTHER process's rows the moment it starts (and with an empty
+        # component_names, as the ingestor uses, it wiped the whole table).
+        # Orphaned rows for removed algos are harmless — every read filters
+        # explicitly by component_names, so a stale leftover is never queried.
         for name in self._component_names:
             await self._heartbeat.update_heartbeat(name)
         logger.info("HeartbeatMonitor: registered %d components", len(self._component_names))
@@ -51,10 +48,19 @@ class HeartbeatMonitor(Component):
             tg.start_soon(self._monitor_loop)
 
     async def _beat_loop(self) -> None:
+        # Beat under this instance's own identity — component_names[0] for a
+        # worker (must match what _setup/_check_stale watch), falling back to
+        # self.name only when component_names is empty (the ingestor's case).
+        # Using self.name unconditionally here was the bug: every worker
+        # shares the same hardcoded Component name ("heartbeat_monitor"), so
+        # all their beats collided on one row while their real, distinctly-
+        # named row (seeded once in _setup) was never updated again and
+        # always reported stale.
+        beat_name = self._component_names[0] if self._component_names else self.name
         consecutive = 0
         while True:
             try:
-                await self._heartbeat.update_heartbeat(self.name)
+                await self._heartbeat.update_heartbeat(beat_name)
                 consecutive = 0
             except Exception:
                 consecutive += 1

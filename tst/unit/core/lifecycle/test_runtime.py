@@ -226,6 +226,10 @@ async def test_heartbeat_monitor_registers_components(engine: AsyncEngine) -> No
 
 
 async def test_heartbeat_monitor_beats_regularly(engine: AsyncEngine) -> None:
+    # Beats under its own component_names identity ("monitor"), not the
+    # generic Component name ("heartbeat_monitor") every instance shares —
+    # otherwise multiple HeartbeatMonitors (one per worker) would collide on
+    # a single row while their real, distinctly-named rows go stale.
     monitor = make_monitor(engine, names=["monitor"], beat=1)
     task = asyncio.get_event_loop().create_task(monitor.start())
     await asyncio.sleep(1.5)  # allow setup + initial stale check + first beat (beat=1s)
@@ -233,14 +237,14 @@ async def test_heartbeat_monitor_beats_regularly(engine: AsyncEngine) -> None:
     from trading.app.database import get_session
 
     async with get_session(engine) as s:
-        hb = await s.get(Heartbeat, "heartbeat_monitor")
+        hb = await s.get(Heartbeat, "monitor")
     assert hb is not None
     first_seen = hb.last_seen
 
     await asyncio.sleep(1.2)  # wait > 1 beat interval
 
     async with get_session(engine) as s:
-        hb2 = await s.get(Heartbeat, "heartbeat_monitor")
+        hb2 = await s.get(Heartbeat, "monitor")
     assert hb2 is not None
     # last_seen should have been updated
     assert hb2.last_seen >= first_seen
