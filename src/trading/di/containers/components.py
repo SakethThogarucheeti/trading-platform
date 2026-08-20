@@ -18,7 +18,6 @@ from trading.candles.api import (
     CandlePersister,
     HistoricalDataService,
     Instrument,
-    InstrumentStore,
     SymbolConfig,
 )
 from trading.config.settings import AlgoSettings, Settings
@@ -28,13 +27,20 @@ from trading.core.messaging import AbstractCircuitBreaker
 from trading.core.schemas import InstrumentType
 from trading.di.containers.algo_steps import AlgoSteps
 from trading.di.providers.algo_pipeline import AlgoPipelineFactory, SharedAlgoDeps
+from trading.execution.api import OrderExecutor
 from trading.execution.storage.store import PositionStore, TradingStore
 from trading.monitoring.service.heartbeat import HeartbeatMonitor
 from trading.monitoring.service.scheduler import Scheduler
 from trading.monitoring.storage.store import HeartbeatStore
 from trading.storage.cache import CacherFactory
 from trading.strategy.storage.store import ChartStore, ConfigStore
-from trading.tick_ingest.api import CircuitBreaker, KiteIngestor, TickConfig, TickIngestor, TickPublisher
+from trading.tick_ingest.api import (
+    CircuitBreaker,
+    KiteIngestor,
+    TickConfig,
+    TickIngestor,
+    TickPublisher,
+)
 from trading.tick_ingest.storage.store import AuditStore
 
 logger = logging.getLogger(__name__)
@@ -150,6 +156,11 @@ class _RuntimeAssembler:
     def __init__(self, steps: AlgoSteps) -> None:
         self._steps = steps
         self.kite_ingestor: KiteIngestor | None = None
+        # Fills post back to a single shared /api/postback endpoint regardless
+        # of which algo placed the order (handle_fill() is a stateless DB
+        # lookup by kite_order_id), so any one algo's OrderExecutor works —
+        # last one wins, consistent across single- and multi-algo configs.
+        self.order_executor: OrderExecutor | None = None
 
     async def build_runtime(
         self,
@@ -173,6 +184,8 @@ class _RuntimeAssembler:
         instruments = await _load_instruments(sf)
         instrument_type_map = {r.symbol: r.instrument_type for r in instruments}
         algo_configs = _normalize_algo_configs(settings, instrument_type_map)
+        if settings.worker_algo_names:
+            algo_configs = [a for a in algo_configs if a.name not in settings.worker_algo_names]
 
         paper_price_store = price_store if settings.paper_trading else None
         polars_store = PolarsStore()
@@ -233,6 +246,7 @@ class _RuntimeAssembler:
 
             candle_aggregator.add_algo_registry(tick_pipeline.signal_generator)
             ingestor.add_on_tick(tick_pipeline.run)
+            self.order_executor = tick_pipeline.order_executor
 
             logger.info(
                 "ComponentContainer: algo=%r strategy=%r instruments=%d equity=%.0f",
@@ -313,6 +327,7 @@ def _dashboard(
         token_secret_key=settings.token_secret_key,
         kite_client=client,
         kite_ingestor=assembler.kite_ingestor,
+        order_executor=assembler.order_executor,
         cacher_factory=cacher_factory,
         historical_data_service=historical_data_service,
         heartbeat_stale_secs=settings.heartbeat_timeout_secs,

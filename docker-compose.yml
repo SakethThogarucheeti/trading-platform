@@ -14,6 +14,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -24,11 +25,18 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
 
   kafka:
     image: apache/kafka:latest
+    restart: unless-stopped
     ports:
       - "9092:9092"
+      # PLAINTEXT_HOST listener below advertises "localhost:29092" for
+      # non-Docker clients (e.g. `uv run start` on the host) — must be
+      # published or those clients get metadata pointing at the
+      # Docker-internal "kafka" hostname, which they can't resolve.
+      - "29092:29092"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -126,6 +134,20 @@ services:
         condition: service_started
       kafka:
         condition: service_healthy
+    restart: unless-stopped
+
+  dashboard-ui:
+    build:
+      context: ../trading-dashboard
+      args:
+        VITE_API_URL: http://ingestor:8081
+    environment:
+      VITE_API_URL: http://ingestor:8081
+    ports:
+      - "3000:3000"
+    depends_on:
+      ingestor:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

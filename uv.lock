@@ -2034,7 +2034,7 @@ requires-dist = [
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "tenacity", specifier = ">=9.1.4" },
     { name = "trading-risk-sdk", git = "https://github.com/SakethThogarucheeti/trading-risk-sdk.git?tag=v0.1.0" },
-    { name = "trading-strategy-sdk", git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git?tag=v0.1.1" },
+    { name = "trading-strategy-sdk", git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git?tag=v0.1.2" },
     { name = "trading-types", git = "https://github.com/SakethThogarucheeti/trading-types.git?tag=v0.1.0" },
     { name = "tzdata", specifier = ">=2026.1" },
     { name = "uvicorn", specifier = ">=0.29" },
@@ -2067,7 +2067,7 @@ dependencies = [
 [[package]]
 name = "trading-strategy-sdk"
 version = "0.1.0"
-source = { git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git?tag=v0.1.1#c664dcb616d5d98f5eaae3034ca0e5d0f78cd112" }
+source = { git = "https://github.com/SakethThogarucheeti/trading-strategy-sdk.git?tag=v0.1.2#a537c2472888dcea97640a17838b5e30beb4b3a9" }
 dependencies = [
     { name = "pydantic" },
     { name = "quantindicators", extra = ["scipy"] },

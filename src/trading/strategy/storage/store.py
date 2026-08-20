@@ -120,6 +120,10 @@ class ConfigStore:
                         )
                     )
                 else:
+                    existing.strategy_id = strategy_id
+                    existing.warmup_candles = warmup_candles
+                    existing.candle_intervals = json.dumps(candle_intervals)
+                    existing.equity = equity
                     existing.params = json.dumps(params)
 
     async def upsert_algo_state(self, name: str, state: dict[str, object]) -> None:
