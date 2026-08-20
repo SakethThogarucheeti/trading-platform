@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -15,7 +14,7 @@ from starlette.requests import Request
 from trading.core.clock import Clock
 from trading.core.models import DecisionLog
 
-from ._helpers import session_filter
+from ._helpers import session_filter, today_start
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +24,6 @@ def create_stream_router(
     clock: Clock,
 ) -> APIRouter:
     router = APIRouter()
-
-    def _today_start() -> datetime:
-        today = clock.today()
-        return datetime(today.year, today.month, today.day, tzinfo=clock.tz).astimezone(UTC)
 
     @router.get("/api/decisions/stream")
     async def decisions_stream(
@@ -44,7 +39,7 @@ def create_stream_router(
                     async with session_factory() as session:
                         conditions: list[ColumnElement[bool]] = [
                             DecisionLog.id > last_id,
-                            DecisionLog.created_at >= _today_start(),
+                            DecisionLog.created_at >= today_start(clock),
                             session_filter(DecisionLog, session_id),
                         ]
                         if algo_name:

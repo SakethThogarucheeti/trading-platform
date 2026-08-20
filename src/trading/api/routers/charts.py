@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
@@ -11,6 +9,8 @@ from trading.core.clock import Clock
 from trading.strategy.storage.models import AlgoConfig
 from trading.strategy.storage.store import ChartStore
 
+from ._helpers import today_start
+
 
 def create_charts_router(
     session_factory: async_sessionmaker[AsyncSession],
@@ -18,17 +18,13 @@ def create_charts_router(
 ) -> APIRouter:
     router = APIRouter()
 
-    def _today_start() -> datetime:
-        today = clock.today()
-        return datetime(today.year, today.month, today.day, tzinfo=clock.tz).astimezone(UTC)
-
     @router.get("/api/charts")
     async def get_charts(
         session_id: str = "", algo_name: str = "", limit: int = 500
     ) -> JSONResponse:
         chart_store = ChartStore(session_factory)
         sid: str | None = session_id if session_id else None
-        since = _today_start()
+        since = today_start(clock)
 
         async with session_factory() as session:
             result = await session.execute(select(AlgoConfig.name))

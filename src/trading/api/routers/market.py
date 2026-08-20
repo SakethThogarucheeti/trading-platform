@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -8,14 +8,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
-from trading.core.clock import Clock
 from trading.candles.storage.models import Candle
+from trading.core.clock import Clock
 from trading.core.models import DecisionLog
 from trading.execution.storage.models import Position
 from trading.monitoring.storage.models import Heartbeat
 from trading.tick_ingest.storage.models import TickLog
 
-from ._helpers import session_filter
+from ._helpers import session_filter, today_start
 
 
 def create_market_router(
@@ -24,10 +24,6 @@ def create_market_router(
     heartbeat_stale_secs: int,
 ) -> APIRouter:
     router = APIRouter()
-
-    def _today_start() -> datetime:
-        today = clock.today()
-        return datetime(today.year, today.month, today.day, tzinfo=clock.tz).astimezone(UTC)
 
     @router.get("/api/ping")
     async def ping() -> JSONResponse:
@@ -60,7 +56,7 @@ def create_market_router(
         async with session_factory() as session:
             result = await session.execute(
                 select(Position)
-                .where(Position.updated_at >= _today_start())
+                .where(Position.updated_at >= today_start(clock))
                 .order_by(Position.symbol)
             )
             positions = result.scalars().all()
@@ -83,7 +79,7 @@ def create_market_router(
         async with session_factory() as session:
             conditions: list[ColumnElement[bool]] = [
                 DecisionLog.step.in_(["SIGNAL_GENERATED", "SIGNAL_ACCEPTED", "SIGNAL_REJECTED"]),
-                DecisionLog.created_at >= _today_start(),
+                DecisionLog.created_at >= today_start(clock),
                 session_filter(DecisionLog, session_id),
             ]
             if algo_name:
@@ -122,7 +118,7 @@ def create_market_router(
                 .where(
                     Candle.symbol == symbol,
                     Candle.interval == interval,
-                    Candle.ts >= _today_start(),
+                    Candle.ts >= today_start(clock),
                 )
                 .order_by(Candle.ts.desc())
                 .limit(limit)
@@ -149,7 +145,7 @@ def create_market_router(
                 select(TickLog)
                 .where(
                     TickLog.symbol == symbol,
-                    TickLog.received_at >= _today_start(),
+                    TickLog.received_at >= today_start(clock),
                 )
                 .order_by(TickLog.received_at.desc())
                 .limit(limit)

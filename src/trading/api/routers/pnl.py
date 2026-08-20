@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -9,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.core.clock import Clock
 from trading.storage.cache import CacherFactory
+
+from ._helpers import today_start
 
 
 def create_pnl_router(
@@ -18,17 +19,13 @@ def create_pnl_router(
 ) -> APIRouter:
     router = APIRouter()
 
-    def _today_start() -> datetime:
-        today = clock.today()
-        return datetime(today.year, today.month, today.day, tzinfo=clock.tz).astimezone(UTC)
-
     @router.get("/api/pnl")
     async def get_pnl(session_id: str = "", algo_name: str = "") -> JSONResponse:
         async def _produce() -> str:
             from trading.reports.fetch import fetch_nifty_benchmark
             from trading.reports.trades import fetch_filled_trades
 
-            today = _today_start()
+            today = today_start(clock)
             trades = await fetch_filled_trades(
                 session_factory, start=today, end=clock.now(), algo_name=algo_name
             )
@@ -81,7 +78,7 @@ def create_pnl_router(
         async def _produce() -> str:
             from trading.reports.trades import fetch_filled_trades, summarize_by_algo
 
-            today = _today_start()
+            today = today_start(clock)
             trades = await fetch_filled_trades(session_factory, start=today, end=clock.now())
             by_algo = summarize_by_algo(trades)
             return json.dumps({

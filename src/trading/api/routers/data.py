@@ -8,9 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.candles.api import HistoricalDataService
-from trading.core.clock import Clock
 from trading.candles.storage.models import Instrument
+from trading.core.clock import Clock
 from trading.core.models import DecisionLog
+
+from ._helpers import today_start
 
 
 def create_data_router(
@@ -20,10 +22,6 @@ def create_data_router(
     historical_data_service: HistoricalDataService | None,
 ) -> APIRouter:
     router = APIRouter()
-
-    def _today_start() -> datetime:
-        today = clock.today()
-        return datetime(today.year, today.month, today.day, tzinfo=clock.tz).astimezone(UTC)
 
     @router.get("/api/sessions")
     async def get_sessions() -> JSONResponse:
@@ -71,7 +69,7 @@ def create_data_router(
         from trading.reports.trades import fetch_filled_trades
 
         try:
-            start_dt = datetime.fromisoformat(start) if start else _today_start()
+            start_dt = datetime.fromisoformat(start) if start else today_start(clock)
             end_dt = datetime.fromisoformat(end) if end else clock.now()
             if start_dt.tzinfo is None:
                 start_dt = start_dt.replace(tzinfo=UTC)
