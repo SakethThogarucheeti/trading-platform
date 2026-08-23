@@ -70,25 +70,3 @@ class AuditStore:
         async with self._sf() as session:
             async with session.begin():
                 session.add(AuditLog(module=module, level=level, message=message))
-
-
-class TickAuditStore:
-    """Persists raw tick records only (lightweight — no decision/audit log)."""
-
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
-        self._sf = session_factory
-
-    async def log_tick(self, event: TickEvent, symbol: str) -> int:
-        row = TickLog(
-            instrument_token=event.instrument_token,
-            symbol=symbol,
-            instrument_type=event.instrument_type.value,
-            last_price=Decimal(str(event.last_price)),
-            volume=event.volume,
-            received_at=event.timestamp,
-        )
-        async with self._sf() as session:
-            async with session.begin():
-                session.add(row)
-                await session.flush()
-                return row.id
