@@ -53,6 +53,34 @@ class TradeCosts:
 DEFAULT_COSTS = TradeCosts()
 
 
+def _match_against(
+    opposing_queue: list[tuple[int, float]],
+    qty: int,
+    price: float,
+    sign: float,
+) -> tuple[float, int]:
+    """
+    Drain `opposing_queue` FIFO against an incoming fill of `qty` @ `price`.
+
+    `sign` is +1 for an incoming BUY matching against short_queue (profit =
+    short_price - price) and -1 for an incoming SELL matching against
+    long_queue (profit = price - long_price) — i.e. profit = sign * (price - queue_price).
+    Returns (realized_pnl_from_matches, qty_remaining_after_matching).
+    """
+    realized = 0.0
+    remaining = qty
+    while remaining > 0 and opposing_queue:
+        queue_qty, queue_price = opposing_queue[0]
+        matched = min(remaining, queue_qty)
+        realized += sign * matched * (price - queue_price)
+        remaining -= matched
+        if matched == queue_qty:
+            opposing_queue.pop(0)
+        else:
+            opposing_queue[0] = (queue_qty - matched, queue_price)
+    return realized, remaining
+
+
 def compute_pnl(
     signals: list[Signal],
     costs: TradeCosts = DEFAULT_COSTS,
@@ -88,29 +116,13 @@ def compute_pnl(
             total_costs += costs.cost_for_fill(side, qty, price)
 
             if side == "BUY":
-                remaining = qty
-                while remaining > 0 and short_queue:
-                    short_qty, short_price = short_queue[0]
-                    matched = min(remaining, short_qty)
-                    realized += matched * (short_price - price)
-                    remaining -= matched
-                    if matched == short_qty:
-                        short_queue.pop(0)
-                    else:
-                        short_queue[0] = (short_qty - matched, short_price)
+                matched_pnl, remaining = _match_against(short_queue, qty, price, sign=-1)
+                realized += matched_pnl
                 if remaining > 0:
                     long_queue.append((remaining, price))
             else:  # SELL
-                remaining = qty
-                while remaining > 0 and long_queue:
-                    long_qty, long_price = long_queue[0]
-                    matched = min(remaining, long_qty)
-                    realized += matched * (price - long_price)
-                    remaining -= matched
-                    if matched == long_qty:
-                        long_queue.pop(0)
-                    else:
-                        long_queue[0] = (long_qty - matched, long_price)
+                matched_pnl, remaining = _match_against(long_queue, qty, price, sign=1)
+                realized += matched_pnl
                 if remaining > 0:
                     short_queue.append((remaining, price))
 
