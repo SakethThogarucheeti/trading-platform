@@ -64,13 +64,38 @@ class OrderExecutor(AbstractRegistry):
             created_at=self._clock.now(),
         )
 
+        if not await self._insert_pending_order(order, event.signal_id):
+            return
+
+        kite_order_id, final_status = await self._place_with_broker(event, order_id)
+
+        await self._persist_order_status(order_id, kite_order_id, final_status)
+        logger.info("OrderExecutor: order %s status=%s", kite_order_id, final_status.value)
+
+    async def _insert_pending_order(self, order: Order, signal_id: UUID) -> bool:
+        """Insert the PENDING order row unless `signal_id` is a duplicate. Returns False (and logs) if it was dropped."""
         async with self._session_factory() as session:
             async with session.begin():
-                if await is_duplicate(event.signal_id, session):
-                    logger.info("OrderExecutor: duplicate signal_id %s — dropping", event.signal_id)
-                    return
+                if await is_duplicate(signal_id, session):
+                    logger.info("OrderExecutor: duplicate signal_id %s — dropping", signal_id)
+                    return False
                 session.add(order)
+        return True
 
+    async def _place_with_broker(
+        self, event: ValidatedOrderEvent, order_id: UUID
+    ) -> tuple[str, OrderStatus]:
+        """
+        Place the order with the broker, translating any failure into a REJECTED status.
+
+        "timed out" errors mean the request may have reached the broker before
+        the timeout fired — the order could be live even though we mark it
+        REJECTED here. Anything else means the request never reached the broker
+        (or was explicitly rejected). Flagged distinctly since only the first
+        case risks a REJECTED-in-our-DB order that is actually live at the broker.
+        TODO: true reconciliation needs a broker-side order-status poll or
+        webhook fallback — this is logging-only, not a fix for that risk.
+        """
         try:
             kite_order_id = await self._broker.place_order(
                 symbol=event.symbol,
@@ -81,15 +106,8 @@ class OrderExecutor(AbstractRegistry):
                 instrument_type=event.instrument_type.value,
                 tick_log_id=event.tick_log_id,
             )
-            final_status = OrderStatus.PLACED
+            return kite_order_id, OrderStatus.PLACED
         except Exception as exc:
-            # "timed out" errors mean the request may have reached the broker before
-            # the timeout fired — the order could be live even though we mark it
-            # REJECTED here. Anything else means the request never reached the broker
-            # (or was explicitly rejected). Flagged distinctly since only the first
-            # case risks a REJECTED-in-our-DB order that is actually live at the broker.
-            # TODO: true reconciliation needs a broker-side order-status poll or
-            # webhook fallback — this is logging-only, not a fix for that risk.
             if "timed out" in str(exc).lower():
                 logger.critical(
                     "OrderExecutor: broker.place_order TIMED OUT for signal_id=%s — "
@@ -98,11 +116,7 @@ class OrderExecutor(AbstractRegistry):
                 )
             else:
                 logger.error("OrderExecutor: broker.place_order failed — %s", exc)
-            kite_order_id = f"FAILED_{order_id}"
-            final_status = OrderStatus.REJECTED
-
-        await self._persist_order_status(order_id, kite_order_id, final_status)
-        logger.info("OrderExecutor: order %s status=%s", kite_order_id, final_status.value)
+            return f"FAILED_{order_id}", OrderStatus.REJECTED
 
     async def _persist_order_status(self, order_id: UUID, kite_order_id: str, status: OrderStatus) -> None:
         @retry(
