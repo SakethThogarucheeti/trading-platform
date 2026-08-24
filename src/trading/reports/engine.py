@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from collections import defaultdict
@@ -22,6 +23,8 @@ from trading.reports.fetch import (
     fetch_signals,  # used by run_report terminal output only
 )
 from trading.reports.render import hr, print_strategy_section, print_system_section
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -125,7 +128,9 @@ async def fetch_report_data(
             try:
                 ctx = _json.loads(d.context) if d.context else {}
             except Exception:
-                pass
+                logger.warning(
+                    "fetch_report_data: failed to parse decision context for tick_log_id=%s", d.tick_log_id
+                )
             rejection_reasons[str(ctx.get("reason", "UNKNOWN"))] += 1
 
     generated = step_counts.get("SIGNAL_GENERATED", 0)

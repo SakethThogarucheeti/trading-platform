@@ -97,7 +97,7 @@ class RiskFilter(AbstractRegistry):
         try:
             await self._audit.log_audit("risk_filter", "INFO", f"signal {event.signal_id} accepted qty={qty}")
         except Exception:
-            pass
+            logger.warning("RiskFilter: failed to write audit log for signal %s", event.signal_id)
 
         try:
             await self._trading.save_signal(event)
@@ -137,7 +137,7 @@ class RiskFilter(AbstractRegistry):
         try:
             await self._audit.log_audit("risk_filter", "WARNING", f"signal {event.signal_id} rejected: {reason}")
         except Exception:
-            pass
+            logger.warning("RiskFilter: failed to write audit log for rejected signal %s", event.signal_id)
 
     async def _log_decision(self, step: str, event: SignalEvent, context: object) -> None:
         if event.tick_log_id <= 0:
