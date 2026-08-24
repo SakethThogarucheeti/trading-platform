@@ -91,6 +91,74 @@ class LiveReportData(BaseModel):
     system_health: list[SystemHealth]
 
 
+def _build_signal_funnel(step_counts: dict[str, int], rejection_reasons: dict[str, int]) -> SignalFunnel:
+    generated = step_counts.get("SIGNAL_GENERATED", 0)
+    accepted = step_counts.get("SIGNAL_ACCEPTED", 0)
+    rejected = step_counts.get("SIGNAL_REJECTED", 0)
+    return SignalFunnel(
+        candles_emitted=step_counts.get("CANDLE_EMITTED", 0),
+        signals_generated=generated,
+        signals_accepted=accepted,
+        signals_rejected=rejected,
+        acceptance_rate=accepted / generated if generated else 0.0,
+        rejection_reasons=dict(rejection_reasons),
+    )
+
+
+def _build_trades_by_symbol(trades: list) -> list[TradesBySymbol]:
+    symbol_rows: dict[str, _SymbolRow] = defaultdict(_SymbolRow)
+    for t in trades:
+        r = symbol_rows[t.symbol]
+        if t.side == "BUY":
+            r.buys += 1
+            r.cash_flow -= t.qty * t.avg_price
+        else:
+            r.sells += 1
+            r.cash_flow += t.qty * t.avg_price
+        r.volume += t.qty
+
+    return [
+        TradesBySymbol(
+            symbol=sym,
+            buys=r.buys,
+            sells=r.sells,
+            volume=r.volume,
+            cash_flow=r.cash_flow,
+        )
+        for sym, r in sorted(symbol_rows.items())
+    ]
+
+
+def _build_system_health(heartbeats: list) -> list[SystemHealth]:
+    # 5-min threshold for historical reports (longer window than live API)
+    _REPORT_STALE_SECS = 300
+    now_utc = datetime.now(UTC)
+    system_health = []
+    for hb in heartbeats:
+        last = hb.last_seen
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=UTC)
+        system_health.append(SystemHealth(
+            module=hb.module,
+            last_seen=last.isoformat(),
+            stale=(now_utc - last).total_seconds() > _REPORT_STALE_SECS,
+        ))
+    return system_health
+
+
+def _build_benchmark(nifty_benchmark: object, algo_pct: float | None) -> BenchmarkResult | None:
+    if not nifty_benchmark:
+        return None
+    b_pct = nifty_benchmark.pct_return
+    return BenchmarkResult(
+        nifty_open=nifty_benchmark.open,
+        nifty_close=nifty_benchmark.close,
+        pct_return=b_pct,
+        algo_pct=algo_pct,
+        alpha=(algo_pct - b_pct) if algo_pct is not None else None,
+    )
+
+
 async def fetch_report_data(
     start: datetime,
     end: datetime,
@@ -128,36 +196,13 @@ async def fetch_report_data(
                 pass
             rejection_reasons[str(ctx.get("reason", "UNKNOWN"))] += 1
 
-    generated = step_counts.get("SIGNAL_GENERATED", 0)
-    accepted = step_counts.get("SIGNAL_ACCEPTED", 0)
-    rejected = step_counts.get("SIGNAL_REJECTED", 0)
+    signal_funnel = _build_signal_funnel(step_counts, rejection_reasons)
 
     # Order funnel — count from decision log steps
     total_orders = step_counts.get("SIGNAL_ACCEPTED", 0)
     filled = len(trades)
 
-    # Trades by symbol — derived from filled trades
-    symbol_rows: dict[str, _SymbolRow] = defaultdict(_SymbolRow)
-    for t in trades:
-        r = symbol_rows[t.symbol]
-        if t.side == "BUY":
-            r.buys += 1
-            r.cash_flow -= t.qty * t.avg_price
-        else:
-            r.sells += 1
-            r.cash_flow += t.qty * t.avg_price
-        r.volume += t.qty
-
-    trades_by_symbol = [
-        TradesBySymbol(
-            symbol=sym,
-            buys=r.buys,
-            sells=r.sells,
-            volume=r.volume,
-            cash_flow=r.cash_flow,
-        )
-        for sym, r in sorted(symbol_rows.items())
-    ]
+    trades_by_symbol = _build_trades_by_symbol(trades)
 
     # P&L — from TradesQueryService
     pnl = summarize(trades)
@@ -168,43 +213,14 @@ async def fetch_report_data(
     total_capital = sum(cfg.equity for cfg in algo_configs if cfg.enabled)
     algo_pct = (total_net / total_capital * 100) if total_capital else None
 
-    # Heartbeat status — 5-min threshold for historical reports (longer window than live API)
-    _REPORT_STALE_SECS = 300
-    now_utc = datetime.now(UTC)
-    system_health = []
-    for hb in heartbeats:
-        last = hb.last_seen
-        if last.tzinfo is None:
-            last = last.replace(tzinfo=UTC)
-        system_health.append(SystemHealth(
-            module=hb.module,
-            last_seen=last.isoformat(),
-            stale=(now_utc - last).total_seconds() > _REPORT_STALE_SECS,
-        ))
-
-    benchmark: BenchmarkResult | None = None
-    if nifty_benchmark:
-        b_pct = nifty_benchmark.pct_return
-        benchmark = BenchmarkResult(
-            nifty_open=nifty_benchmark.open,
-            nifty_close=nifty_benchmark.close,
-            pct_return=b_pct,
-            algo_pct=algo_pct,
-            alpha=(algo_pct - b_pct) if algo_pct is not None else None,
-        )
+    system_health = _build_system_health(heartbeats)
+    benchmark = _build_benchmark(nifty_benchmark, algo_pct)
 
     return LiveReportData(
         period=None,
         start=start.isoformat(),
         end=end.isoformat(),
-        signal_funnel=SignalFunnel(
-            candles_emitted=step_counts.get("CANDLE_EMITTED", 0),
-            signals_generated=generated,
-            signals_accepted=accepted,
-            signals_rejected=rejected,
-            acceptance_rate=accepted / generated if generated else 0.0,
-            rejection_reasons=dict(rejection_reasons),
-        ),
+        signal_funnel=signal_funnel,
         order_funnel=OrderFunnel(
             placed=total_orders,
             filled=filled,
