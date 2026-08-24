@@ -9,9 +9,9 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from trading.app.database import build_session_factory, get_session, init_db
 from trading.broker.api import Broker
 from trading.core.clock import SYSTEM_CLOCK
-from trading.app.database import build_session_factory, get_session, init_db
 from trading.core.models import Order, Signal
 from trading.core.schemas import (
     InstrumentType,
@@ -20,12 +20,12 @@ from trading.core.schemas import (
     Side,
     ValidatedOrderEvent,
 )
+from trading.execution.service.executor import ExecConfig, OrderExecutor
 from trading.execution.service.fill_handler import FillHandler
 from trading.execution.service.idempotency import is_duplicate
-from trading.execution.service.executor import ExecConfig, OrderExecutor
 from trading.execution.service.position_accountant import PositionAccountant
-from trading.storage.cache import CacherFactory, ValueCache, setup_cache
 from trading.execution.storage.store import PositionStore, TradingStore
+from trading.storage.cache import CacherFactory, ValueCache, setup_cache
 
 NOW = datetime.now(UTC)
 
@@ -300,8 +300,6 @@ async def test_handle_fill_unknown_order_returns_early(engine: AsyncEngine) -> N
 
 async def test_pnl_updated_in_aggregate_table_after_handle_fill(engine: AsyncEngine) -> None:
     """PnL aggregate row is updated via increment_pnl_aggregate after a fill."""
-    from datetime import date
-
     broker = MockBroker(order_id="KITE_CB")
     sf = build_session_factory(engine)
     trading = TradingStore(sf)
@@ -329,7 +327,10 @@ async def test_pnl_updated_in_aggregate_table_after_handle_fill(engine: AsyncEng
         side="BUY",
     )
 
-    today = date.today()
+    # PositionAccountant keys the aggregate by SYSTEM_CLOCK's (UTC) date, not
+    # the local wall-clock date -- these differ for ~5.5h/day in IST (UTC+5:30),
+    # so date.today() here would flake right after local midnight.
+    today = datetime.now(UTC).date()
     # BUY fill: sign = -1 → PnL = -150.0 * 10 = -1500.0
     assert await trading.get_pnl_aggregate(today) == pytest.approx(-1500.0)
 
