@@ -137,10 +137,19 @@ class SignalGenerator(AbstractRegistry):
         except Exception:
             logger.warning("SignalGenerator: indicator log failed for %s/%s", chart, series)
 
-    async def handle(self, candle: CandleEvent) -> list[SignalEvent]:  # type: ignore[override]
+    def _tick_bar_and_check_ready(self, candle: CandleEvent) -> AlgoInstance | None:
+        """
+        Push `candle` into the shared store and gate on readiness.
+
+        Returns the `AlgoInstance` for `candle.symbol` advanced past this bar
+        (tick_bar'd, indicator cache invalidated, chart callback wired), or
+        None if there's no configured instance for that symbol or setup()
+        hasn't been called yet — either case means `handle()` has nothing
+        further to do for this candle.
+        """
         instance = self._algos.get(candle.symbol)
         if instance is None:
-            return []
+            return None
 
         self._store.push(
             candle.symbol,
@@ -161,7 +170,7 @@ class SignalGenerator(AbstractRegistry):
             logger.warning(
                 "SignalGenerator.setup() not called for '%s' — skipping", candle.symbol
             )
-            return []
+            return None
 
         instance.tick_bar(candle.interval, self._config.warmup_candles)
 
@@ -170,11 +179,10 @@ class SignalGenerator(AbstractRegistry):
 
         instance.strategy.set_chart_callback(self._make_chart_cb(candle.symbol, candle.interval))
 
-        signal = await instance.strategy.on_candle(candle.symbol, instance.instrument_type, candle)
+        return instance
 
-        if signal is not None:
-            instance.record_signal(self._clock.now())
-
+    def _persist_signal_side_effects(self, instance: AlgoInstance, candle: CandleEvent) -> None:
+        """Fire-and-forget rolling-state save + algo-state upsert — runs every candle, signal or not."""
         rolling = instance.strategy.rolling_state()
         if rolling:
             fire(
@@ -188,6 +196,18 @@ class SignalGenerator(AbstractRegistry):
             )
 
         fire(self._upsert_state(instance))
+
+    async def handle(self, candle: CandleEvent) -> list[SignalEvent]:  # type: ignore[override]
+        instance = self._tick_bar_and_check_ready(candle)
+        if instance is None:
+            return []
+
+        signal = await instance.strategy.on_candle(candle.symbol, instance.instrument_type, candle)
+
+        if signal is not None:
+            instance.record_signal(self._clock.now())
+
+        self._persist_signal_side_effects(instance, candle)
 
         if signal is None:
             return []
