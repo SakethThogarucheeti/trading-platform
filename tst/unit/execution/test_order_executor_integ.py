@@ -66,7 +66,7 @@ def _make_factory() -> CacherFactory:
 
 def _make_executor(engine: AsyncEngine, order_id: str = "K001") -> OrderExecutor:
     sf = build_session_factory(engine)
-    accountant = PositionAccountant(PositionStore(sf), _make_factory())
+    accountant = PositionAccountant(PositionStore(sf), TradingStore(sf), _make_factory())
     fill_handler = FillHandler(TradingStore(sf), accountant)
     return OrderExecutor(
         config=ExecConfig(),

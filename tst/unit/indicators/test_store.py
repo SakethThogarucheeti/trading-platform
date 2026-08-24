@@ -155,37 +155,3 @@ async def test_candle_store_end_to_end(pg_engine) -> None:
     ema = EMA(store, "HDFC", "15min")
     result = await ema.compute(EMA.Parameters(period=9))
     assert result == pytest.approx(200.0, rel=1e-3)
-
-
-@pytest.mark.asyncio
-async def test_candle_store_redis_cache(pg_engine) -> None:
-    import fakeredis.aioredis as fakeredis
-
-    sf = async_sessionmaker(pg_engine, expire_on_commit=False)
-    candle_store = CandleDataStore(sf)
-    redis = fakeredis.FakeRedis()
-
-    base = datetime(2024, 1, 6, 9, 15, tzinfo=UTC)
-    rows = [
-        {
-            "symbol": "WIPRO",
-            "interval": "15min",
-            "ts": base + timedelta(minutes=15 * i),
-            "open": 300.0,
-            "high": 301.0,
-            "low": 299.0,
-            "close": 300.0,
-            "volume": 500,
-        }
-        for i in range(20)
-    ]
-    await candle_store.save_candles(rows)
-
-    store = CandleStore(candle_store=candle_store, redis=redis)
-    r1 = await store.fetch("WIPRO", "15min", 20)
-    r2 = await store.fetch("WIPRO", "15min", 20)
-
-    assert len(r1) == len(r2) == 20
-    assert r1[0]["close"] == r2[0]["close"]
-    keys = await redis.keys("cs:candles:WIPRO:15min:*")
-    assert len(keys) == 1

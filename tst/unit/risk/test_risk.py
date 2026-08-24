@@ -15,7 +15,6 @@ from trading_risk_sdk.gates.time_cutoff import TimeCutoffGate
 from trading_risk_sdk.sizer import calculate_quantity
 
 from trading.app.database import build_session_factory, init_db
-from trading.core.clock import SYSTEM_CLOCK
 from trading.core.models import Order, Position, Signal
 from trading.core.schemas import (
     InstrumentType,
@@ -27,7 +26,6 @@ from trading.core.schemas import (
 )
 from trading.execution.storage.store import PositionStore, TradingStore
 from trading.risk.service.filter import RiskConfig, RiskFilter
-from trading.storage.cache import CacherFactory, ValueCache, setup_cache
 from trading.tick_ingest.service.ingestor import CircuitBreaker
 from trading.tick_ingest.storage.store import AuditStore
 
@@ -103,20 +101,15 @@ def make_config(**overrides) -> RiskConfig:
     return RiskConfig(**{**base, **overrides})  # type: ignore[arg-type]
 
 
-def _make_factory() -> CacherFactory:
-    setup_cache(None)
-    return CacherFactory(ValueCache(), SYSTEM_CLOCK)
-
-
 def make_registry(
     engine: AsyncEngine,
     circuit: CircuitBreaker | None = None,
     config: RiskConfig | None = None,
     daily_loss_enabled: bool = True,
-) -> tuple[RiskFilter, CacherFactory]:
+) -> tuple[RiskFilter, TradingStore]:
     sf = build_session_factory(engine)
     cb = circuit or CircuitBreaker()
-    factory = _make_factory()
+    trading = TradingStore(sf)
     rf = RiskFilter(
         config=config or make_config(),
         gates=[
@@ -125,13 +118,12 @@ def make_registry(
             DailyLossGate(enabled=daily_loss_enabled),
             DuplicatePositionGate(),
         ],
-        trading=TradingStore(sf),
+        trading=trading,
         audit=AuditStore(sf),
         position=PositionStore(sf),
-        factory=factory,
         circuit=cb,
     )
-    return rf, factory
+    return rf, trading
 
 
 def make_signal(**overrides) -> SignalEvent:
@@ -206,31 +198,37 @@ async def test_circuit_closed_allows_signal(engine: AsyncEngine) -> None:
 
 
 async def test_daily_loss_limit_rejects_signal(engine: AsyncEngine) -> None:
-    """increment_sync pre-seeds the PnL cache; next signal is rejected by DailyLossGate."""
-    reg, factory = make_registry(engine, config=make_config(equity=100_000.0))
+    """increment_pnl_aggregate pre-seeds the PnL total; next signal is rejected by DailyLossGate."""
+    reg, trading = make_registry(engine, config=make_config(equity=100_000.0))
     # SELL fill: sign=+1, pnl = 1.0 * 1000 * 10 = 10_000, limit = 2_000 → exceeded
-    factory.pnl().increment_sync(TODAY, Side.SELL, avg_price=1000.0, qty=10)
+    await trading.increment_pnl_aggregate(TODAY, 1000.0 * 10)
     result = await reg.handle(make_signal())
     assert result is None
 
 
 async def test_on_fill_increments_cache_and_blocks_second_signal(engine: AsyncEngine) -> None:
     """Two small fills accumulate past limit; second signal is rejected."""
-    reg, factory = make_registry(engine, config=make_config(equity=100_000.0, max_daily_loss_pct=2.0))
+    import asyncio
+
+    reg, trading = make_registry(engine, config=make_config(equity=100_000.0, max_daily_loss_pct=2.0))
     # limit = 2_000. Each fill = 1_500 (SELL). After 2 fills pnl = 3_000 > 2_000.
-    factory.pnl().increment_sync(TODAY, Side.SELL, avg_price=1500.0, qty=1)
+    await trading.increment_pnl_aggregate(TODAY, 1500.0)
     result1 = await reg.handle(make_signal())
     assert result1 is not None  # 1_500 < 2_000, passes
-    factory.pnl().increment_sync(TODAY, Side.SELL, avg_price=1500.0, qty=1)
+    # Let handle()'s fire-and-forget decision-log task finish before reusing
+    # the shared SQLite connection for the next write — see
+    # test_log_decision_writes_when_tick_log_id_positive for the same pattern.
+    await asyncio.sleep(0.05)
+    await trading.increment_pnl_aggregate(TODAY, 1500.0)
     result2 = await reg.handle(make_signal())
     assert result2 is None  # 3_000 > 2_000, rejected
 
 
 async def test_daily_loss_gate_disabled_always_passes(engine: AsyncEngine) -> None:
     """DailyLossGate(enabled=False) never rejects regardless of realized PnL."""
-    reg, factory = make_registry(engine, daily_loss_enabled=False)
+    reg, trading = make_registry(engine, daily_loss_enabled=False)
     # Pre-seed a massive loss — gate should still pass
-    factory.pnl().increment_sync(TODAY, Side.SELL, avg_price=100_000.0, qty=100)
+    await trading.increment_pnl_aggregate(TODAY, 100_000.0 * 100)
     result = await reg.handle(make_signal())
     assert result is not None
 
@@ -375,7 +373,6 @@ async def test_audit_log_failure_in_accept_is_swallowed() -> None:
         trading=mock_trading,
         audit=_FailAuditStore(),
         position=mock_position,
-        factory=_make_factory(),
         circuit=cb,
     )
     sig = make_signal(tick_log_id=1)
@@ -423,7 +420,6 @@ async def test_save_signal_failure_is_swallowed() -> None:
         trading=mock_trading,
         audit=_NoopAuditStore(),
         position=mock_position,
-        factory=_make_factory(),
         circuit=cb,
     )
     sig = make_signal(tick_log_id=1)
@@ -469,7 +465,6 @@ async def test_reject_audit_log_failure_is_swallowed() -> None:
         trading=mock_trading,
         audit=_FailAuditStore(),
         position=mock_position,
-        factory=_make_factory(),
         circuit=cb,
     )
     sig = make_signal(tick_log_id=5)

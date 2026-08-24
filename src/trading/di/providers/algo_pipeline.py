@@ -112,11 +112,10 @@ class AlgoPipelineFactory:
             trading=s.trading,
             audit=s.audit,
             position=position_store,
-            factory=s.factory,
             circuit=circuit,
         )
 
-        accountant = PositionAccountant(position_store, s.factory)
+        accountant = PositionAccountant(position_store, s.trading, s.factory)
         fill_handler = FillHandler(s.trading, accountant)
 
         order_executor = OrderExecutor(

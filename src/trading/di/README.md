@@ -17,7 +17,7 @@ Each module has its own `di/providers.py` that wires that module's internals. Th
 | `components.py` | `KiteIngestor`, `CandleAggregator`, `SignalGenerator` per algo, `HeartbeatMonitor` |
 | `algo_pipeline.py` | `RiskFilter` and `OrderExecutor` per algo — wired into `AlgoPipeline` |
 | `worker_components.py` | Worker-process variants of the same components (no HTTP server) |
-| `indicators.py` | `CandleStore` — the `AbstractCandleStore` implementation backed by Postgres + optional Redis cache |
+| `indicators.py` | `CandleStore` — the `AbstractCandleStore` implementation backed by Postgres |
 | `strategy.py` | `make_strategy(strategy_id)` factory — maps strategy IDs to `Strategy` instances |
 
 ## Container entry points

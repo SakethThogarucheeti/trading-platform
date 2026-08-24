@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -12,7 +12,7 @@ from trading.core.clock import Clock, SYSTEM_CLOCK
 from trading.core.schemas import FillEvent, Side
 from trading.execution.service.position_accountant import PositionAccountant
 from trading.storage.cache import CacherFactory, ValueCache, setup_cache
-from trading.execution.api.interfaces import AbstractPositionStore
+from trading.execution.api.interfaces import AbstractPositionStore, AbstractTradingStore
 
 
 # ---------------------------------------------------------------------------
@@ -42,23 +42,15 @@ class _FixedClock(Clock):
         return self._dt
 
 
-def _make_accountant(
-    position: AbstractPositionStore | None = None,
-    factory: CacherFactory | None = None,
-    clock: Clock | None = None,
-) -> PositionAccountant:
-    mock_position = position or MagicMock(spec=AbstractPositionStore)
-    mock_position.update_position = AsyncMock()
+def _make_factory() -> CacherFactory:
+    setup_cache(None)
+    return CacherFactory(ValueCache(), SYSTEM_CLOCK)
 
-    if factory is None:
-        setup_cache(None)
-        factory = CacherFactory(ValueCache(), SYSTEM_CLOCK)
 
-    return PositionAccountant(
-        position=mock_position,
-        factory=factory,
-        clock=clock,
-    )
+def _make_trading() -> AbstractTradingStore:
+    mock = MagicMock(spec=AbstractTradingStore)
+    mock.increment_pnl_aggregate = AsyncMock()
+    return mock
 
 
 # ---------------------------------------------------------------------------
@@ -70,9 +62,9 @@ async def test_apply_fill_calls_update_position() -> None:
     mock_position = MagicMock(spec=AbstractPositionStore)
     mock_position.update_position = AsyncMock()
 
-    setup_cache(None)
-    factory = CacherFactory(ValueCache(), SYSTEM_CLOCK)
-    accountant = PositionAccountant(position=mock_position, factory=factory)
+    accountant = PositionAccountant(
+        position=mock_position, trading=_make_trading(), factory=_make_factory()
+    )
 
     fill = _make_fill()
     await accountant.apply_fill(fill, Side.BUY, "INFY", "EQUITY")
@@ -80,24 +72,43 @@ async def test_apply_fill_calls_update_position() -> None:
     mock_position.update_position.assert_called_once_with(fill, Side.BUY, "INFY", "EQUITY")
 
 
-async def test_apply_fill_increments_pnl_cache() -> None:
+async def test_apply_fill_increments_pnl_aggregate() -> None:
     mock_position = MagicMock(spec=AbstractPositionStore)
     mock_position.update_position = AsyncMock()
+    mock_trading = _make_trading()
 
-    setup_cache(None)
-    factory = CacherFactory(ValueCache(), SYSTEM_CLOCK)
     fixed_date = date(2025, 1, 6)
     clock = _FixedClock(datetime(2025, 1, 6, 9, 15, tzinfo=UTC))
-    accountant = PositionAccountant(position=mock_position, factory=factory, clock=clock)
+    accountant = PositionAccountant(
+        position=mock_position, trading=mock_trading, factory=_make_factory(), clock=clock
+    )
 
     fill = _make_fill(avg_price=150.0, qty=10)
     await accountant.apply_fill(fill, Side.BUY, "INFY", "EQUITY")
 
-    pnl_key = f"rf:pnl:{fixed_date.isoformat()}"
-    cached = factory.pnl()._cache.get_sync(pnl_key)
-    assert cached is not None
     # BUY: sign = -1 → -150.0 * 10
-    assert float(cached) == pytest.approx(-1500.0)
+    mock_trading.increment_pnl_aggregate.assert_awaited_once_with(
+        fixed_date, pytest.approx(-1500.0)
+    )
+
+
+async def test_apply_fill_sell_increases_pnl() -> None:
+    mock_position = MagicMock(spec=AbstractPositionStore)
+    mock_position.update_position = AsyncMock()
+    mock_trading = _make_trading()
+
+    fixed_date = date(2025, 1, 6)
+    clock = _FixedClock(datetime(2025, 1, 6, 9, 15, tzinfo=UTC))
+    accountant = PositionAccountant(
+        position=mock_position, trading=mock_trading, factory=_make_factory(), clock=clock
+    )
+
+    fill = _make_fill(avg_price=100.0, qty=10)
+    await accountant.apply_fill(fill, Side.SELL, "INFY", "EQUITY")
+
+    mock_trading.increment_pnl_aggregate.assert_awaited_once_with(
+        fixed_date, pytest.approx(1000.0)
+    )
 
 
 async def test_apply_fill_invalidates_api_cache() -> None:
@@ -107,11 +118,12 @@ async def test_apply_fill_invalidates_api_cache() -> None:
     mock_api = MagicMock()
     mock_api.invalidate_pnl = AsyncMock()
     mock_factory = MagicMock(spec=CacherFactory)
-    mock_factory.pnl.return_value = MagicMock(increment_sync=MagicMock())
     mock_factory.api.return_value = mock_api
 
     clock = _FixedClock(datetime(2025, 1, 6, 9, 15, tzinfo=UTC))
-    accountant = PositionAccountant(position=mock_position, factory=mock_factory, clock=clock)
+    accountant = PositionAccountant(
+        position=mock_position, trading=_make_trading(), factory=mock_factory, clock=clock
+    )
 
     fill = _make_fill()
     await accountant.apply_fill(fill, Side.BUY, "INFY", "EQUITY")
@@ -120,7 +132,7 @@ async def test_apply_fill_invalidates_api_cache() -> None:
 
 
 async def test_apply_fill_sequencing() -> None:
-    """DB update (update_position) must fire before cache operations."""
+    """DB position update must fire before the PnL aggregate and API cache ops."""
     call_order: list[str] = []
 
     mock_position = MagicMock(spec=AbstractPositionStore)
@@ -130,12 +142,12 @@ async def test_apply_fill_sequencing() -> None:
 
     mock_position.update_position = _record_position
 
-    mock_pnl = MagicMock()
+    mock_trading = MagicMock(spec=AbstractTradingStore)
 
-    def _record_pnl(*a, **kw) -> None:
+    async def _record_pnl(*a, **kw) -> None:
         call_order.append("pnl")
 
-    mock_pnl.increment_sync = _record_pnl
+    mock_trading.increment_pnl_aggregate = _record_pnl
 
     mock_api = MagicMock()
 
@@ -145,11 +157,12 @@ async def test_apply_fill_sequencing() -> None:
     mock_api.invalidate_pnl = _record_api
 
     mock_factory = MagicMock(spec=CacherFactory)
-    mock_factory.pnl.return_value = mock_pnl
     mock_factory.api.return_value = mock_api
 
     clock = _FixedClock(datetime(2025, 1, 6, 9, 15, tzinfo=UTC))
-    accountant = PositionAccountant(position=mock_position, factory=mock_factory, clock=clock)
+    accountant = PositionAccountant(
+        position=mock_position, trading=mock_trading, factory=mock_factory, clock=clock
+    )
 
     await accountant.apply_fill(_make_fill(), Side.BUY, "INFY", "EQUITY")
 

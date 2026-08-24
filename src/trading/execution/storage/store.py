@@ -9,8 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from trading.core.schemas import OrderStatus, Side
 from trading.execution.api.schemas import FillEvent, ValidatedOrderEvent
 from trading.execution.service.ledger import PositionLedger, PositionState
-from trading.execution.storage.models import Order, Position
+from trading.execution.storage.models import Order, Position, StrategyAggregate
 from trading.strategy.storage.models import Signal
+
+_PNL_METRIC = "realized_pnl"
 
 
 class NotFoundError(Exception):
@@ -82,6 +84,62 @@ class TradingStore:
                 sign = 1.0 if signal.side == Side.SELL.value else -1.0
                 pnl += sign * float(order.avg_price) * order.qty
         return pnl
+
+    async def increment_pnl_aggregate(
+        self, for_date: date, delta: float, algo_name: str = "ALL", symbol: str = "ALL"
+    ) -> None:
+        """
+        Atomically add *delta* to the running realized-PnL total for the day.
+
+        Postgres-only replacement for the old Redis/in-memory PnL cache: reads
+        the row with SELECT ... FOR UPDATE inside a transaction (same pattern
+        as PositionStore.update_position) so concurrent fills from different
+        worker processes can never lose an update the way the old per-process
+        in-memory cache silently did.
+        """
+        async with self._sf() as session:
+            async with session.begin():
+                result = await session.execute(
+                    select(StrategyAggregate)
+                    .where(
+                        StrategyAggregate.metric == _PNL_METRIC,
+                        StrategyAggregate.for_date == for_date,
+                        StrategyAggregate.algo_name == algo_name,
+                        StrategyAggregate.symbol == symbol,
+                    )
+                    .with_for_update()
+                )
+                row = result.scalar_one_or_none()
+                if row is None:
+                    session.add(
+                        StrategyAggregate(
+                            metric=_PNL_METRIC,
+                            for_date=for_date,
+                            algo_name=algo_name,
+                            symbol=symbol,
+                            value=Decimal(str(delta)),
+                            updated_at=datetime.now(UTC),
+                        )
+                    )
+                else:
+                    row.value = row.value + Decimal(str(delta))
+                    row.updated_at = datetime.now(UTC)
+
+    async def get_pnl_aggregate(
+        self, for_date: date, algo_name: str = "ALL", symbol: str = "ALL"
+    ) -> float:
+        """Read the running realized-PnL total written by increment_pnl_aggregate."""
+        async with self._sf() as session:
+            result = await session.execute(
+                select(StrategyAggregate.value).where(
+                    StrategyAggregate.metric == _PNL_METRIC,
+                    StrategyAggregate.for_date == for_date,
+                    StrategyAggregate.algo_name == algo_name,
+                    StrategyAggregate.symbol == symbol,
+                )
+            )
+            value = result.scalar_one_or_none()
+            return float(value) if value is not None else 0.0
 
     async def save_broker_token(self, broker: str, token: str, secret_key: str) -> None:
         async with self._sf() as session:

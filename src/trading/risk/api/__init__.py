@@ -5,7 +5,6 @@ from trading.risk.api.interfaces import (
     AbstractAuditStore,
     AbstractPositionStore,
     AbstractTradingStore,
-    CacherFactory,
     SignalEvent,
 )
 from trading.risk.api.schemas import ValidatedOrderEvent
@@ -23,5 +22,4 @@ __all__ = [
     "AbstractPositionStore",
     "AbstractTradingStore",
     "AbstractAuditStore",
-    "CacherFactory",
 ]

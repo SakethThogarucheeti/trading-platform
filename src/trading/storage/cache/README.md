@@ -9,10 +9,12 @@ Two-tier cache used by the risk and strategy layers for values that are expensiv
 **`backend.py`** — `ValueCache` — in-memory dict. Used in tests and when Redis is not configured.
 
 **`factory.py`** — `CacherFactory` — the single injectable object. Vends named cache instances:
-- `factory.pnl()` — daily PnL cache; keyed by `(date,)`
 - `factory.rolling_state()` — per-algo rolling state (indicator warm-up data)
 
-**`pnl.py`** — `PnLCache` — wraps `AbstractCache` with `increment_sync()` for fill-driven PnL updates and typed `get_or_set()`.
+Daily realized PnL is no longer cached here — a process-local cache silently diverged across
+concurrent worker processes (see `execution/storage/store.py`'s `TradingStore`, which now owns
+`increment_pnl_aggregate`/`get_pnl_aggregate` backed by a `strategy_aggregates` Postgres table
+updated via `SELECT ... FOR UPDATE`).
 
 **`rolling_state.py`** — `RollingStateCache` — saves/loads per-algo-symbol-interval state snapshots to Redis (JSON-encoded). Used by `SignalGenerator` to survive restarts without re-warming.
 

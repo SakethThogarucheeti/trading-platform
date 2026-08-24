@@ -30,6 +30,10 @@ class AbstractTradingStore(Protocol):
 
     async def save_signal(self, event: object) -> object: ...
 
+    async def increment_pnl_aggregate(
+        self, for_date: object, delta: float, algo_name: str = "ALL", symbol: str = "ALL"
+    ) -> None: ...
+
 
 class AbstractPositionStore(Protocol):
     async def get_position(self, symbol: str, instrument_type: str) -> object | None: ...
@@ -40,6 +44,4 @@ class AbstractPositionStore(Protocol):
 
 
 class CacherFactory(Protocol):
-    def pnl(self) -> object: ...
-
     def api(self) -> object: ...

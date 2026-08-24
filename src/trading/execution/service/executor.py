@@ -13,7 +13,6 @@ from trading.core.messaging import AbstractRegistry
 from trading.core.models import Order
 from trading.core.schemas import OrderStatus
 from trading.execution.api.interfaces import AbstractTradingStore, Broker
-from trading.execution.api.schemas import FillEvent
 from trading.execution.service.fill_handler import FillHandler
 from trading.execution.service.idempotency import is_duplicate
 from trading.risk.api.schemas import ValidatedOrderEvent

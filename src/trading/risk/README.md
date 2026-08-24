@@ -10,7 +10,7 @@ risk/
 │   ├── __init__.py       Re-exports: ValidatedOrderEvent, RiskFilter, RiskConfig,
 │   │                                 RiskGate, RiskSizer, RiskContext, VolatilitySizer
 │   ├── interfaces.py     AbstractPositionStore, AbstractTradingStore, AbstractAuditStore,
-│   │                     CacherFactory, SignalEvent protocols
+│   │                     SignalEvent protocols
 │   └── schemas.py        ValidatedOrderEvent (re-export from core.schemas)
 ├── service/
 │   ├── filter.py         RiskFilter — runs gate chain, sizes, emits ValidatedOrderEvent

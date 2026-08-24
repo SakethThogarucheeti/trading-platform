@@ -2,7 +2,6 @@ from trading.risk.api import (
     AbstractAuditStore,
     AbstractPositionStore,
     AbstractTradingStore,
-    CacherFactory,
     RiskConfig,
     RiskContext,
     RiskFilter,
@@ -25,5 +24,4 @@ __all__ = [
     "AbstractPositionStore",
     "AbstractTradingStore",
     "AbstractAuditStore",
-    "CacherFactory",
 ]

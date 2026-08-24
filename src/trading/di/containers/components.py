@@ -345,7 +345,7 @@ def _scheduler(
         from trading.execution.service.eod_square_off import square_off_open_positions
         from trading.execution.service.position_accountant import PositionAccountant
 
-        accountant = PositionAccountant(position_store, cacher_factory)
+        accountant = PositionAccountant(position_store, trading, cacher_factory)
 
         async def eod_square_off() -> None:
             await square_off_open_positions(trading, accountant, price_store, clock)

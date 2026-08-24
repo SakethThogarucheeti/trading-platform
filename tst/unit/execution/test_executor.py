@@ -80,7 +80,7 @@ def make_registry(
     broker: MockBroker | None = None,
 ) -> OrderExecutor:
     sf = build_session_factory(engine)
-    accountant = PositionAccountant(PositionStore(sf), _make_factory())
+    accountant = PositionAccountant(PositionStore(sf), TradingStore(sf), _make_factory())
     fill_handler = FillHandler(TradingStore(sf), accountant)
     return OrderExecutor(
         config=ExecConfig(),
@@ -298,20 +298,20 @@ async def test_handle_fill_unknown_order_returns_early(engine: AsyncEngine) -> N
     )
 
 
-async def test_pnl_updated_in_cache_after_handle_fill(engine: AsyncEngine) -> None:
-    """PnL cache is updated synchronously after a fill via increment_sync."""
+async def test_pnl_updated_in_aggregate_table_after_handle_fill(engine: AsyncEngine) -> None:
+    """PnL aggregate row is updated via increment_pnl_aggregate after a fill."""
     from datetime import date
 
     broker = MockBroker(order_id="KITE_CB")
-    factory = _make_factory()
     sf = build_session_factory(engine)
-    accountant = PositionAccountant(PositionStore(sf), factory)
-    fill_handler = FillHandler(TradingStore(sf), accountant)
+    trading = TradingStore(sf)
+    accountant = PositionAccountant(PositionStore(sf), trading, _make_factory())
+    fill_handler = FillHandler(trading, accountant)
     reg = OrderExecutor(
         config=ExecConfig(),
         broker=broker,
         session_factory=sf,
-        trading=TradingStore(sf),
+        trading=trading,
         fill_handler=fill_handler,
     )
 
@@ -330,11 +330,8 @@ async def test_pnl_updated_in_cache_after_handle_fill(engine: AsyncEngine) -> No
     )
 
     today = date.today()
-    pnl_key = f"rf:pnl:{today.isoformat()}"
-    cached = factory.pnl()._cache.get_sync(pnl_key)
     # BUY fill: sign = -1 → PnL = -150.0 * 10 = -1500.0
-    assert cached is not None
-    assert float(cached) == pytest.approx(-1500.0)
+    assert await trading.get_pnl_aggregate(today) == pytest.approx(-1500.0)
 
 
 async def test_persist_order_status_retries_on_failure(engine: AsyncEngine) -> None:
@@ -373,7 +370,7 @@ async def test_persist_order_status_retries_on_failure(engine: AsyncEngine) -> N
             return _FailingSession()
 
     flaky_sf = _FailingSessionFactory()
-    accountant = PositionAccountant(PositionStore(sf), _make_factory())
+    accountant = PositionAccountant(PositionStore(sf), TradingStore(sf), _make_factory())
     fill_handler = FillHandler(TradingStore(sf), accountant)
     reg = OrderExecutor(
         config=ExecConfig(),

@@ -14,6 +14,10 @@ class AbstractTradingStore(Protocol):
 
     async def save_signal(self, event: object) -> None: ...
 
+    async def get_pnl_aggregate(
+        self, for_date: object, algo_name: str = "ALL", symbol: str = "ALL"
+    ) -> float: ...
+
 
 class AbstractAuditStore(Protocol):
     async def log_decision(
@@ -28,7 +32,3 @@ class AbstractAuditStore(Protocol):
     ) -> None: ...
 
     async def log_audit(self, module: str, level: str, message: str) -> None: ...
-
-
-class CacherFactory(Protocol):
-    def pnl(self) -> object: ...

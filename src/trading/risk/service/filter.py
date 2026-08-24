@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import time
-from typing import Callable
 
 from pydantic import BaseModel, Field
 from trading_risk_sdk.policy import RiskContext, RiskGate, RiskSizer
@@ -17,7 +17,6 @@ from trading.risk.api.interfaces import (
     AbstractAuditStore,
     AbstractPositionStore,
     AbstractTradingStore,
-    CacherFactory,
 )
 from trading.risk.api.schemas import ValidatedOrderEvent
 from trading.strategy.api.schemas import SignalEvent
@@ -59,7 +58,6 @@ class RiskFilter(AbstractRegistry):
         trading: AbstractTradingStore,
         audit: AbstractAuditStore,
         position: AbstractPositionStore,
-        factory: CacherFactory,
         clock: Clock | None = None,
         sizer: RiskSizer | None = None,
         equity_provider: Callable[[], float] | None = None,
@@ -70,7 +68,6 @@ class RiskFilter(AbstractRegistry):
         self._trading = trading
         self._audit = audit
         self._position = position
-        self._factory = factory
         self._clock: Clock = clock or SystemClock()
         self._sizer: RiskSizer = sizer or VolatilitySizer()
         self._equity_provider = equity_provider
@@ -111,9 +108,7 @@ class RiskFilter(AbstractRegistry):
     async def _build_context(self, event: SignalEvent) -> RiskContext:
         now = self._clock.now()
         today = now.date()
-        realized_pnl = await self._factory.pnl().get_or_set(  # type: ignore[attr-defined]
-            (today,), producer=lambda: self._trading.get_daily_realized_pnl(today)
-        )
+        realized_pnl = await self._trading.get_pnl_aggregate(today)  # type: ignore[attr-defined]
         position = None
         if event.signal_type == SignalType.ENTRY:
             position = await self._position.get_position(event.symbol, event.instrument_type.value)

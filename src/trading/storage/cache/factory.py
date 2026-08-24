@@ -3,30 +3,27 @@ from __future__ import annotations
 from trading.core.clock import Clock
 from trading.storage.cache.api import ApiResponseCacher
 from trading.storage.cache.backend import ValueCache
-from trading.storage.cache.pnl import PnlCacher
 from trading.storage.cache.rolling_state import RollingStateCacher
 
 
 class CacherFactory:
     """
     Creates and caches all typed cachers. DI injects this factory as a single
-    APP-scoped singleton — consumers call factory.pnl(), factory.rolling_state(),
-    or factory.api() to obtain the appropriate cacher.
+    APP-scoped singleton — consumers call factory.rolling_state() or
+    factory.api() to obtain the appropriate cacher.
 
     Cacher instances are lazily created and reused (one per factory instance).
+
+    PnL is no longer cached here — it moved to a Postgres-backed running
+    total (TradingStore.increment_pnl_aggregate/get_pnl_aggregate) so it's
+    correct across concurrent worker processes; see execution/storage/store.py.
     """
 
     def __init__(self, cache: ValueCache, clock: Clock) -> None:
         self._cache = cache
         self._clock = clock
-        self._pnl: PnlCacher | None = None
         self._rolling_state: RollingStateCacher | None = None
         self._api: ApiResponseCacher | None = None
-
-    def pnl(self) -> PnlCacher:
-        if self._pnl is None:
-            self._pnl = PnlCacher(self._cache, self._clock)
-        return self._pnl
 
     def rolling_state(self) -> RollingStateCacher:
         if self._rolling_state is None:
