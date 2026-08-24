@@ -101,7 +101,8 @@ class CandleAggregatorComponent(Component):
         """Register a candle consumer to receive warmup candles during _setup."""
         self._algo_callbacks.append(consumer)
 
-    async def _setup(self) -> None:
+    async def _fetch_warmup_candles(self) -> list[CandleEvent]:
+        """Fetch warmup-window historical candles for every configured symbol/interval, sorted by timestamp."""
         now = self._clock.now()
         start = warmup_start(now, self._intervals, self._warmup_count)
 
@@ -138,11 +139,17 @@ class CandleAggregatorComponent(Component):
                     )
 
         all_candles.sort(key=lambda c: c.timestamp)
+        return all_candles
 
+    def _group_by_symbol(self, candles: list[CandleEvent]) -> dict[str, list[CandleEvent]]:
         candles_by_symbol: dict[str, list[CandleEvent]] = {}
-        for candle in all_candles:
+        for candle in candles:
             candles_by_symbol.setdefault(candle.symbol, []).append(candle)
+        return candles_by_symbol
 
+    async def _replay_through_consumers(
+        self, all_candles: list[CandleEvent], candles_by_symbol: dict[str, list[CandleEvent]]
+    ) -> None:
         for consumer in self._algo_callbacks:
             consumer.setup(candles_by_symbol)
 
@@ -161,6 +168,10 @@ class CandleAggregatorComponent(Component):
                             "CandleAggregatorComponent: warmup replay error for %s", candle.symbol
                         )
 
+    async def _setup(self) -> None:
+        all_candles = await self._fetch_warmup_candles()
+        candles_by_symbol = self._group_by_symbol(all_candles)
+        await self._replay_through_consumers(all_candles, candles_by_symbol)
         logger.info("CandleAggregatorComponent: warm-up complete (%d candles)", len(all_candles))
 
     async def _run(self) -> None:
