@@ -13,8 +13,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from trading.core.clock import SimulatedClock
 from trading.api.app import build_app
+from trading.core.clock import SimulatedClock
 
 
 def _mock_sf(scalars_return=None, all_return=None):
@@ -171,6 +171,33 @@ async def test_get_live_report_day_period():
     assert "signal_funnel" in data
     assert "order_funnel" in data
     assert "pnl_summary" in data
+
+
+@pytest.mark.asyncio
+async def test_get_live_report_uses_cacher_factory_when_provided():
+    """/api/reports/live consults the ApiResponseCacher when cacher_factory is
+    set, and a second call within TTL is served from cache without recomputing."""
+    from trading.storage.cache.backend import ValueCache, setup_cache
+    from trading.storage.cache.factory import CacherFactory
+
+    setup_cache(None)
+    sf = _mock_sf(scalars_return=[])
+    clock = SimulatedClock()
+    clock.advance(datetime(2025, 1, 6, 10, 0, tzinfo=UTC))
+    cacher_factory = CacherFactory(ValueCache(), clock)
+    mocks = _all_mocked()
+    trades_mock = mocks["trading.reports.trades.fetch_filled_trades"]
+    with _apply_engine_patches(mocks), \
+         patch("trading.reports.trades.fetch_filled_trades", trades_mock):
+        app = build_app(sf, clock=clock, cacher_factory=cacher_factory)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp1 = await client.get("/api/reports/live?period=day")
+            resp2 = await client.get("/api/reports/live?period=day")
+
+    assert resp1.status_code == 200
+    assert resp2.status_code == 200
+    assert resp2.json() == resp1.json()
+    mocks["trading.reports.engine.fetch_decisions"].assert_awaited_once()
 
 
 @pytest.mark.asyncio
