@@ -20,3 +20,13 @@ def today_start(clock: Clock) -> datetime:
     if now_tz == datetime.min.replace(tzinfo=UTC):
         return now_tz  # SimulatedClock before first advance() — avoid tz-conversion overflow
     return datetime(now_tz.year, now_tz.month, now_tz.day, tzinfo=clock.tz).astimezone(UTC)
+
+
+def parse_utc_datetime(value: str) -> datetime:
+    """Parse an ISO datetime string, assuming UTC when it carries no tzinfo.
+
+    Raises ValueError on an unparseable string — callers wrap this into an
+    HTTPException with their own message/status code.
+    """
+    dt = datetime.fromisoformat(value)
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)

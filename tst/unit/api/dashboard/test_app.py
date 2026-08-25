@@ -10,8 +10,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from trading.core.clock import SimulatedClock
 from trading.api.app import build_app
+from trading.core.clock import SimulatedClock
 
 # ---------------------------------------------------------------------------
 # Helpers — build a mock session_factory
@@ -40,10 +40,10 @@ def _mock_sf(scalars_return=None, fetchall_return=None, all_return=None):
     return mock_sf
 
 
-async def _client(sf, clock=None):
+async def _client(sf, clock=None, **kwargs):
     """Return an httpx AsyncClient backed by the FastAPI app (in-process)."""
     clock = clock or SimulatedClock()
-    app = build_app(sf, clock)
+    app = build_app(sf, clock, **kwargs)
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
@@ -523,3 +523,128 @@ async def test_charts_with_algo_name_filter():
             resp = await client.get("/api/charts?algo_name=ema_crossover")
     assert resp.status_code == 200
     assert resp.json() == {}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/trades
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_trades_defaults_to_today_when_start_end_omitted():
+    """No start/end query params -> falls back to today_start(clock)/clock.now(), no error."""
+    sf = _mock_sf()
+    with patch(
+        "trading.reports.trades.fetch_filled_trades", new=AsyncMock(return_value=[])
+    ) as mock_fetch:
+        async with await _client(sf) as client:
+            resp = await client.get("/api/trades")
+    assert resp.status_code == 200
+    assert resp.json() == []
+    mock_fetch.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_trades_returns_filled_trades():
+    from trading.reports.trades import FilledTrade
+
+    trade = FilledTrade(
+        order_id="ord-1",
+        kite_order_id="kite-1",
+        signal_id="sig-1",
+        algo_name="ema_crossover",
+        strategy_id="ema",
+        symbol="INFY",
+        instrument_type="EQUITY",
+        side="BUY",
+        signal_type="ENTRY",
+        qty=10,
+        avg_price=1500.1234,
+        gross=100.567,
+        cost=5.0,
+        net=95.567,
+        filled_at=datetime(2026, 1, 6, 9, 15, tzinfo=UTC),
+    )
+    sf = _mock_sf()
+    with patch(
+        "trading.reports.trades.fetch_filled_trades", new=AsyncMock(return_value=[trade])
+    ):
+        async with await _client(sf) as client:
+            resp = await client.get(
+                "/api/trades?start=2026-01-01T00:00:00&end=2026-01-31T00:00:00&algo_name=ema_crossover"
+            )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["symbol"] == "INFY"
+    assert data[0]["avg_price"] == pytest.approx(1500.1234)
+
+
+@pytest.mark.asyncio
+async def test_trades_invalid_start_returns_400():
+    sf = _mock_sf()
+    async with await _client(sf) as client:
+        resp = await client.get("/api/trades?start=not-a-date")
+    assert resp.status_code == 400
+    assert "Invalid datetime" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_trades_invalid_end_returns_400():
+    sf = _mock_sf()
+    async with await _client(sf) as client:
+        resp = await client.get("/api/trades?end=not-a-date")
+    assert resp.status_code == 400
+    assert "Invalid datetime" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/candles/history
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_candles_history_service_not_configured_returns_503():
+    sf = _mock_sf()
+    async with await _client(sf, historical_data_service=None) as client:
+        resp = await client.get(
+            "/api/candles/history?symbol=INFY&interval=15min"
+            "&start=2026-01-01T00:00:00&end=2026-01-02T00:00:00"
+        )
+    assert resp.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_candles_history_invalid_start_returns_400():
+    service = MagicMock()
+    service.fetch = AsyncMock()
+    sf = _mock_sf()
+    async with await _client(sf, historical_data_service=service) as client:
+        resp = await client.get(
+            "/api/candles/history?symbol=INFY&interval=15min&start=not-a-date&end=2026-01-02T00:00:00"
+        )
+    assert resp.status_code == 400
+    assert "Invalid datetime" in resp.json()["detail"]
+    service.fetch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_candles_history_returns_fetched_rows():
+    import polars as pl
+
+    service = MagicMock()
+    result = MagicMock()
+    result.df = pl.DataFrame({"ts": ["2026-01-01T09:15:00"], "close": [1500.0]})
+    service.fetch = AsyncMock(return_value=result)
+
+    sf = _mock_sf()
+    async with await _client(sf, historical_data_service=service) as client:
+        resp = await client.get(
+            "/api/candles/history?symbol=INFY&interval=15min"
+            "&start=2026-01-01T00:00:00&end=2026-01-02T00:00:00"
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["close"] == pytest.approx(1500.0)
+    service.fetch.assert_awaited_once()
