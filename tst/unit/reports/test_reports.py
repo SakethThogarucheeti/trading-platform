@@ -131,6 +131,26 @@ def test_compute_pnl_partial_short_close() -> None:
     assert result["ema::INFY"]["realized"] == pytest.approx(50.0)
 
 
+def test_compute_pnl_open_short_position_avg_price() -> None:
+    # Sell 10 @ 100 (open short), buy 5 @ 90 (partial cover) -> net short 5 @ 100
+    sell_sig = _mock_signal("ema", "INFY", "SELL", 10, 100.0)
+    buy_sig = _mock_signal("ema", "INFY", "BUY", 5, 90.0)
+    result = compute_pnl([sell_sig, buy_sig])
+    assert result["ema::INFY"]["open_qty"] == -5.0
+    assert result["ema::INFY"]["open_avg"] == pytest.approx(100.0)
+
+
+def test_compute_pnl_open_short_position_weighted_avg() -> None:
+    # Sell 5 @ 100, sell 5 @ 110 -> net short 10, weighted avg = (5*100+5*110)/10 = 105
+    signals = [
+        _mock_signal("ema", "INFY", "SELL", 5, 100.0),
+        _mock_signal("ema", "INFY", "SELL", 5, 110.0),
+    ]
+    result = compute_pnl(signals)
+    assert result["ema::INFY"]["open_qty"] == -10.0
+    assert result["ema::INFY"]["open_avg"] == pytest.approx(105.0)
+
+
 def test_compute_pnl_multiple_symbols_independent() -> None:
     signals = [
         _mock_signal("ema", "INFY", "BUY", 5, 100.0),
