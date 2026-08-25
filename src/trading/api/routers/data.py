@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
@@ -12,7 +10,7 @@ from trading.candles.storage.models import Instrument
 from trading.core.clock import Clock
 from trading.core.models import DecisionLog
 
-from ._helpers import today_start
+from ._helpers import parse_utc_datetime, today_start
 
 
 def create_data_router(
@@ -69,12 +67,8 @@ def create_data_router(
         from trading.reports.trades import fetch_filled_trades
 
         try:
-            start_dt = datetime.fromisoformat(start) if start else today_start(clock)
-            end_dt = datetime.fromisoformat(end) if end else clock.now()
-            if start_dt.tzinfo is None:
-                start_dt = start_dt.replace(tzinfo=UTC)
-            if end_dt.tzinfo is None:
-                end_dt = end_dt.replace(tzinfo=UTC)
+            start_dt = parse_utc_datetime(start) if start else today_start(clock)
+            end_dt = parse_utc_datetime(end) if end else clock.now()
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=f"Invalid datetime: {exc}") from exc
 
@@ -111,12 +105,8 @@ def create_data_router(
         if historical_data_service is None:
             raise HTTPException(status_code=503, detail="Historical data service not available")
         try:
-            start_dt = datetime.fromisoformat(start)
-            end_dt = datetime.fromisoformat(end)
-            if start_dt.tzinfo is None:
-                start_dt = start_dt.replace(tzinfo=UTC)
-            if end_dt.tzinfo is None:
-                end_dt = end_dt.replace(tzinfo=UTC)
+            start_dt = parse_utc_datetime(start)
+            end_dt = parse_utc_datetime(end)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=f"Invalid datetime: {exc}") from exc
 
