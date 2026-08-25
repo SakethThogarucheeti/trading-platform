@@ -19,6 +19,7 @@ import logging
 from collections.abc import Generator
 from datetime import UTC
 from pathlib import Path
+from typing import Any
 
 import anyio
 import polars as pl
@@ -75,20 +76,17 @@ def _discover(
             yield sym_dir.name, interval, parquet
 
 
-def _load_parquet(symbol: str, interval: str, path: Path) -> list[CandleRow]:
-    """Read a Parquet file and return a list of candle dicts."""
-    try:
-        df = pl.read_parquet(path)
-    except Exception as exc:
-        logger.warning("import-candles: cannot read %s — %s", path, exc)
-        return []
+def _normalize_columns(df: pl.DataFrame, path: Path) -> pl.DataFrame | None:
+    """
+    Rename timestamp->date, validate required OHLC columns, default volume.
 
-    # Normalise the date column name
+    Returns None (logging why) if the file can't be normalised.
+    """
     if "date" not in df.columns and "timestamp" in df.columns:
         df = df.rename({"timestamp": "date"})
     if "date" not in df.columns:
         logger.warning("import-candles: %s has no date/timestamp column — skipping", path)
-        return []
+        return None
 
     required = {"open", "high", "low", "close"}
     if not required.issubset(df.columns):
@@ -97,37 +95,53 @@ def _load_parquet(symbol: str, interval: str, path: Path) -> list[CandleRow]:
             path,
             required - set(df.columns),
         )
-        return []
+        return None
 
     if "volume" not in df.columns:
         df = df.with_columns(pl.lit(0).alias("volume"))
 
-    rows: list[CandleRow] = []
-    for row in df.iter_rows(named=True):
-        ts = row["date"]
-        if hasattr(ts, "tzinfo") and ts.tzinfo is None:
-            ts = ts.replace(tzinfo=UTC)
-        elif not hasattr(ts, "tzinfo"):
-            continue  # skip non-datetime rows
-        rows.append(
-            CandleRow(
-                symbol=symbol,
-                interval=interval,
-                ts=ts,
-                open=float(row["open"]),
-                high=float(row["high"]),
-                low=float(row["low"]),
-                close=float(row["close"]),
-                volume=int(row.get("volume") or 0),
-            )
-        )
-    return rows
+    return df
+
+
+def _row_to_candle(row: dict[str, Any], symbol: str, interval: str) -> CandleRow | None:
+    """Convert one Parquet row to a CandleRow, or None to skip a non-datetime row."""
+    ts = row["date"]
+    if hasattr(ts, "tzinfo") and ts.tzinfo is None:
+        ts = ts.replace(tzinfo=UTC)
+    elif not hasattr(ts, "tzinfo"):
+        return None  # skip non-datetime rows
+    return CandleRow(
+        symbol=symbol,
+        interval=interval,
+        ts=ts,
+        open=float(row["open"]),
+        high=float(row["high"]),
+        low=float(row["low"]),
+        close=float(row["close"]),
+        volume=int(row.get("volume") or 0),
+    )
+
+
+def _load_parquet(symbol: str, interval: str, path: Path) -> list[CandleRow]:
+    """Read a Parquet file and return a list of candle dicts."""
+    try:
+        df = pl.read_parquet(path)
+    except Exception as exc:
+        logger.warning("import-candles: cannot read %s — %s", path, exc)
+        return []
+
+    df = _normalize_columns(df, path)
+    if df is None:
+        return []
+
+    candles = (_row_to_candle(row, symbol, interval) for row in df.iter_rows(named=True))
+    return [c for c in candles if c is not None]
 
 
 async def _run(args: argparse.Namespace) -> None:
-    from trading.config.settings import get_settings
     from trading.app.database import build_engine, build_session_factory, init_db
     from trading.candles.storage.store import CandleDataStore
+    from trading.config.settings import get_settings
 
     settings = get_settings()
     engine = build_engine(str(settings.postgres_url))
