@@ -78,6 +78,16 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+    healthcheck:
+      # /api/ping only responds once the dashboard API server is up, which
+      # main.py only starts after _run_migrations() + _sync_instruments()
+      # both complete — so this also gates worker startup on instrument
+      # sync being done, not just the container process existing.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/api/ping', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     restart: unless-stopped
 
   worker-rsi:
@@ -94,7 +104,7 @@ services:
       DASHBOARD_HOST: "ingestor"
     depends_on:
       ingestor:
-        condition: service_started
+        condition: service_healthy
       kafka:
         condition: service_healthy
     restart: unless-stopped
@@ -110,7 +120,7 @@ services:
       DASHBOARD_HOST: "ingestor"
     depends_on:
       ingestor:
-        condition: service_started
+        condition: service_healthy
       kafka:
         condition: service_healthy
     restart: unless-stopped
@@ -126,7 +136,7 @@ services:
       DASHBOARD_HOST: "ingestor"
     depends_on:
       ingestor:
-        condition: service_started
+        condition: service_healthy
       kafka:
         condition: service_healthy
     restart: unless-stopped
@@ -142,7 +152,7 @@ services:
       DASHBOARD_HOST: "ingestor"
     depends_on:
       ingestor:
-        condition: service_started
+        condition: service_healthy
       kafka:
         condition: service_healthy
     restart: unless-stopped
@@ -158,7 +168,7 @@ services:
       - "3000:3000"
     depends_on:
       ingestor:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

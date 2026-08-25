@@ -48,6 +48,17 @@ class TickAgentComponent(Component):
         price_store: AbstractPriceStore | None = None,
     ) -> None:
         super().__init__(name="tick_agent")
+        if not tokens:
+            # An empty token set means this worker will consume the ticks
+            # topic and silently forward nothing, forever — almost always a
+            # sign that instrument sync hadn't finished (or found nothing
+            # for this algo's configured symbols) before this worker was
+            # built. Fail fast instead of running dark.
+            raise ValueError(
+                "TickAgentComponent built with an empty token set — this worker "
+                "would consume ticks and match nothing. Check instrument sync "
+                "completed and this algo's configured symbols resolved to tokens."
+            )
         self._app = app
         self._tokens = set(tokens)
         self._tick_pipeline = tick_pipeline

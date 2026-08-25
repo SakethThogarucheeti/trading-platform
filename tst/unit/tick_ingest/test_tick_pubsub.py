@@ -11,7 +11,6 @@ from trading.core.schemas import InstrumentType, TickEvent
 from trading.tick_ingest.service.publisher import TickPublisher
 from trading.worker.circuit_breaker_redis import RedisCircuitBreaker
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -204,6 +203,24 @@ class TestTickAgentComponent:
             price_store=price_store,
         )
         return agent, pipeline
+
+    def test_empty_token_set_raises(self) -> None:
+        import faust
+
+        from trading.worker.tick_agent import TickAgentComponent
+
+        app = faust.App("test-agent-empty", broker="kafka://localhost:19999", store="memory://")
+        circuit = RedisCircuitBreaker(MagicMock())
+        pipeline = MagicMock(run=AsyncMock())
+
+        with pytest.raises(ValueError, match="empty token set"):
+            TickAgentComponent(
+                app=app,
+                tokens=[],
+                tick_pipeline=pipeline,
+                circuit_breaker=circuit,
+                token_symbol={},
+            )
 
     @pytest.mark.anyio
     async def test_process_ticks_runs_pipeline_for_known_token(self) -> None:
