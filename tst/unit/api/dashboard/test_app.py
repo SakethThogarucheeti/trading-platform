@@ -258,6 +258,31 @@ async def test_pnl_empty():
     assert data["summary"]["nifty_pct"] is None
 
 
+@pytest.mark.asyncio
+async def test_pnl_uses_cacher_factory_when_provided():
+    """/api/pnl consults the ApiResponseCacher when cacher_factory is set,
+    and a second call within TTL is served from cache without recomputing."""
+    from trading.storage.cache.backend import ValueCache, setup_cache
+    from trading.storage.cache.factory import CacherFactory
+
+    setup_cache(None)
+    clock = SimulatedClock()
+    clock.advance(datetime(2025, 1, 6, 10, 0, tzinfo=UTC))
+    cacher_factory = CacherFactory(ValueCache(), clock)
+
+    sf = _mock_sf(all_return=[])
+    nifty_mock = AsyncMock(return_value=None)
+    with patch("trading.reports.fetch.fetch_nifty_benchmark", new=nifty_mock):
+        async with await _client(sf, clock=clock, cacher_factory=cacher_factory) as client:
+            resp1 = await client.get("/api/pnl")
+            resp2 = await client.get("/api/pnl")
+
+    assert resp1.status_code == 200
+    assert resp2.status_code == 200
+    assert resp2.json() == resp1.json()
+    nifty_mock.assert_awaited_once()  # _produce only ran once — second call was a cache hit
+
+
 # ---------------------------------------------------------------------------
 # GET /api/algos — mocks Repository.get_algo_configs_with_state
 # ---------------------------------------------------------------------------
@@ -441,6 +466,30 @@ async def test_pnl_by_algo_groups_by_algo_name():
     assert data["algo_a"]["gross"] == pytest.approx(5000.0)
     # algo_b: BUY 3 @ 2000 = -6000 gross
     assert data["algo_b"]["gross"] == pytest.approx(-6000.0)
+
+
+@pytest.mark.asyncio
+async def test_pnl_by_algo_uses_cacher_factory_when_provided():
+    """/api/pnl/by-algo consults the ApiResponseCacher when cacher_factory is
+    set, and a second call within TTL is served from cache without hitting
+    the DB again."""
+    from trading.storage.cache.backend import ValueCache, setup_cache
+    from trading.storage.cache.factory import CacherFactory
+
+    setup_cache(None)
+    clock = SimulatedClock()
+    clock.advance(datetime(2025, 1, 6, 10, 0, tzinfo=UTC))
+    cacher_factory = CacherFactory(ValueCache(), clock)
+
+    sf = _mock_sf(all_return=[])
+    async with await _client(sf, clock=clock, cacher_factory=cacher_factory) as client:
+        resp1 = await client.get("/api/pnl/by-algo")
+        resp2 = await client.get("/api/pnl/by-algo")
+
+    assert resp1.status_code == 200
+    assert resp2.status_code == 200
+    assert resp2.json() == resp1.json()
+    assert sf.call_count == 1  # _produce only ran once — second call was a cache hit
 
 
 @pytest.mark.asyncio

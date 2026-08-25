@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from trading.core.clock import Clock
 from trading.storage.cache import CacherFactory
 
+from ._helpers import cached_json_response
+
 logger = logging.getLogger(__name__)
 
 
@@ -92,14 +94,12 @@ def create_reports_router(
             data = await fetch_report_data(start, end, session_factory)
             return data.model_dump_json()
 
-        if cacher_factory is not None:
-            body = await cacher_factory.api().get_or_set_response(  # type: ignore[reportUnknownMemberType]
-                key_args=("report", period, local_date.date().isoformat()),
-                producer=_produce,
-                ttl=60,
-            )
-            return JSONResponse(content=json.loads(body))
-        return JSONResponse(content=json.loads(await _produce()))
+        return await cached_json_response(
+            cacher_factory,
+            key_args=("report", period, local_date.date().isoformat()),
+            producer=_produce,
+            ttl=60,
+        )
 
     @router.get("/api/reports/{session_id}")
     async def get_report(session_id: str) -> JSONResponse:
