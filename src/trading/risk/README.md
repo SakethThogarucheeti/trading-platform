@@ -13,19 +13,18 @@ risk/
 │   │                     SignalEvent protocols
 │   └── schemas.py        ValidatedOrderEvent (re-export from core.schemas)
 ├── service/
-│   ├── filter.py         RiskFilter — runs gate chain, sizes, emits ValidatedOrderEvent
-│   ├── policy.py         RiskContext dataclass, RiskGate ABC, RiskSizer ABC
-│   └── sizer.py          VolatilitySizer — ATR-based quantity calculation
+│   └── filter.py         RiskFilter — runs gate chain, sizes, emits ValidatedOrderEvent
 ├── storage/
 │   └── models.py         (reserved for future equity snapshots)
-├── di/
-│   └── providers.py      RiskProvider
-└── gates/
-    ├── circuit_breaker.py  CircuitBreakerGate — rejects when CB is open
-    ├── daily_loss.py       DailyLossGate — rejects when daily loss limit exceeded
-    ├── duplicate_position.py DuplicatePositionGate — rejects if position already open
-    └── time_cutoff.py      TimeCutoffGate — rejects after intraday cutoff time
+└── di/
+    └── providers.py      RiskProvider
 ```
+
+`RiskContext`, `RiskGate`, `RiskSizer`, and `VolatilitySizer` now live in `trading_risk_sdk` —
+`risk/api/__init__.py` imports them directly, there's no local wrapper. The gate implementations
+(`CircuitBreakerGate`, `DailyLossGate`, `DuplicatePositionGate`, `TimeCutoffGate`) also live there
+but aren't imported through `risk/api`: they're resolved by config-driven `gate_id` via
+`trading_risk_sdk.registry.create_gate()`, called from `di/providers/algo_pipeline.py`.
 
 ## How RiskFilter works
 
@@ -40,5 +39,3 @@ risk/
 ```python
 from trading.risk.api import RiskFilter, RiskConfig, ValidatedOrderEvent
 ```
-
-See [gates/README.md](gates/README.md) for the gate implementations.
