@@ -127,11 +127,12 @@ def compute_pnl(
                     short_queue.append((remaining, price))
 
         open_qty = sum(q for q, _ in long_queue) - sum(q for q, _ in short_queue)
-        open_avg = (
-            sum(q * p for q, p in long_queue) / sum(q for q, _ in long_queue)
-            if long_queue
-            else 0.0
-        )
+        if long_queue:
+            open_avg = sum(q * p for q, p in long_queue) / sum(q for q, _ in long_queue)
+        elif short_queue:
+            open_avg = sum(q * p for q, p in short_queue) / sum(q for q, _ in short_queue)
+        else:
+            open_avg = 0.0
         results[f"{strategy_id}::{symbol}"] = {
             "realized": realized,
             "total_costs": total_costs,
