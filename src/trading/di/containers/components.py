@@ -232,16 +232,15 @@ class _RuntimeAssembler:
 
         for algo in algo_configs:
             intervals = algo.candle_intervals or settings.candle_intervals
-            tick_pipeline = factory.build_pipeline(
+            tick_pipeline = await factory.build_and_wire(
                 algo=algo,
                 intervals=intervals,
                 instrument_type_map=instrument_type_map,
                 circuit=circuit,
                 candle_registry=candle_registry,
+                registry_target=candle_aggregator,
             )
-            await factory.seed_state(algo, intervals)
 
-            candle_aggregator.add_algo_registry(tick_pipeline.signal_generator)
             ingestor.add_on_tick(tick_pipeline.run)
             self.order_executor = tick_pipeline.order_executor
 
