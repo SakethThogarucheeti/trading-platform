@@ -6,7 +6,6 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.sql.elements import ColumnElement
 
 from trading.candles.storage.models import Candle
 from trading.core.clock import Clock
@@ -15,7 +14,7 @@ from trading.execution.storage.models import Position
 from trading.monitoring.storage.models import Heartbeat
 from trading.tick_ingest.storage.models import TickLog
 
-from ._helpers import session_filter, today_start
+from ._helpers import decision_log_base_conditions, today_start
 
 
 def create_market_router(
@@ -77,13 +76,12 @@ def create_market_router(
     @router.get("/api/signals")
     async def get_signals(session_id: str = "", algo_name: str = "") -> JSONResponse:
         async with session_factory() as session:
-            conditions: list[ColumnElement[bool]] = [
+            conditions = decision_log_base_conditions(
+                clock,
+                session_id,
+                algo_name,
                 DecisionLog.step.in_(["SIGNAL_GENERATED", "SIGNAL_ACCEPTED", "SIGNAL_REJECTED"]),
-                DecisionLog.created_at >= today_start(clock),
-                session_filter(DecisionLog, session_id),
-            ]
-            if algo_name:
-                conditions.append(DecisionLog.algo_name == algo_name)
+            )
             stmt = (
                 select(DecisionLog)
                 .where(*conditions)
