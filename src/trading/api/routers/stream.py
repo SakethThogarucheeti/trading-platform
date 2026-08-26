@@ -8,13 +8,12 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.sql.elements import ColumnElement
 from starlette.requests import Request
 
 from trading.core.clock import Clock
 from trading.core.models import DecisionLog
 
-from ._helpers import session_filter, today_start
+from ._helpers import decision_log_base_conditions
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +36,12 @@ def create_stream_router(
                     break
                 try:
                     async with session_factory() as session:
-                        conditions: list[ColumnElement[bool]] = [
+                        conditions = decision_log_base_conditions(
+                            clock,
+                            session_id,
+                            algo_name,
                             DecisionLog.id > last_id,
-                            DecisionLog.created_at >= today_start(clock),
-                            session_filter(DecisionLog, session_id),
-                        ]
-                        if algo_name:
-                            conditions.append(DecisionLog.algo_name == algo_name)
+                        )
                         stmt = (
                             select(DecisionLog)
                             .where(*conditions)

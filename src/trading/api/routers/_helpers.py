@@ -26,6 +26,27 @@ def today_start(clock: Clock) -> datetime:
     return datetime(now_tz.year, now_tz.month, now_tz.day, tzinfo=clock.tz).astimezone(UTC)
 
 
+def decision_log_base_conditions(
+    clock: Clock,
+    session_id: str,
+    algo_name: str,
+    *extra: ColumnElement[bool],
+) -> list[ColumnElement[bool]]:
+    """Shared DecisionLog filter conditions for market.py's ``get_signals`` and
+    stream.py's ``decisions_stream``: each route's own extra condition(s),
+    followed by today's-date + session scoping, with an optional algo_name
+    filter appended when provided.
+    """
+    conditions: list[ColumnElement[bool]] = [
+        *extra,
+        DecisionLog.created_at >= today_start(clock),
+        session_filter(DecisionLog, session_id),
+    ]
+    if algo_name:
+        conditions.append(DecisionLog.algo_name == algo_name)
+    return conditions
+
+
 async def cached_json_response(
     cacher_factory: CacherFactory | None,
     key_args: tuple[object, ...],
