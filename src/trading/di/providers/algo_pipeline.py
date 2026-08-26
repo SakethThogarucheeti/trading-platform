@@ -10,7 +10,7 @@ from trading_strategy_sdk.factory import create_strategy
 
 from trading.app.pipeline import AlgoPipeline, TickPipeline
 from trading.broker.api import Broker
-from trading.candles.api import CandleAggregator
+from trading.candles.api import CandleAggregator, CandleAggregatorComponent
 from trading.config.settings import AlgoSettings, GateConfig, Settings
 from trading.core.messaging import AbstractCircuitBreaker
 from trading.core.schemas import InstrumentType
@@ -165,3 +165,34 @@ class AlgoPipelineFactory:
             await s.config_store.upsert_algo_state(
                 algo.name, fresh.state_dict(s.settings.warmup_candles)
             )
+
+    async def build_and_wire(
+        self,
+        algo: AlgoSettings,
+        intervals: list[str],
+        instrument_type_map: dict[str, str],
+        circuit: AbstractCircuitBreaker,
+        candle_registry: CandleAggregator,
+        registry_target: CandleAggregatorComponent,
+    ) -> TickPipeline:
+        """Build a pipeline for one algo, seed its persisted state, and wire its
+        signal generator into the given candle-aggregator component.
+
+        This is the build_pipeline -> seed_state -> add_algo_registry sequence
+        that ComponentContainer.build_runtime (looped, in-process ingest path)
+        and WorkerComponentContainer._worker_runtime (single algo, Kafka worker
+        path) both perform identically per algo. Each container still owns its
+        own circuit/candle_registry/registry_target wiring and everything after
+        this call (old in-process add_on_tick vs. new Kafka TickAgentComponent),
+        which stays in the caller.
+        """
+        tick_pipeline = self.build_pipeline(
+            algo=algo,
+            intervals=intervals,
+            instrument_type_map=instrument_type_map,
+            circuit=circuit,
+            candle_registry=candle_registry,
+        )
+        await self.seed_state(algo, intervals)
+        registry_target.add_algo_registry(tick_pipeline.signal_generator)
+        return tick_pipeline

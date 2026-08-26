@@ -150,16 +150,14 @@ async def _worker_runtime(
         factory=cacher_factory,
     ))
 
-    tick_pipeline = factory.build_pipeline(
+    tick_pipeline = await factory.build_and_wire(
         algo=algo,
         intervals=intervals,
         instrument_type_map=instrument_type_map,
         circuit=circuit_breaker,
         candle_registry=candle_aggregator,
+        registry_target=candle_aggregator_component,
     )
-    await factory.seed_state(algo, intervals)
-
-    candle_aggregator_component.add_algo_registry(tick_pipeline.signal_generator)
 
     faust_app = build_faust_app(f"worker-{algo_name}", settings)
     tick_agent = TickAgentComponent(
