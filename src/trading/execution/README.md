@@ -18,7 +18,7 @@ execution/
 │   ├── fill_handler.py   FillHandler — marks the order FILLED, applies the fill via PositionAccountant
 │   ├── position_accountant.py  PositionAccountant — updates positions on fill
 │   ├── ledger.py         PositionLedger — pure position math; PositionState value type
-│   └── idempotency.py    Duplicate signal detection (Redis-backed)
+│   └── idempotency.py    Duplicate signal detection (Postgres-backed)
 ├── storage/
 │   ├── models.py         Order, Position ORM models
 │   └── store.py          TradingStore (signals + orders + broker tokens), PositionStore

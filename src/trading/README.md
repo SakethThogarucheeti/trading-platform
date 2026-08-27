@@ -16,10 +16,9 @@ trading/
 ├── monitoring/     Heartbeat monitor and APScheduler wrapper
 ├── reports/        PnL and trade report generation
 ├── risk/           Signal validation, position sizing, risk gates
-├── storage/        Shared infrastructure — Redis cache, CandleStore (indicator layer)
+├── storage/        Shared infrastructure — in-memory cache, CandleStore (indicator layer)
 ├── strategy/       Strategy ABC, built-in strategies, signal generator
-├── tick_ingest/    WebSocket tick ingestion, circuit breaker, Redis publisher
-├── worker/         Worker-process entry points (Redis subscriber, CB sync)
+├── tick_ingest/    WebSocket tick ingestion, circuit breaker
 └── api/            FastAPI HTTP layer — routers, server component, Telegram alerter
 ```
 
@@ -54,8 +53,7 @@ Other modules import **only** from `trading.<module>.api`. The `service/` and `s
 WebSocket tick
   → KiteIngestor (tick_ingest)
   → TickIngestor (circuit breaker, audit log)
-  → TickPublisher → Kafka `ticks` topic
-  → TickAgentComponent (faust agent, worker process) → CandleAggregator
+  → per-algo TickPipeline callbacks, dispatched concurrently by KiteIngestor
   → CandleAggregator (candles) → CandleEvent
   → SignalGenerator (strategy) → SignalEvent
   → RiskFilter (risk) → ValidatedOrderEvent

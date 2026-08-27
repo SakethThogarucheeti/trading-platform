@@ -179,12 +179,11 @@ class AlgoPipelineFactory:
         signal generator into the given candle-aggregator component.
 
         This is the build_pipeline -> seed_state -> add_algo_registry sequence
-        that ComponentContainer.build_runtime (looped, in-process ingest path)
-        and WorkerComponentContainer._worker_runtime (single algo, Kafka worker
-        path) both perform identically per algo. Each container still owns its
-        own circuit/candle_registry/registry_target wiring and everything after
-        this call (old in-process add_on_tick vs. new Kafka TickAgentComponent),
-        which stays in the caller.
+        that ComponentContainer.build_runtime performs identically per algo in
+        its loop. The caller owns circuit/candle_registry/registry_target
+        wiring and registers the returned pipeline's `run` as an on_tick
+        callback (KiteIngestor dispatches all registered callbacks
+        concurrently, so each algo's pipeline runs independently).
         """
         tick_pipeline = self.build_pipeline(
             algo=algo,

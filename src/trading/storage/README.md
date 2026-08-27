@@ -6,9 +6,9 @@ Shared storage infrastructure. Domain-specific stores live in their owning modul
 
 ```
 storage/
-├── cache/          Two-tier cache (in-memory ValueCache + optional Redis)
+├── cache/          In-memory ValueCache
 └── stores/
-    └── candle_store.py   CandleStore — Postgres + Redis-cached AbstractCandleStore
+    └── candle_store.py   CandleStore — Postgres-backed AbstractCandleStore
                           for the indicator library (quantindicators)
 ```
 
@@ -18,13 +18,11 @@ See [cache/README.md](cache/README.md).
 
 ## stores/candle_store.py
 
-`CandleStore` implements `quantindicators.store.AbstractCandleStore`. It wraps a `CandleDataStore` (from `trading.candles.storage.store`) with an optional Redis cache layer. Indicator objects fetch candle windows through this store during `on_candle()` callbacks.
+`CandleStore` implements `quantindicators.store.AbstractCandleStore`. It wraps a `CandleDataStore` (from `trading.candles.storage.store`), reading directly from Postgres. Indicator objects fetch candle windows through this store during `on_candle()` callbacks.
 
 ```python
 from trading.storage.stores.candle_store import CandleStore
 ```
-
-Cache key format: `cs:candles:{symbol}:{interval}:n{limit}` or `cs:candles:{symbol}:{interval}:since:{iso}`. TTL: 90 seconds.
 
 ## What moved out
 

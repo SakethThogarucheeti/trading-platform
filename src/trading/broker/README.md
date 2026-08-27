@@ -30,7 +30,7 @@ broker/
 
 **`BrokerStream`** (service/broker_stream.py) — WebSocket tick feed. `ZerodhaStream` wraps KiteTicker; `PaperBroker` doubles as a synthetic stream for backtests.
 
-**`AbstractPriceStore`** (api/interfaces.py) — a `Protocol` that gives components read access to the latest tick price. Implemented by `PriceStore` (in-memory dict) which is updated by `TickAgentComponent` from Kafka.
+**`AbstractPriceStore`** (api/interfaces.py) — a `Protocol` that gives components read access to the latest tick price. Implemented by `PriceStore` (in-memory dict), updated directly by `KiteIngestor` as validated ticks arrive.
 
 ## Credential storage
 

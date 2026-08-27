@@ -9,8 +9,7 @@ class AbstractCircuitBreaker(ABC):
     Interface for circuit breaker state.
 
     Owned by the tick ingestor; shared by reference with RiskFilter.
-    Concrete implementations: CircuitBreaker (in-process) and
-    RedisCircuitBreaker (cross-process, worker mode).
+    Concrete implementation: CircuitBreaker (in-process).
     """
 
     @abstractmethod

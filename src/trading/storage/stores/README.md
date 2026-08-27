@@ -4,7 +4,7 @@ Previously contained all domain store classes. After the SDK migration these hav
 
 The only file remaining here is `candle_store.py`, which is shared infrastructure (not a domain store):
 
-**`candle_store.py`** — `CandleStore` — implements `quantindicators.AbstractCandleStore` on top of `CandleDataStore` with an optional Redis read-through cache. Used by the indicator library during strategy `on_candle()` execution.
+**`candle_store.py`** — `CandleStore` — implements `quantindicators.AbstractCandleStore` on top of `CandleDataStore`, reading directly from Postgres. Used by the indicator library during strategy `on_candle()` execution.
 
 All other stores are now at canonical paths:
 

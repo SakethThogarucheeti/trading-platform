@@ -97,13 +97,11 @@ async def _flush_background_tasks() -> None:
     Let PaperBroker's fire()-scheduled simulated fill run to completion.
 
     Filters strictly by fire()'s task name ("trading.fire") rather than
-    "every task not already known" — asyncio.all_tasks() also surfaces
-    long-lived service tasks (e.g. the cashews in-memory cache's periodic
-    expiry sweep, spawned lazily on first cache use deep in this call chain)
-    that loop forever and are never meant to be awaited to completion;
-    gathering one of those hangs the test forever. return_exceptions=True
-    mirrors fire()'s own contract — a failed background task logs and does
-    not propagate.
+    "every task not already known" — asyncio.all_tasks() can also surface
+    other long-lived service tasks that loop forever and are never meant
+    to be awaited to completion; gathering one of those hangs the test
+    forever. return_exceptions=True mirrors fire()'s own contract — a
+    failed background task logs and does not propagate.
     """
     for _ in range(10):
         pending = [t for t in asyncio.all_tasks() if t.get_name() == "trading.fire" and not t.done()]

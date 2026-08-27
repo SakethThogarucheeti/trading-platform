@@ -1,12 +1,12 @@
 """Tests for di/providers/algo_pipeline.py — AlgoPipelineFactory.build_and_wire.
 
 build_and_wire() is the build_pipeline -> seed_state -> add_algo_registry
-sequence extracted out of ComponentContainer.build_runtime and
-WorkerComponentContainer._worker_runtime (previously duplicated inline in
-both, see trading-platform#13). Neither container has any test coverage of
-its own (both require a fully wired DB/broker/Kafka runtime to exercise),
-so this covers the actual risk surface of the extraction directly: that the
-three calls still happen, in order, with the right arguments passed through.
+sequence extracted out of ComponentContainer.build_runtime's per-algo loop
+(previously duplicated inline, see trading-platform#13). build_runtime has
+no test coverage of its own (it requires a fully wired DB/broker runtime to
+exercise), so this covers the actual risk surface of the extraction
+directly: that the three calls still happen, in order, with the right
+arguments passed through.
 """
 
 from __future__ import annotations

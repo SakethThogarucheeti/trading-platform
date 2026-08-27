@@ -97,7 +97,7 @@ class Component(ABC):
         Main loop. Runs until stop() cancels the internal scope.
 
         Typically ends with await sleep_forever() for event-driven components
-        (tick callbacks, Redis subscription handlers) or an explicit loop for
+        (tick callbacks, WebSocket message handlers) or an explicit loop for
         polling components.
         """
 

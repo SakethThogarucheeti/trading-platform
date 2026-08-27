@@ -20,17 +20,15 @@ The directory structure mirrors `src/trading/`. To find tests for a package, loo
 | `core/lifecycle/` | `Component` ABC, `Runtime` supervisor |
 | `di/` | DI container, provider wiring |
 | `execution/` | `OrderExecutor`, idempotency |
-| `indicators/` | `CandleStore`, Redis candle store |
 | `monitoring/` | `Scheduler`, `HeartbeatMonitor` |
 | `reports/` | P&L calculation, report engine |
 | `risk/` | `RiskFilter`, `calculate_quantity`, `RiskController` |
 | `storage/` | All domain stores (TradingStore, AuditStore, etc.) |
 | `strategy/` | Strategy base, factory, signal generator, all built-in strategies |
-| `tick_ingest/` | `TickIngestor`, `KiteIngestor`, `TickPublisher`, `CircuitBreaker` |
-| `worker/` | `TickAgentComponent`, `RedisCircuitBreaker` |
+| `tick_ingest/` | `TickIngestor`, `KiteIngestor`, `CircuitBreaker` |
 
 ## Conventions
 
-- No real broker, DB, or Redis connections — use `fakeredis`, `AsyncMock`, or in-memory SQLite.
+- No real broker or DB connections — use `AsyncMock` or in-memory SQLite.
 - `SimulatedClock` replaces `SystemClock` for deterministic timestamps.
 - Each test file is a peer of the module it tests (`test_bar_accumulator.py` tests `candles/bar_accumulator.py`).
