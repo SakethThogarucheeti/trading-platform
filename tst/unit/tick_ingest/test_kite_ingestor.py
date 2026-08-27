@@ -9,14 +9,14 @@ import pytest
 from anyio import create_task_group, sleep
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from trading.app.database import build_session_factory, init_db
 from trading.broker.service.broker_stream import BrokerStream
 from trading.broker.service.paper_broker import AbstractPriceStore
-from trading.app.database import build_session_factory, init_db
 from trading.candles.storage.models import Instrument
-from trading.core.schemas import InstrumentType, TickEvent
 from trading.core.messaging import AbstractCircuitBreaker
-from trading.tick_ingest.service.kite_ingestor import KiteIngestor
+from trading.core.schemas import InstrumentType, TickEvent
 from trading.tick_ingest.service.ingestor import CircuitBreaker, TickConfig, TickIngestor
+from trading.tick_ingest.service.kite_ingestor import KiteIngestor
 from trading.tick_ingest.storage.store import AuditStore
 
 NOW = datetime.now(UTC)
@@ -384,6 +384,37 @@ async def test_ingestor_on_tick_callback_exception_is_swallowed(engine: AsyncEng
         stream.fire_ticks([make_raw_tick(token=1, price=100.0)])
         await sleep(0.05)
         assert "called" in calls
+
+    await _with_ingestor(ingestor, _check)
+
+
+async def test_ingestor_dispatches_callbacks_concurrently(engine: AsyncEngine) -> None:
+    """A slow callback must not delay other callbacks' handling of the same tick."""
+    stream = MockBrokerStream()
+    reg = make_tick_registry(stream, engine, 1)
+
+    calls: list[str] = []
+
+    async def _slow_callback(tick) -> None:
+        await sleep(0.2)
+        calls.append("slow")
+
+    async def _fast_callback(tick) -> None:
+        calls.append("fast")
+
+    ingestor = KiteIngestor(stream=stream, tick_registry=reg, circuit=reg.circuit)
+    ingestor.add_on_tick(_slow_callback)
+    ingestor.add_on_tick(_fast_callback)
+
+    async def _check() -> None:
+        stream.fire_ticks([make_raw_tick(token=1, price=100.0)])
+        # The fast callback completes well before the slow one if dispatch is
+        # concurrent; a sequential loop would still be awaiting the slow
+        # callback at this point, so "fast" wouldn't be recorded yet.
+        await sleep(0.05)
+        assert calls == ["fast"]
+        await sleep(0.3)
+        assert calls == ["fast", "slow"]
 
     await _with_ingestor(ingestor, _check)
 

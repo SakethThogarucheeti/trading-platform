@@ -11,6 +11,7 @@ from trading.broker.api import AbstractPriceStore, BrokerStream, Tick
 from trading.core.context import thread_id
 from trading.core.lifecycle.component import Component
 from trading.core.messaging import AbstractCircuitBreaker
+from trading.core.schemas import TickEvent
 from trading.core.types import OnTickCallback
 from trading.tick_ingest.service.ingestor import TickIngestor
 
@@ -24,9 +25,10 @@ class KiteIngestor(Component):
     """
     Maintains the broker WebSocket connection and feeds raw ticks into TickIngestor.
 
-    After TickIngestor validates and persists the tick, each registered
-    ``on_tick`` callback is called in order. Register the candle→algo→risk→exec
-    chain via ``add_on_tick(callback)`` before starting.
+    After TickIngestor validates and persists the tick, every registered
+    ``on_tick`` callback is started concurrently (one per algo's
+    candle→algo→risk→exec chain), so a slow or hanging callback can't delay
+    the others. Register a chain via ``add_on_tick(callback)`` before starting.
 
     Lifecycle
     ---------
@@ -197,8 +199,12 @@ class KiteIngestor(Component):
             if symbol:
                 self._price_store.update(symbol, tick.last_price)  # type: ignore[attr-defined]
 
-        for callback in self._on_tick_callbacks:
-            try:
-                await callback(tick)
-            except Exception:
-                logger.exception("KiteIngestor: on_tick callback error")
+        async with create_task_group() as tg:
+            for callback in self._on_tick_callbacks:
+                tg.start_soon(self._run_one_callback, callback, tick)
+
+    async def _run_one_callback(self, callback: OnTickCallback, tick: TickEvent) -> None:
+        try:
+            await callback(tick)
+        except Exception:
+            logger.exception("KiteIngestor: on_tick callback error")
