@@ -66,7 +66,6 @@ class Settings(BaseSettings):
     # Infrastructure — required                                           #
     # ------------------------------------------------------------------ #
     postgres_url: PostgresDsn
-    redis_url: str | None = None
 
     # ------------------------------------------------------------------ #
     # Risk controls — optional with safe defaults                         #

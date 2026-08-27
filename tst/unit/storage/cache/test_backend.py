@@ -1,23 +1,12 @@
-"""Tests for ValueCache two-tier backend."""
+"""Tests for ValueCache in-memory backend."""
 
 from __future__ import annotations
 
-import time
 from unittest.mock import patch
 
 import pytest
-import pytest_asyncio
 
-from trading.storage.cache.backend import ValueCache, _backend, setup_cache
-
-
-@pytest.fixture(autouse=True)
-def _reset_backend():
-    """Ensure cashews uses in-memory backend and is clean for each test."""
-    setup_cache(None)
-    yield
-    # Clear all in-memory cashews state between tests
-    _backend._state = {}  # type: ignore[attr-defined]
+from trading.storage.cache.backend import ValueCache
 
 
 @pytest.fixture
@@ -58,24 +47,11 @@ class TestValueCacheAsync:
 
     @pytest.mark.asyncio
     async def test_ttl_expires_in_memory_entry(self, cache: ValueCache) -> None:
-        """
-        Regression: the in-memory tier used to ignore ttl entirely (only the
-        Redis side honored `expire=`), so a value set with a short ttl was
-        served forever from memory within a warm process — the real cause of
-        /api/pnl appearing frozen even though its cache key was invalidated.
-
-        The real cashews backend tracks its own expiry against real wall
-        time, so it wouldn't have expired within this mocked window either —
-        patch it out as a miss to isolate the in-memory tier being tested.
-        """
         with patch("trading.storage.cache.backend.time.monotonic", return_value=1000.0):
             await cache.set("k", {"x": 1}, ttl=30)
             assert await cache.get("k") == {"x": 1}
 
-        with (
-            patch("trading.storage.cache.backend.time.monotonic", return_value=1000.0 + 31),
-            patch.object(_backend, "get", return_value=None),
-        ):
+        with patch("trading.storage.cache.backend.time.monotonic", return_value=1000.0 + 31):
             assert await cache.get("k") is None
 
     @pytest.mark.asyncio
@@ -95,15 +71,13 @@ class TestValueCacheAsync:
             assert await cache.get("k") == {"x": 1}
 
     @pytest.mark.asyncio
-    async def test_memory_populated_from_redis_on_miss(self, cache: ValueCache) -> None:
-        """A second ValueCache instance reading a key set by the first should populate memory."""
+    async def test_instances_do_not_share_memory(self, cache: ValueCache) -> None:
+        """Each ValueCache instance is independent -- no shared backend to populate from."""
         await cache.set("shared", [1, 2, 3])
 
         other = ValueCache()
-        assert other.get_sync("shared") is None  # memory cold
-        result = await other.get("shared")
-        assert result == [1, 2, 3]
-        assert other.get_sync("shared") == [1, 2, 3]  # memory now warm
+        assert other.get_sync("shared") is None
+        assert await other.get("shared") is None
 
 
 class TestValueCacheSync:
@@ -121,13 +95,12 @@ class TestValueCacheSync:
         # get_sync reads _mem directly so no async needed here
         assert cache.get_sync("k") == "val"
 
-    def test_set_sync_does_not_persist_to_redis(self) -> None:
-        """set_sync is memory-only; a fresh instance won't see it without an async set."""
+    def test_set_sync_does_not_persist_across_instances(self) -> None:
+        """set_sync is memory-only; a fresh instance won't see it."""
         cache = ValueCache()
         cache.set_sync("mem_only", 99)
 
         other = ValueCache()
-        # other has no memory of "mem_only" — sync reads from _mem only
         assert other.get_sync("mem_only") is None
 
     @pytest.mark.asyncio

@@ -177,10 +177,9 @@ async def test_get_live_report_day_period():
 async def test_get_live_report_uses_cacher_factory_when_provided():
     """/api/reports/live consults the ApiResponseCacher when cacher_factory is
     set, and a second call within TTL is served from cache without recomputing."""
-    from trading.storage.cache.backend import ValueCache, setup_cache
+    from trading.storage.cache.backend import ValueCache
     from trading.storage.cache.factory import CacherFactory
 
-    setup_cache(None)
     sf = _mock_sf(scalars_return=[])
     clock = SimulatedClock()
     clock.advance(datetime(2025, 1, 6, 10, 0, tzinfo=UTC))

@@ -25,7 +25,7 @@ from trading.execution.service.fill_handler import FillHandler
 from trading.execution.service.idempotency import is_duplicate
 from trading.execution.service.position_accountant import PositionAccountant
 from trading.execution.storage.store import PositionStore, TradingStore
-from trading.storage.cache import CacherFactory, ValueCache, setup_cache
+from trading.storage.cache import CacherFactory, ValueCache
 
 NOW = datetime.now(UTC)
 
@@ -71,7 +71,6 @@ async def engine() -> AsyncEngine:  # type: ignore[misc]
 
 
 def _make_factory() -> CacherFactory:
-    setup_cache(None)
     return CacherFactory(ValueCache(), SYSTEM_CLOCK)
 
 

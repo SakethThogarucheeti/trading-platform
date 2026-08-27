@@ -39,7 +39,6 @@ class AppContainer(containers.DeclarativeContainer):
         broker=broker.broker,
         client=broker.kite_client,
         sf=infra.session_factory,
-        redis=infra.redis_client,
         candle_data_store=infra.candle_data_store,
         trading=infra.trading_store,
         audit=infra.audit_store,

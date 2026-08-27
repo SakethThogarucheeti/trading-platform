@@ -9,17 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from trading.storage.cache.api import ApiResponseCacher
-from trading.storage.cache.backend import ValueCache, setup_cache, _backend
-
-
-@pytest.fixture(autouse=True)
-def _reset_backend():
-    setup_cache(None)
-    yield
-    try:
-        _backend._state = {}  # type: ignore[attr-defined]
-    except AttributeError:
-        pass
+from trading.storage.cache.backend import ValueCache
 
 
 @pytest.fixture

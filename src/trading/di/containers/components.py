@@ -168,7 +168,6 @@ class _RuntimeAssembler:
         price_store: AbstractPriceStore,
         settings: Settings,
         sf: async_sessionmaker[AsyncSession],
-        redis: object,
         circuit: AbstractCircuitBreaker,
         cacher_factory: CacherFactory,
     ) -> AbstractRuntime:
@@ -261,7 +260,6 @@ async def _runtime(
     price_store: AbstractPriceStore,
     settings: Settings,
     sf: async_sessionmaker[AsyncSession],
-    redis: object,
     circuit: AbstractCircuitBreaker,
     cacher_factory: CacherFactory,
 ) -> AbstractRuntime:
@@ -279,7 +277,6 @@ async def _runtime(
         price_store=price_store,
         settings=settings,
         sf=sf,
-        redis=redis,
         circuit=circuit,
         cacher_factory=cacher_factory,
     )
@@ -353,7 +350,6 @@ class ComponentContainer(containers.DeclarativeContainer):
     broker = providers.Dependency(instance_of=Broker)
     client = providers.Dependency(instance_of=KiteClient)
     sf = providers.Dependency()  # async_sessionmaker[AsyncSession]
-    redis = providers.Dependency()
     candle_data_store = providers.Dependency(instance_of=CandleDataStore)
     trading = providers.Dependency(instance_of=TradingStore)
     audit = providers.Dependency(instance_of=AuditStore)
@@ -400,7 +396,6 @@ class ComponentContainer(containers.DeclarativeContainer):
         price_store=price_store,
         settings=settings,
         sf=sf,
-        redis=redis,
         circuit=circuit_breaker,
         cacher_factory=cacher_factory,
     )

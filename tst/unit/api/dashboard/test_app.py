@@ -262,10 +262,9 @@ async def test_pnl_empty():
 async def test_pnl_uses_cacher_factory_when_provided():
     """/api/pnl consults the ApiResponseCacher when cacher_factory is set,
     and a second call within TTL is served from cache without recomputing."""
-    from trading.storage.cache.backend import ValueCache, setup_cache
+    from trading.storage.cache.backend import ValueCache
     from trading.storage.cache.factory import CacherFactory
 
-    setup_cache(None)
     clock = SimulatedClock()
     clock.advance(datetime(2025, 1, 6, 10, 0, tzinfo=UTC))
     cacher_factory = CacherFactory(ValueCache(), clock)
@@ -473,10 +472,9 @@ async def test_pnl_by_algo_uses_cacher_factory_when_provided():
     """/api/pnl/by-algo consults the ApiResponseCacher when cacher_factory is
     set, and a second call within TTL is served from cache without hitting
     the DB again."""
-    from trading.storage.cache.backend import ValueCache, setup_cache
+    from trading.storage.cache.backend import ValueCache
     from trading.storage.cache.factory import CacherFactory
 
-    setup_cache(None)
     clock = SimulatedClock()
     clock.advance(datetime(2025, 1, 6, 10, 0, tzinfo=UTC))
     cacher_factory = CacherFactory(ValueCache(), clock)

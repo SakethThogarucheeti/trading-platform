@@ -8,12 +8,11 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from trading.core.clock import Clock, SYSTEM_CLOCK
+from trading.core.clock import SYSTEM_CLOCK, Clock
 from trading.core.schemas import FillEvent, Side
-from trading.execution.service.position_accountant import PositionAccountant
-from trading.storage.cache import CacherFactory, ValueCache, setup_cache
 from trading.execution.api.interfaces import AbstractPositionStore, AbstractTradingStore
-
+from trading.execution.service.position_accountant import PositionAccountant
+from trading.storage.cache import CacherFactory, ValueCache
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,7 +42,6 @@ class _FixedClock(Clock):
 
 
 def _make_factory() -> CacherFactory:
-    setup_cache(None)
     return CacherFactory(ValueCache(), SYSTEM_CLOCK)
 
 

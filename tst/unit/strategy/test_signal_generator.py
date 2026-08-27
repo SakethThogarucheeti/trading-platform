@@ -13,7 +13,7 @@ from trading_strategy_sdk.factory import create_strategy
 from trading.app.database import build_session_factory, init_db
 from trading.core.clock import SYSTEM_CLOCK
 from trading.core.schemas import CandleEvent, InstrumentType, SignalEvent
-from trading.storage.cache import CacherFactory, ValueCache, setup_cache
+from trading.storage.cache import CacherFactory, ValueCache
 from trading.strategy.service.generator import AlgoInstance, AlgoRunConfig, SignalGenerator
 from trading.strategy.storage.store import ChartStore, ConfigStore
 from trading.tick_ingest.storage.store import AuditStore
@@ -22,7 +22,6 @@ BASE_TIME = datetime(2025, 1, 6, 9, 15, tzinfo=UTC)
 
 
 def _make_factory() -> CacherFactory:
-    setup_cache(None)
     return CacherFactory(ValueCache(), SYSTEM_CLOCK)
 
 

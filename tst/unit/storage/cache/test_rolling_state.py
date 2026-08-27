@@ -4,18 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from trading.storage.cache.backend import ValueCache, setup_cache, _backend
-from trading.storage.cache.rolling_state import RollingStateCacher, _WINDOW_SIZE
-
-
-@pytest.fixture(autouse=True)
-def _reset_backend():
-    setup_cache(None)
-    yield
-    try:
-        _backend._state = {}  # type: ignore[attr-defined]
-    except AttributeError:
-        pass
+from trading.storage.cache.backend import ValueCache
+from trading.storage.cache.rolling_state import _WINDOW_SIZE, RollingStateCacher
 
 
 @pytest.fixture

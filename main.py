@@ -3,7 +3,7 @@ Trading platform entry point.
 
 Lifecycle
 ---------
-1. Build the DI container (connects DB engine + Redis client).
+1. Build the DI container (connects DB engine).
 2. Run Alembic migrations to bring the schema up to date.
 3. Resolve the Runtime and Scheduler from the container.
 4. Start the APScheduler (fires Runtime.start at 09:15 IST, Runtime.stop at 15:30 IST).
@@ -11,7 +11,7 @@ Lifecycle
 6. Sleep forever — the scheduler drives everything from here.
 
 The process exits cleanly on SIGTERM / KeyboardInterrupt; the DI container
-disposes of all async resources (engine, redis) on context-manager exit.
+disposes of all async resources (engine) on context-manager exit.
 """
 
 from __future__ import annotations
