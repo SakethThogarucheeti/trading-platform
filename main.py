@@ -28,10 +28,10 @@ from zoneinfo import ZoneInfo
 
 from anyio import sleep_forever
 
-from trading.di.containers.app import build_container
-from trading.core.lifecycle.runtime import AbstractRuntime
-from trading.monitoring.service.scheduler import Scheduler
 from trading.api.server import ApiServer
+from trading.core.lifecycle.runtime import AbstractRuntime
+from trading.di.containers.app import build_container
+from trading.monitoring.service.scheduler import Scheduler
 
 if TYPE_CHECKING:
     from trading.config.settings import Settings
@@ -113,9 +113,9 @@ def _check_port_free(port: int) -> None:
     )
 
 
-async def _sync_instruments(settings: "Settings") -> None:
+async def _sync_instruments(settings: Settings) -> None:
     """Upsert instruments for all symbols declared in ALGOS into the DB."""
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
     from trading.broker.service.zerodha.kite_client import KiteClient
     from trading.candles.storage.models import Instrument
@@ -188,15 +188,15 @@ def _is_market_hours() -> bool:
     return _MARKET_OPEN <= t < _MARKET_CLOSE
 
 
-async def _load_kite_token(container: object, settings: "Settings") -> None:
+async def _load_kite_token(container: object, settings: Settings) -> None:
     """Load the Zerodha access token from the DB onto this container's KiteClient.
 
     Every process that talks to Kite (ingestor, and each worker — workers hit
     the historical-candles REST API directly for warmup) needs this; it isn't
     inherited across processes since each builds its own KiteClient instance.
     """
-    from trading.broker.service.zerodha.kite_client import KiteClient
     from trading.app.database import build_engine, build_session_factory
+    from trading.broker.service.zerodha.kite_client import KiteClient
     from trading.execution.storage.store import TradingStore
 
     _engine = build_engine(str(settings.postgres_url))
@@ -263,56 +263,8 @@ async def _main() -> None:
                 await dashboard_task
 
 
-async def _run_worker(algo_name: str) -> None:
-    """
-    Worker process: subscribe to Redis ticks and run one named algo.
-
-    Does NOT run migrations or instrument sync — the ingestor owns those.
-    """
-    from trading.config.settings import get_settings
-    from trading.di.containers.app import build_worker_container
-
-    settings = get_settings()
-    logger.info("Worker starting: algo=%r", algo_name)
-    async with build_worker_container(algo_name) as container:
-        await _load_kite_token(container, settings)
-
-        runtime: AbstractRuntime = await container.worker_components.runtime()
-        scheduler: Scheduler = await container.worker_components.scheduler()
-        scheduler.start()
-        logger.info("Worker scheduler started for algo=%r", algo_name)
-
-        runtime_task: asyncio.Task[None] | None = None
-        if _is_market_hours():
-            logger.info("Market is open — starting worker runtime immediately for algo=%r", algo_name)
-            runtime_task = asyncio.get_event_loop().create_task(runtime.start())
-        else:
-            logger.info("Outside market hours — worker waiting for 09:15 IST trigger")
-
-        try:
-            await sleep_forever()
-        finally:
-            scheduler.stop()
-            runtime.stop()
-            if runtime_task is not None and not runtime_task.done():
-                await runtime_task
-            logger.info("Worker stopped for algo=%r", algo_name)
-
-
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(prog="main.py")
-    sub = parser.add_subparsers(dest="command")
-    sub.add_parser("ingestor", help="Run the Zerodha ingestor (default)")
-    worker_p = sub.add_parser("worker", help="Run a strategy worker for one algo")
-    worker_p.add_argument("--algo", required=True, metavar="NAME")
-    args = parser.parse_args()
-
     try:
-        if args.command == "worker":
-            asyncio.run(_run_worker(args.algo))
-        else:
-            asyncio.run(_main())
+        asyncio.run(_main())
     except KeyboardInterrupt:
         logger.info("Interrupted — shutting down.")

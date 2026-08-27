@@ -4,7 +4,6 @@ import logging
 from datetime import time
 from functools import lru_cache
 from pathlib import Path
-
 from typing import Any
 
 from pydantic import BaseModel, Field, PostgresDsn, field_validator
@@ -68,7 +67,6 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     postgres_url: PostgresDsn
     redis_url: str | None = None
-    kafka_broker_url: str = "kafka://localhost:9092"
 
     # ------------------------------------------------------------------ #
     # Risk controls — optional with safe defaults                         #
@@ -105,14 +103,6 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     algos: list[AlgoSettings] = Field(default_factory=list)  # type: ignore[assignment]
     default_equity: float = Field(default=10_000.0, gt=0)
-
-    # Names (matching AlgoSettings.name in `algos`) that are executed by a
-    # dedicated worker process (see `main.py worker --algo <name>`) rather
-    # than in-process by the ingestor. The ingestor still syncs instruments
-    # and publishes ticks for these algos, but skips building a TickPipeline
-    # for them itself — otherwise the ingestor and the worker would both run
-    # the same strategy concurrently, double-trading every signal.
-    worker_algo_names: list[str] = Field(default_factory=list)
 
     # ------------------------------------------------------------------ #
     # Monitoring — optional; alerter is disabled when absent              #

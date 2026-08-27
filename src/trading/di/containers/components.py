@@ -175,8 +175,6 @@ class _RuntimeAssembler:
         instruments = await _load_instruments(sf)
         instrument_type_map = {r.symbol: r.instrument_type for r in instruments}
         algo_configs = _normalize_algo_configs(settings, instrument_type_map)
-        if settings.worker_algo_names:
-            algo_configs = [a for a in algo_configs if a.name not in settings.worker_algo_names]
 
         paper_price_store = price_store if settings.paper_trading else None
         polars_store = PolarsStore()
