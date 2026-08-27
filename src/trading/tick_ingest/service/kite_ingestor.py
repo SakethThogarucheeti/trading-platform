@@ -13,7 +13,6 @@ from trading.core.lifecycle.component import Component
 from trading.core.messaging import AbstractCircuitBreaker
 from trading.core.types import OnTickCallback
 from trading.tick_ingest.service.ingestor import TickIngestor
-from trading.tick_ingest.service.publisher import TickPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +50,6 @@ class KiteIngestor(Component):
         circuit_timeout_secs: float = _CIRCUIT_TIMEOUT_SECS,
         price_store: AbstractPriceStore | None = None,
         connect_timeout_secs: float = _CONNECT_TIMEOUT_SECS,
-        tick_publisher: TickPublisher | None = None,
     ) -> None:
         super().__init__(name="kite_ingestor")
         self._stream = stream
@@ -60,7 +58,6 @@ class KiteIngestor(Component):
         self._circuit_timeout_secs = circuit_timeout_secs
         self._price_store = price_store
         self._connect_timeout_secs = connect_timeout_secs
-        self._tick_publisher = tick_publisher
         self._loop: asyncio.AbstractEventLoop | None = None
         self._connected: Event | None = None
         self._circuit_scope: CancelScope | None = None
@@ -93,9 +90,6 @@ class KiteIngestor(Component):
     async def _setup(self) -> None:
         self._loop = asyncio.get_running_loop()
         self._connected = Event()
-
-        if self._tick_publisher is not None:
-            await self._tick_publisher.start()
 
         self._stream.set_on_connect(self._on_ws_connect)
         self._stream.set_on_ticks(self._on_ws_ticks)
@@ -136,8 +130,6 @@ class KiteIngestor(Component):
         self._running = False
         self._cancel_circuit_scope()
         await self._stream.close()
-        if self._tick_publisher is not None:
-            await self._tick_publisher.stop()
 
     def _cancel_circuit_scope(self) -> None:
         if self._circuit_scope is not None:
@@ -150,8 +142,6 @@ class KiteIngestor(Component):
             await sleep(self._circuit_timeout_secs)
         if not scope.cancel_called:
             self._circuit.open()
-            if self._tick_publisher is not None and self._task_group is not None:
-                self._task_group.start_soon(self._tick_publisher.set_circuit_state, True)
             logger.error(
                 "KiteIngestor: circuit OPEN after %.0fs disconnect",
                 self._circuit_timeout_secs,
@@ -163,8 +153,6 @@ class KiteIngestor(Component):
         self._circuit.close()
         if self._connected is not None:
             self._connected.set()
-        if self._running and self._tick_publisher is not None and self._task_group is not None:
-            self._task_group.start_soon(self._tick_publisher.set_circuit_state, False)
         logger.info("KiteIngestor: WebSocket connected — circuit closed")
 
     def _schedule_tick(self, raw: Tick) -> None:
@@ -208,17 +196,6 @@ class KiteIngestor(Component):
             symbol = self._tick_registry.get_symbol(tick.instrument_token) or ""
             if symbol:
                 self._price_store.update(symbol, tick.last_price)  # type: ignore[attr-defined]
-
-        if self._tick_publisher is not None:
-            try:
-                await self._tick_publisher.publish(tick)
-            except Exception:
-                logger.error(
-                    "KiteIngestor: failed to publish tick for token %s to Kafka — "
-                    "downstream workers will not receive this tick",
-                    tick.instrument_token,
-                    exc_info=True,
-                )
 
         for callback in self._on_tick_callbacks:
             try:

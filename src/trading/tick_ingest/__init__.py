@@ -7,14 +7,12 @@ from trading.tick_ingest.api import (
     TickConfig,
     TickEvent,
     TickIngestor,
-    TickPublisher,
 )
 
 __all__ = [
     "TickEvent",
     "TickIngestor",
     "KiteIngestor",
-    "TickPublisher",
     "TickConfig",
     "CircuitBreaker",
     "AbstractAuditStore",

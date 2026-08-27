@@ -1,4 +1,4 @@
-"""Unit tests for TickPublisher, RedisCircuitBreaker, and TickAgentComponent."""
+"""Unit tests for RedisCircuitBreaker and TickAgentComponent."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from trading.core.schemas import InstrumentType, TickEvent
-from trading.tick_ingest.service.publisher import TickPublisher
 from trading.worker.circuit_breaker_redis import RedisCircuitBreaker
 
 # ---------------------------------------------------------------------------
@@ -25,95 +24,6 @@ def _tick(token: int = 738561, price: float = 1500.0) -> TickEvent:
         timestamp=datetime(2024, 1, 2, 10, 0, tzinfo=UTC),
         tick_log_id=1,
     )
-
-
-# ---------------------------------------------------------------------------
-# TickPublisher
-# ---------------------------------------------------------------------------
-
-
-class TestTickPublisher:
-    def _producer(self) -> MagicMock:
-        p = MagicMock()
-        p.start = AsyncMock()
-        p.stop = AsyncMock()
-        p.send_and_wait = AsyncMock()
-        return p
-
-    def _redis(self) -> MagicMock:
-        r = MagicMock()
-        r.set = AsyncMock()
-        return r
-
-    @pytest.mark.anyio
-    async def test_publish_sends_to_ticks_topic_keyed_by_token(self) -> None:
-        producer = self._producer()
-        pub = TickPublisher(producer, self._redis())
-        tick = _tick(token=738561)
-        await pub.publish(tick)
-        producer.send_and_wait.assert_awaited_once()
-        topic, kwargs = producer.send_and_wait.call_args.args[0], producer.send_and_wait.call_args.kwargs
-        assert topic == "ticks"
-        assert kwargs["key"] == b"738561"
-        assert b"738561" in kwargs["value"]
-
-    @pytest.mark.anyio
-    async def test_publish_payload_is_valid_tick_json(self) -> None:
-        producer = self._producer()
-        pub = TickPublisher(producer, self._redis())
-        tick = _tick(token=111111, price=2000.0)
-        await pub.publish(tick)
-        payload = producer.send_and_wait.call_args.kwargs["value"]
-        restored = TickEvent.model_validate_json(payload)
-        assert restored.instrument_token == 111111
-        assert restored.last_price == pytest.approx(2000.0)
-
-    @pytest.mark.anyio
-    async def test_publish_propagates_kafka_errors(self) -> None:
-        producer = self._producer()
-        producer.send_and_wait = AsyncMock(side_effect=ConnectionError("kafka down"))
-        pub = TickPublisher(producer, self._redis())
-        # Unlike the old Redis pub/sub path, a publish failure must NOT be
-        # swallowed here — KiteIngestor is responsible for catching and
-        # logging it (see test_kite_ingestor for that behavior), so that a
-        # failure is visible instead of silently dropping the tick.
-        with pytest.raises(ConnectionError):
-            await pub.publish(_tick())
-
-    @pytest.mark.anyio
-    async def test_start_and_stop_delegate_to_producer(self) -> None:
-        producer = self._producer()
-        pub = TickPublisher(producer, self._redis())
-        await pub.start()
-        producer.start.assert_awaited_once()
-        await pub.stop()
-        producer.stop.assert_awaited_once()
-
-    @pytest.mark.anyio
-    async def test_set_circuit_state_open(self) -> None:
-        redis = self._redis()
-        pub = TickPublisher(self._producer(), redis)
-        await pub.set_circuit_state(open=True)
-        redis.set.assert_awaited_once_with("circuit:state", "open")
-
-    @pytest.mark.anyio
-    async def test_set_circuit_state_closed(self) -> None:
-        redis = self._redis()
-        pub = TickPublisher(self._producer(), redis)
-        await pub.set_circuit_state(open=False)
-        redis.set.assert_awaited_once_with("circuit:state", "closed")
-
-    @pytest.mark.anyio
-    async def test_set_circuit_state_swallows_redis_errors(self) -> None:
-        redis = MagicMock()
-        redis.set = AsyncMock(side_effect=ConnectionError("redis down"))
-        pub = TickPublisher(self._producer(), redis)
-        await pub.set_circuit_state(open=True)  # must not raise
-
-    @pytest.mark.anyio
-    async def test_set_circuit_state_noop_when_redis_none(self) -> None:
-        pub = TickPublisher(self._producer(), None)
-        await pub.set_circuit_state(open=True)  # must not raise
 
 
 # ---------------------------------------------------------------------------
