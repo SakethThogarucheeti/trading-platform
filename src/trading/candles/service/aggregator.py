@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import deque
 from datetime import UTC, datetime
 
 from anyio import sleep_forever
@@ -20,6 +21,24 @@ from trading.tick_ingest.api.schemas import TickEvent
 logger = logging.getLogger(__name__)
 
 
+# Bounded identity-keyed memo of the most recent handle() calls, so that calling
+# handle() more than once with the *same* TickEvent object -- e.g. every configured
+# algo's TickPipeline independently driving one shared CandleAggregator instance,
+# per KiteIngestor's concurrent on_tick fan-out -- is idempotent instead of only the
+# first caller ever observing a bar close (trading-platform "shared CandleAggregator
+# race" gap, 2026-09-07: BarAccumulator.process() mutates state unconditionally, so a
+# second call for a tick that just closed a bar silently returns nothing, starving
+# every algo but whichever one's pipeline happened to run first).
+#
+# Keyed by object identity (not tick_log_id): tests construct a fresh TickEvent per
+# call even when reusing a dummy tick_log_id, and doing so must keep behaving as
+# distinct ticks. Real concurrent callers for one tick always share the exact same
+# object (KiteIngestor parses/persists a tick once, then fans that one object out to
+# every registered callback), so identity is the correct dedup key. Holding a strong
+# reference in the cache (rather than caching by id()) avoids id() reuse after GC.
+_DEDUP_CACHE_SIZE = 32
+
+
 class CandleAggregator(AbstractRegistry):
     """
     Aggregates TickEvents into OHLCV candles.
@@ -27,6 +46,10 @@ class CandleAggregator(AbstractRegistry):
     Returns a CandleEvent when a bar closes, None while the bar is still building.
     Persistence is delegated to the injected AbstractCandleLogger so bar logic
     can be tested independently of DB state.
+
+    Safe to share one instance across multiple consumers (e.g. one TickPipeline per
+    algo) that each independently call handle() with the same tick -- see the
+    dedup cache below.
     """
 
     def __init__(
@@ -52,19 +75,25 @@ class CandleAggregator(AbstractRegistry):
         self._accumulator: AbstractBarAccumulator = (
             accumulator if accumulator is not None else BarAccumulator()
         )
+        self._recent: deque[tuple[TickEvent, list[CandleEvent]]] = deque(maxlen=_DEDUP_CACHE_SIZE)
 
     async def handle(self, tick: TickEvent) -> list[CandleEvent]:  # type: ignore[override]
+        for cached_tick, cached_result in self._recent:
+            if cached_tick is tick:
+                return cached_result
+
         sc = self._token_sc.get(tick.instrument_token)
         if sc is None:
-            return []
+            closed: list[CandleEvent] = []
+        else:
+            closed = []
+            for interval in self._config.intervals:
+                candle = self._accumulator.process(sc, interval, tick)
+                if candle is not None:
+                    fire(self._candle_logger.log(candle))
+                    closed.append(candle)
 
-        closed: list[CandleEvent] = []
-        for interval in self._config.intervals:
-            candle = self._accumulator.process(sc, interval, tick)
-            if candle is not None:
-                fire(self._candle_logger.log(candle))
-                closed.append(candle)
-
+        self._recent.append((tick, closed))
         return closed
 
 

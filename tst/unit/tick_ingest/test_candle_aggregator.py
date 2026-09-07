@@ -208,6 +208,34 @@ async def test_unknown_token_returns_empty(engine: AsyncEngine) -> None:
     assert result == []
 
 
+async def test_handle_called_twice_with_same_tick_object_is_idempotent(
+    engine: AsyncEngine,
+) -> None:
+    """Regression test for the shared-CandleAggregator race (2026-09-07): multiple
+    algo pipelines sharing one CandleAggregator instance each independently call
+    handle() with the *same* tick object. The second (and any subsequent) call for
+    that exact object must return the identical result as the first, not silently
+    drop the candle because the accumulator already advanced past the bar close."""
+    reg = make_registry(engine)
+
+    await reg.handle(tick(1, 100.0, BASE_TIME))
+    await reg.handle(tick(1, 105.0, BASE_TIME + timedelta(seconds=30)))
+    boundary_tick = tick(1, 110.0, BASE_TIME + timedelta(minutes=1))
+
+    first = await reg.handle(boundary_tick)
+    second = await reg.handle(boundary_tick)
+    third = await reg.handle(boundary_tick)
+
+    assert len(first) == 1
+    assert second == first
+    assert third == first
+
+    # A genuinely new tick (different object) for the next bar still processes normally.
+    later = await reg.handle(tick(1, 111.0, BASE_TIME + timedelta(minutes=2)))
+    assert len(later) == 1
+    assert later[0].open == 110.0
+
+
 async def test_candle_persister_tick_log_id_positive_calls_audit(engine: AsyncEngine) -> None:
     """CandlePersister.log calls audit.log_decision when tick_log_id > 0."""
     from trading.candles.api.interfaces import AbstractCandleStore as AbstractCandleDataStore
