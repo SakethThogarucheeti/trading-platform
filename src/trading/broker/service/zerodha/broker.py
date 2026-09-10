@@ -75,6 +75,8 @@ class ZerodhaBroker(Broker):
         token: int = self._get_token(symbol)
 
         # Kite historical_data expects naive IST datetimes; convert if UTC-aware.
+        # TODO: hardcoded to IST — take the timezone from config instead, so
+        # this conversion is generic rather than Kite/IST-specific.
         def _to_naive_ist(dt: datetime) -> datetime:
             if dt.tzinfo is not None:
                 dt = dt.astimezone(_IST)
