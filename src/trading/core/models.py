@@ -249,9 +249,9 @@ class DecisionLog(Base):
 
     Steps:
     - CANDLE_EMITTED     — CandleAggregator closed a bar
-    - SIGNAL_GENERATED   — AlgoRunner's strategy produced a signal
-    - SIGNAL_ACCEPTED    — RiskController accepted and forwarded the signal
-    - SIGNAL_REJECTED    — RiskController rejected the signal (reason in context)
+    - SIGNAL_GENERATED   — SignalGenerator's strategy produced a signal
+    - SIGNAL_ACCEPTED    — RiskFilter accepted and forwarded the signal
+    - SIGNAL_REJECTED    — RiskFilter rejected the signal (reason in context)
     """
 
     __tablename__ = "decision_logs"
