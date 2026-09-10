@@ -550,17 +550,17 @@ All four gates pass for this signal (well before the 15:30 cutoff, circuit close
 ```python
 # trading_risk_sdk/sizer.py — calculate_quantity()
 effective_stop = max(stop_distance, min_stop_floor)               # max(12.9, 0.01) = 12.9
-qty = floor((equity * risk_pct / 100.0) / effective_stop)         # floor((100_000×1.0/100)/12.9) = 775
-qty = min(qty, floor((equity * max_notional_pct / 100.0) / entry_price))  # capped at 20% notional
-# no lot_size configured for equities → 775
+qty = floor((equity * risk_pct / 100.0) / effective_stop)         # floor((100_000×1.0/100)/12.9) = 77
+qty = min(qty, floor((equity * max_notional_pct / 100.0) / entry_price))  # floor(20_000/1523) = 13 — binds here
+# no lot_size configured for equities → 13
 ```
 
-A non-zero quantity means the signal is accepted:
+The 20%-max-notional cap is what actually binds for this example — a ₹1,523 stock with a comparatively wide 12.9-point stop hits the notional ceiling before the risk-based quantity does. A non-zero quantity means the signal is accepted:
 
 ```python
 await self._trading.save_signal(event)          # persist signals row
-fire(self._log_decision("SIGNAL_ACCEPTED", event, SignalAcceptedContext(qty=775, order_type="MARKET")))
-return ValidatedOrderEvent.from_signal_event(event, qty=775)
+fire(self._log_decision("SIGNAL_ACCEPTED", event, SignalAcceptedContext(qty=13, order_type="MARKET")))
+return ValidatedOrderEvent.from_signal_event(event, qty=13)
 ```
 
 **State after step 4:**
@@ -578,7 +578,7 @@ The `TickPipeline` passes the `ValidatedOrderEvent` to `OrderExecutor.handle(eve
 ```python
 # execution/service/executor.py — OrderExecutor.handle()
 order = Order(
-    id=order_id, signal_id=event.signal_id, status=PENDING, qty=775,
+    id=order_id, signal_id=event.signal_id, status=PENDING, qty=13,
     avg_price=Decimal("0"), created_at=now,
     kite_order_id=f"PENDING_{order_id}",   # unique placeholder — never a shared ""
 )
@@ -594,7 +594,7 @@ await self._persist_order_status(order_id, kite_order_id, final_status)
 
 ```python
 kite_order_id = await self._broker.place_order(
-    symbol="INFY", side=BUY, qty=775, order_type=MARKET,
+    symbol="INFY", side=BUY, qty=13, order_type=MARKET,
     instrument_type="EQUITY", tick_log_id=42,
 )
 # kite_order_id = "KITE_ORDER_789", status = PLACED
@@ -612,13 +612,14 @@ await self._accountant.apply_fill(fill, Side.BUY, "INFY", "EQUITY")   # Position
 
 **Final state in Postgres:**
 
-| Table           | Row                                                       |
-| --------------- | ---------------------------------------------------------- |
-| `tick_logs`     | id=42, symbol=INFY, last_price=1523.0                      |
+| Table           | Row                                                                    |
+| --------------- | ------------------------------------------------------------------------ |
+| `tick_logs`     | id=42, symbol=INFY, last_price=1523.0                                  |
+| `candles`       | symbol=INFY, interval=1minute, close=1523.0                            |
 | `decision_logs` | CANDLE_EMITTED, SIGNAL_GENERATED, SIGNAL_ACCEPTED — all tick_log_id=42 |
-| `signals`       | id=a1b2..., side=BUY, stop_distance=12.9                   |
-| `orders`        | id=c3d4..., status=FILLED, avg_price=1523.0, qty=775        |
-| `positions`     | symbol=INFY, net_qty=775, avg_price=1523.0                 |
+| `signals`       | id=a1b2..., side=BUY, stop_distance=12.9                               |
+| `orders`        | id=c3d4..., status=FILLED, avg_price=1523.0, qty=13                    |
+| `positions`     | symbol=INFY, net_qty=13, avg_price=1523.0                              |
 
 To reconstruct the full decision chain for this trade:
 
