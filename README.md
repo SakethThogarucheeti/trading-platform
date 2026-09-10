@@ -383,7 +383,7 @@ Every component depends only on abstract interfaces (`AbstractPriceStore`, `Abst
 
 This traces a single INFY tick from the Zerodha WebSocket all the way to a filled order, showing exactly which code runs at each step.
 
-**Scenario:** INFY is trading at 1,520. A new 15-minute bar closes at 1,523, and the EMA-9 has just crossed above EMA-21 for the first time.
+**Scenario:** INFY is trading at 1,520. A new bar closes at 1,523, and the EMA-9 has just crossed above EMA-21 for the first time.
 
 ---
 
@@ -391,205 +391,224 @@ This traces a single INFY tick from the Zerodha WebSocket all the way to a fille
 
 ```
 Zerodha WebSocket thread
-  └── ZerodhaStream._on_ticks(raw_ticks)
-        └── loop.run_coroutine_threadsafe(_handle_tick, raw)
+  └── KiteIngestor._on_ws_ticks(raw_ticks)
+        └── loop.call_soon_threadsafe(_schedule_tick, tick)   # per tick
+              └── task group runs KiteIngestor._handle_tick(raw)
 ```
 
-`KiteIngestor._handle_tick()` runs on the async event loop and calls `TickRegistry.handle(raw)`:
+`KiteIngestor._handle_tick()` runs on the async event loop and calls `TickIngestor.handle(raw)`:
 
 ```python
-# registry/tick.py — TickRegistry.handle()
-tick_log_id = await self._repo.log_tick(session, raw_event, symbol)
-
-return TickEvent(
-    instrument_token=12345, last_price=1523.0, volume=8400,
-    timestamp=now, tick_log_id=42          # ← assigned by DB
+# tick_ingest/service/ingestor.py — TickIngestor.handle()
+raw_event = TickEvent(
+    instrument_token=12345, instrument_type=InstrumentType.EQUITY,
+    last_price=1523.0, volume=8400, timestamp=now, tick_log_id=0,
 )
+tick_log_id = await self._audit.log_tick(raw_event, symbol="INFY")
+
+return raw_event.model_copy(update={"tick_log_id": tick_log_id})  # tick_log_id=42
 ```
 
-Back in `KiteIngestor`:
+Back in `KiteIngestor._handle_tick()`, the returned tick updates the price store and is then fanned out — concurrently — to every registered `on_tick` callback, one per algo's `TickPipeline`:
 
 ```python
-# engine/kite_ingestor.py — KiteIngestor._handle_tick()
+# tick_ingest/service/kite_ingestor.py — KiteIngestor._handle_tick()
 tick = await self._tick_registry.handle(raw)
 if self._price_store is not None:
-    self._price_store.update("INFY", tick.last_price)  # paper trading fill simulation
+    symbol = self._tick_registry.get_symbol(tick.instrument_token) or ""
+    if symbol:
+        self._price_store.update(symbol, tick.last_price)  # feeds paper-trading fills
+
+async with create_task_group() as tg:
+    for callback in self._on_tick_callbacks:
+        tg.start_soon(self._run_one_callback, callback, tick)
 ```
 
 **State after step 1:**
 
 - `tick_logs` row id=42
 - `PriceStore["INFY"] = 1523.0`
-- `TickEvent(tick_log_id=42)` returned to `on_tick()`
+- `TickEvent(tick_log_id=42)` handed to every algo's `TickPipeline` concurrently
 
 ---
 
 ### Step 2 — Candle bar closes
 
-`on_tick()` passes the `TickEvent` to `CandleRegistry.handle(tick)`:
+Each algo's `TickPipeline` passes the tick to the **same shared** `CandleAggregator.handle(tick)` instance (`candles/service/aggregator.py`) — one `CandleAggregator` serves every algo, so it de-dupes by tick object identity in case more than one pipeline hands it the exact same tick:
 
 ```python
-# registry/candle.py — CandleRegistry.handle()
-bar_open = _bar_open_time(tick.timestamp, interval="1min")
+# candles/service/aggregator.py — CandleAggregator.handle()
+for cached_tick, cached_result in self._recent:      # identity-keyed dedup cache
+    if cached_tick is tick:
+        return cached_result
 
-# Bar not yet closed — update partial bar in memory
-partial.close = 1523.0
-partial.high = max(partial.high, 1523.0)
-partial.volume += 8400
+sc = self._token_sc.get(tick.instrument_token)        # SymbolConfig for INFY
+closed = []
+for interval in self._config.intervals:                # e.g. ["1minute"]
+    candle = self._accumulator.process(sc, interval, tick)
+    if candle is not None:                              # None while the bar is still open
+        fire(self._candle_logger.log(candle))           # fire-and-forget persist
+        closed.append(candle)
+
+self._recent.append((tick, closed))
+return closed                                           # [] most ticks, [CandleEvent] on bar close
 ```
 
-When a new bar opens (different `bar_open`), the previous bar is closed and returned:
+`BarAccumulator.process()` (`candles/service/bar_accumulator.py`) is what actually tracks the open/high/low/close/volume of the in-progress bar and returns a closed `CandleEvent` only on the tick that rolls into a new bar:
 
 ```python
 candle = CandleEvent(
-    symbol="INFY", interval="1min",
+    symbol="INFY", instrument_type=InstrumentType.EQUITY, interval="1minute",
     open=1498.0, high=1525.0, low=1495.0, close=1523.0, volume=142000,
     timestamp=bar_close_time,
-    tick_log_id=42      # ← the tick that closed the bar
+    tick_log_id=42,      # ← the tick that closed the bar
 )
-# fire-and-forget: log_candle() writes decision_logs row
-asyncio.get_running_loop().create_task(self._log_candle(candle))
-return candle
 ```
 
 **State after step 2:**
 
-- `decision_logs` row: `step=CANDLE_EMITTED, tick_log_id=42`
-- `CandleEvent(tick_log_id=42)` returned to `on_tick()`
+- `CandleAggregator.handle()` returned `[CandleEvent(tick_log_id=42)]` to this algo's `TickPipeline` (and independently to every other algo's `TickPipeline` sharing the same `CandleAggregator`)
+- The candle is persisted via the injected `AbstractCandleLogger`
 
 ---
 
-### Step 3 — Feature engine updates, strategy fires
+### Step 3 — Signal generator updates indicators, strategy fires
 
-`on_tick()` passes the `CandleEvent` to `AlgoRegistry.handle(candle)`:
-
-```python
-# registry/algo.py — AlgoRegistry.handle()
-df = instance.feature_engine.update(candle)
-# df is now a rolling Polars DataFrame with columns:
-#   timestamp, open, high, low, close, volume,
-#   ema_9, ema_21, rsi_14, atr_14, vwap
-```
-
-`TechnicalFeatureEngine.update()` appends the new bar and recomputes all indicators in two Polars passes. The last two rows look like:
-
-```
-timestamp   close   ema_9    ema_21   atr_14
-09:00       1498    1495.2   1501.4   8.3     ← ema_9 below ema_21
-09:15       1523    1502.1   1501.9   8.6     ← ema_9 now above ema_21 ✓
-```
-
-The strategy sees the crossover:
+The candle is passed to `SignalGenerator.handle(candle)` (`strategy/service/generator.py`), which pushes the bar into a shared `PolarsStore` before invoking the strategy:
 
 ```python
-# strategy/ema_crossover.py — EmaCrossoverStrategy.on_candle()
-prev_fast, cur_fast = 1495.2, 1502.1
-prev_slow, cur_slow = 1501.4, 1501.9
+# strategy/service/generator.py — SignalGenerator.handle()
+instance = self._tick_bar_and_check_ready(candle)   # pushes candle into PolarsStore,
+if instance is None:                                #   gates on instance.is_ready(),
+    return []                                        #   advances instance.tick_bar()
 
-# Crossover: was below, now above → BUY signal
-if prev_fast < prev_slow and cur_fast > cur_slow:
-    return Signal(
-        symbol="INFY", side=Side.BUY, strategy_id="ema_crossover",
-        signal_type=SignalType.ENTRY,
-        stop_distance=1.5 * 8.6   # atr_multiplier × ATR = 12.9
-    )
+signal = await instance.strategy.on_candle(candle.symbol, instance.instrument_type, candle)
 ```
 
-`AlgoRegistry` wraps the `Signal` in a `SignalEvent`:
+`instance.strategy` is an `EmaCrossoverStrategy` (`trading_strategy_sdk/ema_crossover.py`) — indicators fetch their own history from the store rather than the generator building a feature DataFrame:
 
 ```python
-signal_event = SignalEvent(
-    symbol="INFY", side=BUY, stop_distance=12.9,
-    tick_log_id=42,    # ← still propagating
-    signal_id=UUID("a1b2...")
-)
-asyncio.get_running_loop().create_task(self._log_signal(signal_event, ...))
+# trading_strategy_sdk/ema_crossover.py — EmaCrossoverStrategy.on_candle()
+fast = await fast_ind.compute(EMA.Parameters(period=9))    # 1502.1
+slow = await slow_ind.compute(EMA.Parameters(period=21))   # 1501.9
+atr = await atr_ind.compute(ATR.Parameters(period=14))     # 8.6
+
+prev_fast, prev_slow = self._prev_fast[symbol], self._prev_slow[symbol]  # 1495.2, 1501.4
+stop_distance = self._atr_multiplier * atr   # 1.5 × 8.6 = 12.9
+
+if prev_fast < prev_slow and fast > slow:    # crossed from below to above → BUY
+    return self._entry_signal(symbol, instrument_type, Side.BUY, stop_distance, candle)
+```
+
+Back in `SignalGenerator.handle()`, a non-`None` signal is wrapped in a `SignalEvent` and a `SIGNAL_GENERATED` decision log is fired — this runs whether or not a signal was produced, since rolling indicator state is persisted every bar regardless:
+
+```python
+if signal is not None:
+    instance.record_signal(self._clock.now())
+self._persist_signal_side_effects(instance, candle)   # fire-and-forget rolling-state + algo-state save
+
+signal_event = SignalEvent.from_signal(signal, candle.tick_log_id, algo_name=self._config.algo_name)
+fire(self._log_signal(signal_event, self._config.algo_name))   # decision_logs: SIGNAL_GENERATED
 return [signal_event]
 ```
 
 **State after step 3:**
 
 - `decision_logs` row: `step=SIGNAL_GENERATED, tick_log_id=42, signal_id=a1b2...`
-- `[SignalEvent(tick_log_id=42)]` returned to `on_tick()`
+- Strategy's rolling indicator state (`prev_fast`/`prev_slow`/`last_atr`/...) persisted for warm restart
+- `[SignalEvent(tick_log_id=42)]` returned to this algo's `TickPipeline`
 
 ---
 
-### Step 4 — Risk registry validates the signal
+### Step 4 — Risk filter validates the signal
 
-`on_tick()` passes each signal to `RiskRegistry.handle(signal)`:
+The `TickPipeline` passes the `SignalEvent` to `RiskFilter.handle(event)` (`risk/service/filter.py`), which builds a `RiskContext` (today's realized PnL, current position, equity, circuit-breaker state) and then runs it through this algo's **config-driven** list of gates — by default `time_cutoff`, `circuit_breaker`, `daily_loss`, `duplicate_position` (`trading_risk_sdk`'s gate registry):
 
 ```python
-# registry/risk.py — RiskRegistry.handle()
+# risk/service/filter.py — RiskFilter.handle()
+ctx = await self._build_context(event)
 
-# 1. Time check — 09:15 IST, well before the 15:30 cutoff ✓
-# 2. Circuit breaker — tick_reg.circuit.is_open() == False ✓
-# 3. Daily loss limit — paper_trading=False, today's PnL = 0, limit = 2,000 ✓
-# 4. Position check — no existing INFY position ✓
-# 5. Quantity sizing:
-qty = floor((100_000 × 1.0 / 100) / 12.9) = floor(775.2) = 775
+for gate in self._gates:                       # e.g. TimeCutoffGate, CircuitBreakerGate,
+    rejection = await gate.check(event, ctx)    #      DailyLossGate, DuplicatePositionGate
+    if rejection is not None:
+        await self._reject(event, rejection)
+        return None
 ```
 
-Signal accepted:
+All four gates pass for this signal (well before the 15:30 cutoff, circuit closed, today's realized PnL under the daily-loss limit, no existing INFY position), so sizing runs next — `VolatilitySizer.size()` delegates to `calculate_quantity()` (`trading_risk_sdk/sizer.py`):
 
 ```python
-await self._repo.save_signal(session, signal_event)   # persist Signal row
-return ValidatedOrderEvent(
-    signal_id=UUID("a1b2..."), symbol="INFY",
-    side=BUY, quantity=775, order_type=MARKET,
-    tick_log_id=42
-)
+# trading_risk_sdk/sizer.py — calculate_quantity()
+effective_stop = max(stop_distance, min_stop_floor)               # max(12.9, 0.01) = 12.9
+qty = floor((equity * risk_pct / 100.0) / effective_stop)         # floor((100_000×1.0/100)/12.9) = 775
+qty = min(qty, floor((equity * max_notional_pct / 100.0) / entry_price))  # capped at 20% notional
+# no lot_size configured for equities → 775
+```
+
+A non-zero quantity means the signal is accepted:
+
+```python
+await self._trading.save_signal(event)          # persist signals row
+fire(self._log_decision("SIGNAL_ACCEPTED", event, SignalAcceptedContext(qty=775, order_type="MARKET")))
+return ValidatedOrderEvent.from_signal_event(event, qty=775)
 ```
 
 **State after step 4:**
 
 - `signals` row: `id=a1b2..., symbol=INFY, side=BUY, stop_distance=12.9`
 - `decision_logs` row: `step=SIGNAL_ACCEPTED, tick_log_id=42`
-- `ValidatedOrderEvent` returned to `on_tick()`
+- `ValidatedOrderEvent` returned to this algo's `TickPipeline`
 
 ---
 
-### Step 5 — Execution registry places the order
+### Step 5 — Order executor places the order
 
-`on_tick()` passes the `ValidatedOrderEvent` to `ExecRegistry.handle(order)`:
+The `TickPipeline` passes the `ValidatedOrderEvent` to `OrderExecutor.handle(event)` (`execution/service/executor.py`):
 
 ```python
-# registry/exec.py — ExecRegistry.handle()
-
-# 1. Idempotency: no existing Order for signal_id a1b2... → proceed
-
-# 2. Persist PENDING order (before broker call)
-order = Order(id=UUID("c3d4..."), signal_id=UUID("a1b2..."),
-              status=PENDING, qty=775)
-await self._repo.save_order(session, order)
-
-# 3. Place the order (async REST call to Zerodha)
-kite_order_id = await self._broker.place_order(
-    symbol="INFY", side=BUY, qty=775, order_type=MARKET
+# execution/service/executor.py — OrderExecutor.handle()
+order = Order(
+    id=order_id, signal_id=event.signal_id, status=PENDING, qty=775,
+    avg_price=Decimal("0"), created_at=now,
+    kite_order_id=f"PENDING_{order_id}",   # unique placeholder — never a shared ""
 )
-# kite_order_id = "KITE_ORDER_789"
 
-# 4. Update order status to PLACED
-row.kite_order_id = "KITE_ORDER_789"
-row.status = PLACED
+if not await self._insert_pending_order(order, event.signal_id):  # idempotency check
+    return                                                        # duplicate signal_id → drop
+
+kite_order_id, final_status = await self._place_with_broker(event, order_id)
+await self._persist_order_status(order_id, kite_order_id, final_status)
 ```
 
-For paper trading (`exec_id="paper"`), a fill is simulated immediately from `PriceStore`:
+`_place_with_broker()` calls `broker.place_order()` and translates any failure to `REJECTED` — a "timed out" error is logged `CRITICAL` and handled distinctly, since the order may actually have reached the broker even though the timeout fired:
 
 ```python
-# Paper only: simulate fill at last known price
-fill_price = self._price_store.get("INFY")   # 1523.0
-await self._handle_fill(kite_order_id="KITE_ORDER_789", avg_price=1523.0, ...)
+kite_order_id = await self._broker.place_order(
+    symbol="INFY", side=BUY, qty=775, order_type=MARKET,
+    instrument_type="EQUITY", tick_log_id=42,
+)
+# kite_order_id = "KITE_ORDER_789", status = PLACED
+```
+
+`_persist_order_status()` then updates the `orders` row, retrying up to 3 times (`tenacity`) — an `UNRECOVERABLE` critical log fires only if every retry fails, since the order is already live at the broker by this point regardless of whether the DB write succeeds.
+
+For paper trading, `PaperBroker.place_order()` fills immediately at the last price recorded in `PriceStore` and drives the same fill path a live broker webhook would — `OrderExecutor.handle_fill()` delegates straight to `FillHandler.handle()` (`execution/service/fill_handler.py`):
+
+```python
+# execution/service/fill_handler.py — FillHandler.handle()
+await self._trading.update_order_status(kite_order_id, OrderStatus.FILLED, avg_price)
+await self._accountant.apply_fill(fill, Side.BUY, "INFY", "EQUITY")   # PositionAccountant
 ```
 
 **Final state in Postgres:**
 
-| Table           | Row                                                                    |
-| --------------- | ---------------------------------------------------------------------- |
-| `tick_logs`     | id=42, symbol=INFY, last_price=1523.0                                  |
-| `decision_logs` | CANDLE_EMITTED, SIGNAL_GENERATED, SIGNAL_ACCEPTED — all tick_log_id=42 |
-| `signals`       | id=a1b2..., side=BUY, stop_distance=12.9                               |
-| `orders`        | id=c3d4..., status=FILLED, avg_price=1523.0, qty=775                   |
-| `positions`     | symbol=INFY, net_qty=775, avg_price=1523.0                             |
+| Table           | Row                                                       |
+| --------------- | ---------------------------------------------------------- |
+| `tick_logs`     | id=42, symbol=INFY, last_price=1523.0                      |
+| `decision_logs` | SIGNAL_GENERATED, SIGNAL_ACCEPTED — both tick_log_id=42     |
+| `signals`       | id=a1b2..., side=BUY, stop_distance=12.9                   |
+| `orders`        | id=c3d4..., status=FILLED, avg_price=1523.0, qty=775        |
+| `positions`     | symbol=INFY, net_qty=775, avg_price=1523.0                 |
 
 To reconstruct the full decision chain for this trade:
 
