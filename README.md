@@ -643,9 +643,9 @@ has the complete listing.
 ```
 trading-platform/
 ├── main.py                              # entry point — DI container, Alembic migrations, APScheduler
-├── build.py                             # lint (ruff) + full unit test suite runner
-├── start.py                             # one-command local dev: docker compose up (Postgres) + launch
 ├── src/trading/
+│   ├── build.py                         # lint (ruff) + full unit test suite runner
+│   ├── start.py                         # one-command local dev: docker compose up (Postgres) + launch
 │   ├── app/                             # composition root
 │   │   ├── pipeline.py                  # TickPipeline / AlgoPipeline — per-algo wiring
 │   │   ├── database.py                  # engine factory, session helpers
