@@ -465,10 +465,20 @@ candle = CandleEvent(
 )
 ```
 
+The injected `AbstractCandleLogger` (`CandlePersister` in production) saves the candle row and, when `tick_log_id > 0`, also writes a `CANDLE_EMITTED` decision log:
+
+```python
+# candles/service/persister.py — CandlePersister.log()
+await self._candle.save_candles([{...}])
+if event.tick_log_id > 0:
+    await self._audit.log_decision(step="CANDLE_EMITTED", tick_log_id=event.tick_log_id, ...)
+```
+
 **State after step 2:**
 
+- `candles` row: symbol=INFY, interval=1minute, close=1523.0
+- `decision_logs` row: `step=CANDLE_EMITTED, tick_log_id=42`
 - `CandleAggregator.handle()` returned `[CandleEvent(tick_log_id=42)]` to this algo's `TickPipeline` (and independently to every other algo's `TickPipeline` sharing the same `CandleAggregator`)
-- The candle is persisted via the injected `AbstractCandleLogger`
 
 ---
 
@@ -605,7 +615,7 @@ await self._accountant.apply_fill(fill, Side.BUY, "INFY", "EQUITY")   # Position
 | Table           | Row                                                       |
 | --------------- | ---------------------------------------------------------- |
 | `tick_logs`     | id=42, symbol=INFY, last_price=1523.0                      |
-| `decision_logs` | SIGNAL_GENERATED, SIGNAL_ACCEPTED — both tick_log_id=42     |
+| `decision_logs` | CANDLE_EMITTED, SIGNAL_GENERATED, SIGNAL_ACCEPTED — all tick_log_id=42 |
 | `signals`       | id=a1b2..., side=BUY, stop_distance=12.9                   |
 | `orders`        | id=c3d4..., status=FILLED, avg_price=1523.0, qty=775        |
 | `positions`     | symbol=INFY, net_qty=775, avg_price=1523.0                 |
