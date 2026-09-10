@@ -634,105 +634,86 @@ ORDER BY created_at;
 
 ## Project Layout
 
+Every domain module under `src/trading/` follows the same `api/` (public contract) + `service/`
+(business logic) + `storage/` (ORM models, concrete stores) shape — see
+[`src/trading/README.md`](src/trading/README.md) for the full package map and module-SDK
+convention. This tree shows the pipeline-relevant files only; each module's own `README.md`
+has the complete listing.
+
 ```
 trading-platform/
-├── main.py                              # process entry point (scheduler, DI, migrations)
-├── pipeline.py                          # data flow wiring — read this to understand the system
+├── main.py                              # entry point — DI container, Alembic migrations, APScheduler
 ├── src/trading/
-│   ├── config/
-│   │   ├── settings.py                  # all config via pydantic-settings + .env
-│   │   └── strategy_config.py           # strategy_config.json loader
-│   ├── core/
-│   │   ├── models.py                    # SQLAlchemy ORM models
-│   │   ├── schemas.py                   # Pydantic event models (TickEvent → FillEvent)
-│   │   ├── messaging.py                 # AbstractRegistry ABC
+│   ├── build.py                         # lint (ruff) + full unit test suite runner
+│   ├── start.py                         # one-command local dev: docker compose up (Postgres) + launch
+│   ├── app/                             # composition root
+│   │   ├── pipeline.py                  # TickPipeline / AlgoPipeline — per-algo wiring
 │   │   ├── database.py                  # engine factory, session helpers
-│   │   └── clock.py                     # Clock ABC, SystemClock, SimulatedClock
-│   ├── broker/
-│   │   ├── base/broker.py               # Broker ABC
-│   │   ├── base/broker_stream.py        # BrokerStream ABC
-│   │   ├── zerodha/                     # Zerodha live implementation
-│   │   │   ├── broker.py                # ZerodhaBroker (REST)
-│   │   │   ├── stream.py                # ZerodhaStream (WebSocket)
-│   │   │   ├── kite_client.py           # KiteConnect wrapper
-│   │   │   └── models.py                # TypedDicts for Kite API responses
-│   │   └── paper_broker.py              # PaperBroker + AbstractPriceStore + PriceStore
-│   ├── registry/                        # Pipeline stages — each owns its config + handle()
-│   │   ├── tick.py                      # TickConfig + TickRegistry + CircuitBreaker
-│   │   ├── candle.py                    # CandleConfig + CandleRegistry
-│   │   ├── algo.py                      # AlgoConfig + AlgoRegistry
-│   │   ├── risk.py                      # RiskConfig + RiskRegistry
-│   │   └── exec.py                      # ExecConfig + ExecRegistry
-│   ├── engine/                          # Async runtime + component lifecycle wrappers
-│   │   ├── component.py                 # Component ABC (CREATED→RUNNING→STOPPED)
-│   │   ├── runtime.py                   # AbstractRuntime + Runtime (ordered lifecycle)
-│   │   ├── kite_ingestor.py             # KiteIngestor — WS → TickRegistry
-│   │   ├── candle_aggregator.py         # CandleAggregator — warmup + sleep
-│   │   ├── algo_runner.py               # AlgoRunner — lifecycle wrapper
-│   │   ├── scheduler.py                 # APScheduler market-hours integration
-│   │   └── heartbeat.py                 # HeartbeatMonitor + Telegram alerts
-│   ├── features/
-│   │   ├── base.py                      # FeatureEngine ABC
-│   │   └── technical.py                 # TechnicalFeatureEngine (EMA, RSI, ATR, VWAP)
-│   ├── strategy/
-│   │   ├── base.py                      # Strategy ABC + Signal dataclass
-│   │   ├── ema_crossover.py             # EMA crossover strategy
-│   │   ├── rsi_mean_reversion.py        # RSI mean-reversion strategy
-│   │   ├── vwap_reversion.py            # VWAP reversion strategy
-│   │   └── opening_range_breakout.py    # Opening range breakout strategy
-│   ├── risk/
-│   │   ├── base.py                      # RiskController lifecycle wrapper
-│   │   └── sizer.py                     # ATR-based position sizer
-│   ├── execution/
-│   │   ├── base.py                      # ExecutionEngine ABC
-│   │   ├── executor.py                  # OrderExecutor lifecycle wrapper
-│   │   └── idempotency.py               # signal_id duplicate detection
-│   ├── storage/
-│   │   ├── base.py                      # AbstractRepository
-│   │   └── repository.py                # Repository (all DB operations)
+│   │   └── tasks.py                     # fire() — fire-and-forget task helper
+│   ├── config/                          # pydantic-settings (.env) + strategy_config.json loader
+│   ├── core/                            # shared primitives, no I/O
+│   │   ├── clock.py                     # Clock ABC, SystemClock, SimulatedClock
+│   │   ├── messaging.py                 # AbstractRegistry ABC
+│   │   ├── models.py                    # cross-cutting SQLAlchemy ORM models (DecisionLog, AuditLog, Heartbeat, ...)
+│   │   ├── schemas.py                   # shared Pydantic event models
+│   │   └── lifecycle/
+│   │       ├── component.py             # Component ABC (CREATED→RUNNING→STOPPED)
+│   │       └── runtime.py               # Runtime — ordered anyio TaskGroup startup
+│   ├── di/                              # the ONE global DI layer (dependency_injector) — see Dependency Injection above
+│   │   ├── containers/                  # app.py, infra.py, broker.py, components.py
+│   │   └── providers/                   # algo_pipeline.py (AlgoPipelineFactory), indicators.py
+│   ├── tick_ingest/                     # WebSocket tick → validated TickEvent
+│   │   └── service/
+│   │       ├── ingestor.py              # TickIngestor + CircuitBreaker
+│   │       └── kite_ingestor.py         # KiteIngestor — WS lifecycle Component
+│   ├── candles/                         # TickEvent → OHLCV CandleEvent
+│   │   └── service/
+│   │       ├── aggregator.py            # CandleAggregator + CandleAggregatorComponent
+│   │       ├── bar_accumulator.py       # BarAccumulator — OHLCV bar math
+│   │       ├── persister.py             # CandlePersister — saves candle + CANDLE_EMITTED log
+│   │       └── historical.py            # HistoricalDataService — warm-up fetch on startup
+│   ├── strategy/                        # CandleEvent → SignalEvent
+│   │   └── service/generator.py         # SignalGenerator — runs one Strategy instance per instrument
+│   ├── risk/                            # SignalEvent → ValidatedOrderEvent
+│   │   └── service/filter.py            # RiskFilter — config-driven gate chain + VolatilitySizer
+│   ├── execution/                       # ValidatedOrderEvent → filled Order
+│   │   └── service/
+│   │       ├── executor.py              # OrderExecutor — place, idempotency, retry
+│   │       ├── fill_handler.py          # FillHandler — mark FILLED, apply to position
+│   │       ├── position_accountant.py   # PositionAccountant — position/PnL bookkeeping
+│   │       ├── eod_square_off.py        # end-of-day open-position close-out
+│   │       └── idempotency.py           # signal_id duplicate detection
+│   ├── broker/                          # Broker abstraction
+│   │   └── service/
+│   │       ├── broker.py                # Broker ABC
+│   │       ├── paper_broker.py          # PaperBroker — fakes fills against PriceStore
+│   │       └── zerodha/                 # ZerodhaBroker (REST) + ZerodhaStream (WebSocket)
 │   ├── monitoring/
-│   │   └── heartbeat.py                 # HeartbeatMonitor — module liveness + Telegram alerts
-│   ├── api/
+│   │   └── service/
+│   │       ├── heartbeat.py             # HeartbeatMonitor — module liveness + Telegram alerts
+│   │       └── scheduler.py             # APScheduler market-hours integration
+│   ├── storage/                         # shared indicator/state infrastructure (not a per-module store)
+│   │   ├── cache/                       # rolling-state cacher — algo warm restart across process bounces
+│   │   └── stores/candle_store.py       # CandleStore — currently unused in production wiring, see #66
+│   ├── reports/                         # PnL and trade report generation
+│   ├── api/                             # FastAPI HTTP layer
+│   │   ├── app.py                       # build_app() — assembles routers into a FastAPI app
+│   │   ├── server.py                    # ApiServer — Component wrapper (starts uvicorn)
 │   │   ├── telegram.py                  # TelegramAlerter — Telegram Bot API client
-│   │   ├── routers/                     # FastAPI route modules (one per domain)
-│   │   │   ├── auth.py                  # /api/auth/*
-│   │   │   ├── market.py                # /api/ping, /api/health, /api/positions, /api/signals, /api/candles, /api/ticks
-│   │   │   ├── algos.py                 # /api/algos*
-│   │   │   ├── pnl.py                   # /api/pnl, /api/pnl/by-algo
-│   │   │   ├── reports.py               # /api/reports/*
-│   │   │   ├── charts.py                # /api/charts
-│   │   │   ├── stream.py                # /api/decisions/stream (SSE)
-│   │   │   ├── broker.py                # /api/postback (Zerodha webhook)
-│   │   │   └── data.py                  # /api/sessions, /api/settings, /api/instruments, /api/trades
-│   │   └── dashboard/
-│   │       ├── app.py                   # build_app() — assembles routers into a FastAPI app
-│   │       └── component.py             # DashboardServer — Component wrapper (starts uvicorn)
-│   ├── di/
-│   │   ├── container.py                 # Dishka container builder
-│   │   └── providers/
-│   │       ├── infra.py                 # Settings, DB, Repository, PriceStore
-│   │       ├── broker.py                # Broker, BrokerStream, KiteClient
-│   │       ├── components.py            # Runtime, all components + registries
-│   │       ├── features.py              # make_feature_engine() factory
-│   │       └── strategy.py              # make_strategy() factory
+│   │   └── routers/                     # one module per domain: auth, market, algos, pnl, reports, charts, stream, broker, data
 │   └── scripts/
 │       ├── login.py                     # daily Zerodha token refresh
-│       └── fetch_data.py                # download historical OHLCV to Parquet
+│       ├── fetch_data.py                # download historical OHLCV to Parquet
+│       └── import_candles.py            # bulk-load Parquet candles into Postgres
 ├── alembic/                             # DB migrations
-├── tst/unit/                            # unit tests (aiosqlite, no external services)
-├── strategy-testing/
-│   ├── testing/
-│   │   ├── backtesting/engine.py        # BacktestSession
-│   │   ├── backtesting/metrics.py       # Sharpe, CAGR, max drawdown, etc.
-│   │   ├── monte_carlo/                 # Monte Carlo simulation
-│   │   └── simulators/
-│   │       ├── candle_player.py         # replays Parquet files as CandleEvents
-│   │       └── execution_sim.py         # SlippageFillSimulator
-│   └── strategy-testing/               # test files (grid searches, walk-forward)
-├── system-testing/                      # Docker-based integration tests
-├── strategy_config.json                 # hyperparam search grids + strategy defaults
-└── docker-compose.yml
+├── tst/unit/                            # unit tests (aiosqlite, no external services) — one dir per src/trading/<module>
+├── strategy_config.json                 # per-algo instrument/strategy maps + hyperparameters
+└── docker-compose.yml                   # postgres + platform + dashboard
 ```
+
+Backtesting/Monte Carlo/walk-forward simulation no longer lives in this repo — see the
+[Broker Abstraction](#broker-abstraction) subsection above for where `trading-integ-tests` and
+`trading-research` picked it up.
 
 ---
 
