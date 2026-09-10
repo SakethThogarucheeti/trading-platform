@@ -354,13 +354,13 @@ The `Broker` and `BrokerStream` ABCs allow the execution layer to be swapped wit
 
 ### Dependency Injection
 
-The system uses [Dishka](https://github.com/reagento/dishka) for DI. Everything is assembled in three providers:
+The system uses [`dependency_injector`](https://github.com/ets-labs/python-dependency-injector) for DI. `AppContainer` (`di/containers/app.py`) composes three declarative containers:
 
-- **`InfrastructureProvider`** — singletons: Settings, AsyncEngine, `Repository`, `PriceStore`
-- **`BrokerProvider`** — `ZerodhaBroker` (or `PaperBroker`), `ZerodhaStream`, `KiteClient`
-- **`ComponentProvider`** — one `AlgoRunner` + `RiskController` + `OrderExecutor` per algo config; shared `KiteIngestor`, `CandleAggregator`, `HeartbeatMonitor`, `Runtime`, `Scheduler`
+- **`InfrastructureContainer`** — process-lifetime singletons: `Settings`, `AsyncEngine`/session factory, `PriceStore`, `ValueCache`, and the per-domain storage classes (`CandleDataStore`, `InstrumentStore`, `TradingStore`, `PositionStore`, `AuditStore`, `HeartbeatStore`, `ConfigStore`, `ChartStore`) — there's no single generic `Repository`.
+- **`BrokerContainer`** — `ZerodhaBroker` (or `PaperBroker`), `ZerodhaStream`, `KiteClient`.
+- **`ComponentContainer`** — one `SignalGenerator` + `RiskFilter` + `OrderExecutor` per algo config (built by `AlgoPipelineFactory` in `di/providers/algo_pipeline.py`), plus shared `TickIngestor`, `CandleAggregator`, `HeartbeatMonitor`, `Runtime`, `Scheduler`.
 
-Every component depends only on abstract interfaces (`AbstractRepository`, `AbstractPriceStore`, `AbstractRuntime`). The concrete implementations are only named at the composition root inside the providers.
+Every component depends only on abstract interfaces (`AbstractPriceStore`, `AbstractRuntime`, `AbstractRegistry`). The concrete implementations are only named at the composition root inside the containers.
 
 ### Backtesting
 
