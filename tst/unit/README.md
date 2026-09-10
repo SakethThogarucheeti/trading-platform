@@ -22,7 +22,7 @@ The directory structure mirrors `src/trading/`. To find tests for a package, loo
 | `execution/` | `OrderExecutor`, idempotency |
 | `monitoring/` | `Scheduler`, `HeartbeatMonitor` |
 | `reports/` | P&L calculation, report engine |
-| `risk/` | `RiskFilter`, `calculate_quantity`, `RiskController` |
+| `risk/` | `RiskFilter`, `calculate_quantity`, `RiskConfig` |
 | `storage/` | All domain stores (TradingStore, AuditStore, etc.) |
 | `strategy/` | Strategy base, factory, signal generator, all built-in strategies |
 | `tick_ingest/` | `TickIngestor`, `KiteIngestor`, `CircuitBreaker` |
