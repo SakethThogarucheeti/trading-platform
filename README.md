@@ -192,165 +192,180 @@ uv run pytest system-testing/
 
 ## System Architecture
 
-Each incoming WebSocket tick flows through five registry stages in a flat, direct function call — no message broker, no indirection. `pipeline.py` defines the entire flow top-to-bottom and can be read as a single document.
+Each incoming WebSocket tick flows through a fixed chain of module boundaries in a flat,
+in-process function call — no message broker, no worker split. `src/trading/app/pipeline.py`
+defines the per-algo wiring (`TickPipeline`/`AlgoPipeline`) and can be read as a single document.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                            LIVE TRADING                                 │
 │                                                                         │
 │  Zerodha WebSocket                                                      │
-│       │  raw tick dict                                                  │
+│       │  raw tick                                                       │
 │       ▼                                                                 │
 │  ┌─────────────────┐                                                   │
-│  │  KiteIngestor   │  engine/kite_ingestor.py                          │
+│  │  KiteIngestor   │  tick_ingest/service/kite_ingestor.py             │
 │  │   (Component)   │  • bridges WS thread → async loop                 │
-│  └────────┬────────┘  • calls TickRegistry.handle(raw)                 │
-│           │ TickEvent  • updates PriceStore (paper trading)             │
+│  └────────┬────────┘  • dispatches every registered on_tick callback   │
+│           │ raw tick    concurrently (one callback per algo)           │
+│           ▼            • updates PriceStore in paper trading           │
+│  ┌─────────────────┐                                                   │
+│  │  TickIngestor   │  tick_ingest/service/ingestor.py                  │
+│  │  (AbstractReg.) │  • validates tick, persists tick_log               │
+│  └────────┬────────┘  • owns the CircuitBreaker                        │
+│           │ TickEvent  (per-algo TickPipeline.run is one on_tick        │
+│           ▼            callback registered on KiteIngestor)            │
+│  ┌─────────────────┐                                                   │
+│  │ CandleAggregator│  candles/service/ — one shared instance,          │
+│  │ (AbstractReg.)  │  wrapped by CandleAggregatorComponent for          │
+│  └────────┬────────┘  historical warmup + lifecycle                    │
+│           │ CandleEvent(s)                                              │
 │           ▼                                                             │
 │  ┌─────────────────┐                                                   │
-│  │  TickRegistry   │  registry/tick.py                                 │
-│  │                 │  • validates tick, persists tick_log               │
-│  └────────┬────────┘  • owns CircuitBreaker                            │
-│           │ TickEvent                                                   │
+│  │ SignalGenerator │  strategy/service/generator.py — one per algo     │
+│  │ (AbstractReg.)  │  • runs the algo's Strategy.on_candle()            │
+│  └────────┬────────┘  • quantindicators.PolarsStore feeds indicators   │
+│           │ list[SignalEvent]                                          │
 │           ▼                                                             │
 │  ┌─────────────────┐                                                   │
-│  │ CandleRegistry  │  registry/candle.py                               │
-│  │                 │  • aggregates ticks into OHLCV bars               │
-│  └────────┬────────┘  • returns CandleEvent when bar closes            │
-│           │ CandleEvent                                                 │
-│           ▼                                                             │
-│  ┌─────────────────┐                                                   │
-│  │  AlgoRegistry   │  registry/algo.py                                 │
-│  │                 │  • feeds candle into FeatureEngine                 │
-│  └────────┬────────┘  • calls strategy.on_candle() → Signal            │
-│           │ SignalEvent                                                 │
-│           ▼                                                             │
-│  ┌─────────────────┐                                                   │
-│  │  RiskRegistry   │  registry/risk.py                                 │
-│  │                 │  • 5-step rejection pipeline                       │
-│  └────────┬────────┘  • sizes position, checks circuit breaker         │
+│  │   RiskFilter    │  risk/service/filter.py — one per algo            │
+│  │ (AbstractReg.)  │  • gate chain, then VolatilitySizer                │
+│  └────────┬────────┘                                                   │
 │           │ ValidatedOrderEvent                                         │
 │           ▼                                                             │
 │  ┌─────────────────┐                                                   │
-│  │  ExecRegistry   │  registry/exec.py                                 │
-│  │                 │  • places order via broker                         │
-│  └────────┬────────┘  • simulates fill (paper) or awaits postback      │
+│  │  OrderExecutor  │  execution/service/executor.py — one per algo     │
+│  │ (AbstractReg.)  │  • places order via Broker                         │
+│  └────────┬────────┘  • FillHandler updates positions on fill/postback │
 │           │                                                             │
 │  ┌────────┴────────┐                                                   │
 │  │  Zerodha REST   │                                                   │
 │  │  (place_order)  │                                                   │
 │  └─────────────────┘                                                   │
 │                                                                         │
-│  All registries share:  Repository (Postgres)                          │
+│  Every stage shares one Postgres DB via per-module store classes       │
+│  (TradingStore, AuditStore, CandleDataStore, ...) — no shared           │
+│  generic Repository.                                                   │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Pipeline wiring (`pipeline.py`)
+### Pipeline wiring
 
-`pipeline.py` at the project root is the readable wiring document. It constructs all five registries top-to-bottom and defines `on_tick()` — the single async function called once per incoming WebSocket tick:
+`TickPipeline`/`AlgoPipeline` (`src/trading/app/pipeline.py`) define the wiring, not a project-root
+`pipeline.py` — there is one `TickPipeline` per algo, built by `AlgoPipelineFactory.build_and_wire()`
+(`src/trading/di/providers/algo_pipeline.py`) and registered as an `on_tick` callback on the single
+shared `KiteIngestor`:
 
 ```python
-async def on_tick(raw: dict) -> None:
-    tick = await tick_reg.handle(raw)
-    if tick is None:
-        return
+class AlgoPipeline:
+    async def run(self, signals: list[SignalEvent]) -> None:
+        for signal in signals:
+            order = await self._risk_filter.handle(signal)
+            if order is not None:
+                await self._executor.handle(order)
 
-    candle = await candle_reg.handle(tick)
-    if candle is None:
-        return
 
-    signals = await algo_reg.handle(candle)
-    for signal in signals:
-        order = await risk_reg.handle(signal)
-        if order is None:
-            continue
-        await exec_reg.handle(order)
+class TickPipeline:
+    async def run(self, tick: TickEvent) -> None:
+        candles = await self._candle_registry.handle(tick)
+        for candle in candles:
+            signals = await self._signal_generator.handle(candle)
+            await self._algo_pipeline.run(signals)
 ```
 
-To change strategy: edit `instrument_strategy_map` in `pipeline.py`.
-To change risk limits: edit `RiskConfig` in `pipeline.py`.
-To switch paper/live: change `exec_id` in `TickConfig`.
+To add/change an algo: edit `ALGOS` in settings (`AlgoSettings.strategy_id`, `.strategy_params`,
+`.risk_gates`, `.instruments`) — strategy and risk-gate selection are config-driven via
+`trading_strategy_sdk.factory.create_strategy()` / `trading_risk_sdk.registry.create_gate()`, not
+hardcoded. To switch paper/live: `Settings.paper_trading`.
 
 ### Component Overview
 
-| Component              | File                            | What it does                                                                                                     |
-| ---------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `KiteIngestor`         | `engine/kite_ingestor.py`       | Bridges the Zerodha WebSocket to the async event loop. Calls `TickRegistry.handle()` for each tick. Manages the circuit-breaker timer on disconnect. |
-| `CandleAggregator`     | `engine/candle_aggregator.py`   | Lifecycle wrapper: runs `CandleRegistry.warmup()` on startup (fetches historical candles), then sleeps forever while live ticks flow in. |
-| `AlgoRunner`           | `engine/algo_runner.py`         | Lifecycle wrapper around `AlgoRegistry`. Ready at construction time; sleeps forever while candles are fed via `on_candle()`. |
-| `TechnicalFeatureEngine` | `features/technical.py`       | Maintains a rolling Polars DataFrame per (symbol, interval). Computes EMA, RSI, ATR, and session VWAP on each `update()` call. |
-| `Strategy`             | `strategy/base.py`              | Abstract base. `on_candle(symbol, instrument_type, df)` receives the indicator-enriched DataFrame and returns a `Signal` or `None`. |
-| `RiskController`       | `risk/base.py`                  | Lifecycle wrapper around `RiskRegistry`. |
-| `OrderExecutor`        | `execution/executor.py`         | Lifecycle wrapper around `ExecRegistry`. |
-| `HeartbeatMonitor`     | `engine/heartbeat.py`           | Writes its own heartbeat to Postgres every N seconds and checks all other modules. Fires a Telegram alert when any module goes stale. |
-| `Runtime`              | `engine/runtime.py`             | Supervises all components with ordered startup (each component's `_setup()` completes before the next starts) and reverse-order shutdown. |
-| `Scheduler`            | `engine/scheduler.py`           | Uses APScheduler to fire `Runtime.start` at 09:15 IST and `Runtime.stop` at 15:30 IST on weekdays. |
+`Component` (`core/lifecycle/component.py`) is the shared lifecycle base — `CREATED → STARTING
+(_setup) → RUNNING (_run) → STOPPING → STOPPED`. `_RuntimeAssembler.build_runtime()`
+(`di/containers/components.py`) wires the process's components once at startup:
 
-### Registry Overview
+| Component                | File                                          | What it does |
+| ------------------------- | ---------------------------------------------- | ------------- |
+| `KiteIngestor`            | `tick_ingest/service/kite_ingestor.py`        | Bridges the Zerodha WebSocket to the async event loop; dispatches every registered per-algo `on_tick` callback concurrently. Manages the circuit-breaker timer on disconnect. |
+| `CandleAggregatorComponent` | `candles/service/`                          | Lifecycle wrapper: runs historical warmup via `HistoricalDataService` on startup, then sleeps while live ticks flow in through the shared `CandleAggregator`. |
+| `Strategy`                | `trading_strategy_sdk` (`base.py`)            | Abstract base (external package). `on_candle(...)` returns a `Signal` or `None`; `SignalGenerator` calls it per algo. |
+| `HeartbeatMonitor`        | `monitoring/service/heartbeat.py`             | Writes its own heartbeat to Postgres every N seconds and checks other modules' `heartbeats` rows. Fires a Telegram alert via `TelegramAlerter` on staleness. |
+| `Runtime`                 | `core/lifecycle/runtime.py`                   | Supervises `[KiteIngestor, CandleAggregatorComponent, HeartbeatMonitor]` with ordered startup (each `_setup()` completes before the next starts) and reverse-order shutdown. |
+| `Scheduler`               | `monitoring/service/scheduler.py`             | APScheduler wrapper. Fires `Runtime.start` at 09:15 IST and `Runtime.stop` at 15:30 IST on weekdays (`main.py` also fires `Runtime.start` immediately if the process starts mid-session). |
+| `ApiServer`               | `api/server.py`                               | Wraps the FastAPI dashboard/REST app as a `Component`, started alongside the rest if `Settings.dashboard_enabled`. |
 
-Each registry stage owns its config (a `@dataclass`) and its `handle()` method. They are stateful processors, not message-bus listeners.
+`OrderExecutor` and `RiskFilter` are not top-level `Component`s — they're plain objects held inside
+each algo's `TickPipeline`/`AlgoPipeline`, invoked directly by `TickPipeline.run()`, not scheduled by
+`Runtime`.
 
-| Registry         | File                  | Input → Output                                 |
-| ---------------- | --------------------- | ---------------------------------------------- |
-| `TickRegistry`   | `registry/tick.py`    | `dict` → `TickEvent \| None`                   |
-| `CandleRegistry` | `registry/candle.py`  | `TickEvent` → `CandleEvent \| None`            |
-| `AlgoRegistry`   | `registry/algo.py`    | `CandleEvent` → `list[SignalEvent]`            |
-| `RiskRegistry`   | `registry/risk.py`    | `SignalEvent` → `ValidatedOrderEvent \| None`  |
-| `ExecRegistry`   | `registry/exec.py`    | `ValidatedOrderEvent` → `None`                 |
+### Module (AbstractRegistry) Overview
 
-`TickRegistry` also owns the `CircuitBreaker`. `RiskRegistry` receives a reference to the same instance — no copies, no flags, no bus channels.
+The tick → order chain is a sequence of `AbstractRegistry.handle()` implementations — stateful processors called directly in-process, not message-bus listeners:
+
+| Class             | File                                | Input → Output                                |
+| ------------------ | ------------------------------------ | ----------------------------------------------- |
+| `TickIngestor`     | `tick_ingest/service/ingestor.py`   | raw tick dict → `TickEvent \| None`            |
+| `CandleAggregator` | `candles/service/`                  | `TickEvent` → `list[CandleEvent]`              |
+| `SignalGenerator`  | `strategy/service/generator.py`     | `CandleEvent` → `list[SignalEvent]`            |
+| `RiskFilter`       | `risk/service/filter.py`            | `SignalEvent` → `ValidatedOrderEvent \| None`  |
+| `OrderExecutor`    | `execution/service/executor.py`     | `ValidatedOrderEvent` → `None`                 |
+
+`TickIngestor` owns the `CircuitBreaker`; `RiskFilter` receives the same instance — no copies, no flags, no bus channels.
 
 ### Risk Pipeline
 
-Every signal passes through five rejection gates in order:
+Every signal passes through the algo's configured chain of gates (`algo.risk_gates`, resolved via `trading_risk_sdk.registry.create_gate()`), then a sizer — both pluggable per algo, not hardcoded:
 
 ```
 SignalEvent
     │
-    ├─ 1. Intraday cutoff      reject after 15:30 IST (configurable)
-    ├─ 2. Circuit breaker      reject if WebSocket disconnected > 30s
-    ├─ 3. Daily loss limit     reject if today's realized PnL ≥ max_daily_loss_pct × equity
-    │                          (skipped in paper trading / backtesting)
-    ├─ 4. Duplicate position   reject ENTRY if already long/short same direction
-    │                          (opposite direction = reversal, allowed through)
-    └─ 5. Quantity sizing      reject if ATR-based position size rounds to 0
+    ├─ time_cutoff          reject after the configured intraday cutoff (default 15:30 IST)
+    ├─ circuit_breaker      reject while the ingestor's CircuitBreaker is open
+    ├─ daily_loss           reject if |today's realized PnL| exceeds max_daily_loss_pct × equity
+    │                       (disabled by DI when paper_trading=True)
+    ├─ duplicate_position   reject an ENTRY if already positioned in the same direction
+    │                       (opposite direction = reversal, allowed through)
+    └─ VolatilitySizer      reject (ZERO_QUANTITY) if the ATR-based size rounds to 0
              │
              └─► ValidatedOrderEvent  (quantity already determined)
 ```
 
-Position sizing formula:
+`trading_risk_sdk`'s gate registry currently has four gates (`time_cutoff`, `circuit_breaker`, `daily_loss`, `duplicate_position`); which ones run, in what order, and with what params is entirely config-driven per algo (`RiskFilter` is registry-agnostic — it just iterates whatever gate list it's constructed with).
+
+Position sizing formula (`trading_risk_sdk.sizer.calculate_quantity`):
 
 ```
-qty = floor( (equity × risk_per_trade_pct / 100) / stop_distance )
+qty = floor( (equity × risk_per_trade_pct / 100) / max(stop_distance, min_stop_floor) )
 ```
 
-`stop_distance` comes from the strategy (typically `atr_multiplier × ATR`), so the system automatically risks the same percentage of equity regardless of volatility.
+capped by a max-notional-per-trade limit and rounded down to `lot_size` when one is configured. `stop_distance` comes from the strategy (typically `atr_multiplier × ATR`).
 
 ### Persistence Model
 
 Every event that flows through the pipeline leaves a trace in Postgres:
 
-| Table           | Written by                                        | Purpose                                         |
-| --------------- | ------------------------------------------------- | ----------------------------------------------- |
-| `tick_logs`     | `TickRegistry`                                    | Immutable record of every raw market tick       |
-| `decision_logs` | `CandleRegistry`, `AlgoRegistry`, `RiskRegistry`  | Full audit trail — one row per pipeline step    |
-| `signals`       | `RiskRegistry`                                    | Accepted signal parameters                      |
-| `orders`        | `ExecRegistry`                                    | Order lifecycle (PENDING → PLACED → FILLED)     |
-| `positions`     | `ExecRegistry`                                    | Live net position per (symbol, instrument_type) |
-| `heartbeats`    | `HeartbeatMonitor`                                | Module liveness timestamps                      |
-| `audit_logs`    | `RiskRegistry`, `ExecRegistry`                    | Free-form operational events                    |
+| Table           | Written by                                          | Purpose                                         |
+| ---------------- | ----------------------------------------------------- | -------------------------------------------------- |
+| `tick_logs`     | `TickIngestor`                                       | Immutable record of every raw market tick       |
+| `decision_logs` | `CandleAggregator`, `SignalGenerator`, `RiskFilter`  | Full audit trail — one row per pipeline step    |
+| `signals`       | `RiskFilter`                                         | Accepted signal parameters                      |
+| `orders`        | `OrderExecutor`                                      | Order lifecycle (PENDING → PLACED → FILLED)     |
+| `positions`     | `OrderExecutor` / `FillHandler`                      | Live net position per (symbol, instrument_type) |
+| `heartbeats`    | `HeartbeatMonitor`                                   | Module liveness timestamps                      |
+| `audit_logs`    | `RiskFilter`, `OrderExecutor`, others                | Free-form operational events                    |
 
 Every event carries a `tick_log_id` that propagates from the original tick all the way to the fill. A single query on `decision_logs WHERE tick_log_id = X` reconstructs the full causal chain for any trade.
 
 ### Broker Abstraction
 
-The `Broker` and `BrokerStream` ABCs allow the execution layer to be swapped without touching any strategy or risk code:
+The `Broker` and `BrokerStream` ABCs (`broker/api`) allow the execution layer to be swapped without touching any strategy or risk code:
 
 | Mode          | Broker                                                 | BrokerStream                       |
-| ------------- | ------------------------------------------------------ | ---------------------------------- |
-| Live trading  | `ZerodhaBroker` (REST via KiteClient)                  | `ZerodhaStream` (WebSocket)        |
-| Paper trading | `PaperBroker` (wraps real broker, fakes `place_order`) | `ZerodhaStream` (real market data) |
-| Backtesting   | `SlippageFillSimulator`                                | `CandlePlayer` (file replay)       |
+| ------------- | -------------------------------------------------------- | ------------------------------------ |
+| Live trading  | `ZerodhaBroker` (REST via `KiteClient`)                  | `ZerodhaStream` (WebSocket)        |
+| Paper trading | `PaperBroker` (wraps a real `Broker`, fakes `place_order` against `PriceStore`) | `ZerodhaStream` (real market data) |
+
+Backtesting/research (`CandlePlayer`, `SlippageFillSimulator`) lives outside this repo entirely — in `trading-integ-tests` and `trading-research`, each of which imports `trading-platform` (as an editable path dependency and a tagged dependency respectively) and reuses its live `SignalGenerator`/`RiskFilter`/`OrderExecutor` classes against those simulated implementations. See those repos' own docs, not this one, for the backtest data flow.
 
 ### Dependency Injection
 
@@ -358,22 +373,9 @@ The system uses [`dependency_injector`](https://github.com/ets-labs/python-depen
 
 - **`InfrastructureContainer`** — process-lifetime singletons: `Settings`, `AsyncEngine`/session factory, `PriceStore`, `ValueCache`, and the per-domain storage classes (`CandleDataStore`, `InstrumentStore`, `TradingStore`, `PositionStore`, `AuditStore`, `HeartbeatStore`, `ConfigStore`, `ChartStore`) — there's no single generic `Repository`.
 - **`BrokerContainer`** — `ZerodhaBroker` (or `PaperBroker`), `ZerodhaStream`, `KiteClient`.
-- **`ComponentContainer`** — one `SignalGenerator` + `RiskFilter` + `OrderExecutor` per algo config (built by `AlgoPipelineFactory` in `di/providers/algo_pipeline.py`), plus shared `TickIngestor`, `CandleAggregator`, `HeartbeatMonitor`, `Runtime`, `Scheduler`.
+- **`ComponentContainer`** — one `SignalGenerator` + `RiskFilter` + `OrderExecutor` per algo config (built by `AlgoPipelineFactory` in `di/providers/algo_pipeline.py`, wired by `_RuntimeAssembler.build_runtime()`), plus shared `TickIngestor`, `CandleAggregator`, `HeartbeatMonitor`, `Runtime`, `Scheduler`, and (if enabled) the dashboard `ApiServer`.
 
 Every component depends only on abstract interfaces (`AbstractPriceStore`, `AbstractRuntime`, `AbstractRegistry`). The concrete implementations are only named at the composition root inside the containers.
-
-### Backtesting
-
-The backtest reuses every live registry — `AlgoRegistry`, `RiskRegistry`, `ExecRegistry` — with only the data source and broker swapped:
-
-| Live                                  | Backtest                                      |
-| ------------------------------------- | --------------------------------------------- |
-| `ZerodhaStream` WebSocket             | `CandlePlayer` replaying Parquet files        |
-| `ZerodhaBroker.place_order()`         | `SlippageFillSimulator.place_order()`         |
-| `SystemClock` (wall time)             | `SimulatedClock` (bar timestamps)             |
-| Real Postgres schema                  | Isolated per-run Postgres schema              |
-
-Because the same registry and strategy code runs in both modes, backtest results directly reflect live behaviour.
 
 ---
 
