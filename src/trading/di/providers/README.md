@@ -1,15 +1,10 @@
 # di/providers
 
-One file per provider group. Each file contains one or more Dishka `Provider` subclasses.
+Helper construction that doesn't fit a `dependency_injector` `DeclarativeContainer`'s static-provider-graph shape — either because the count is dynamic (one per configured algo) or because it's a plain factory function, not a class needing container scoping.
 
-| File | Provider class(es) | Scope |
-|------|--------------------|-------|
-| `infra.py` | `InfrastructureProvider` | APP — engine, session factory, all stores |
-| `broker.py` | `BrokerProvider`, `RedisProvider` | APP — `Broker`, `BrokerStream`, Redis client |
-| `components.py` | `ComponentProvider` | APP — ingestor, aggregator, signal generators, heartbeat |
-| `algo_pipeline.py` | `AlgoPipelineProvider` | APP — `RiskFilter` + `OrderExecutor` per algo, `AlgoPipeline` |
-| `worker_components.py` | `WorkerComponentProvider` | APP — worker-process component set |
-| `indicators.py` | `make_candle_store()` factory function | called by `InfrastructureProvider` |
-| `strategy.py` | `make_strategy()` factory function | called during algo instance construction |
+| File | Provides | Notes |
+|------|----------|-------|
+| `algo_pipeline.py` | `AlgoPipelineFactory` (+ its `SharedAlgoDeps` dataclass of cross-algo dependencies) | `build_and_wire()` builds one algo's `TickPipeline`: strategy instance via `trading_strategy_sdk.factory.create_strategy`, risk gates via `trading_risk_sdk.registry.create_gate`, `RiskFilter`, `FillHandler` + `PositionAccountant` + `OrderExecutor`, `SignalGenerator`/`AlgoInstance`. Called once per entry in `settings.algo_configs` from `ComponentContainer`'s `_RuntimeAssembler.build_runtime()` — a `for` loop over runtime config, not something a static container graph can express. |
+| `indicators.py` | `make_candle_store()` | Builds a `CandleStore` — the `quantindicators`-facing `AbstractCandleStore` implementation backed by the Postgres `CandleDataStore`. Not wired into any container currently (the live pipeline uses `PolarsStore` directly, see `algo_pipeline.py`) — see the workspace's dead-code finding for this. |
 
-All providers use `Scope.APP` — dependencies are singletons for the lifetime of the container. There is no request scope.
+The `containers/` package one level up holds the actual `DeclarativeContainer` subclasses (`AppContainer`, `InfrastructureContainer`, `BrokerContainer`, `ComponentContainer`) — see `di/README.md` for how they compose.
