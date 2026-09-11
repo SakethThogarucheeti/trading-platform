@@ -38,6 +38,8 @@ def create_data_router(
 
     @router.get("/api/instruments")
     async def get_instruments() -> JSONResponse:
+        """Full instrument catalogue. Ops-only -- no dashboard UI consumes this;
+        intended for direct/curl use, e.g. while debugging instrument setup."""
         async with session_factory() as session:
             result = await session.execute(
                 select(Instrument).order_by(Instrument.symbol)
@@ -64,6 +66,8 @@ def create_data_router(
         end: str = "",
         algo_name: str = "",
     ) -> JSONResponse:
+        """Filled trades in a time window. Ops-only -- no dashboard UI consumes
+        this; intended for direct/curl use, e.g. while auditing fills."""
         from trading.reports.trades import fetch_filled_trades
 
         try:
@@ -102,6 +106,9 @@ def create_data_router(
         start: str,
         end: str,
     ) -> JSONResponse:
+        """Historical (as opposed to live) candle fetch. Ops-only -- no dashboard
+        UI consumes this; distinct from /api/candles, which the dashboard does
+        use for its live chart feed."""
         if historical_data_service is None:
             raise HTTPException(status_code=503, detail="Historical data service not available")
         try:
