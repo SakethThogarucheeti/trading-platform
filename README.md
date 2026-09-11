@@ -762,11 +762,11 @@ algo_config = AlgoConfig(
 
 ## Key Design Decisions
 
-**Direct function calls, not a message bus.** Each tick flows through `TickPipeline`/`AlgoPipeline` as a straight chain of `await module.handle(event)` calls — `TickIngestor` → `CandleAggregator` → `SignalGenerator` → `RiskFilter` → `OrderExecutor`. There is no Kafka, no Redis pub/sub, no channel names to remember, no subscription management. The entire per-algo data flow is visible in `app/pipeline.py`.
+**Direct function calls, not a message bus.** `TickIngestor` turns a raw broker tick into a `TickEvent` upstream of the pipeline; from there `TickPipeline`/`AlgoPipeline` route it as a straight chain of `await module.handle(event)` calls — `CandleAggregator` → `SignalGenerator` → `RiskFilter` → `OrderExecutor`. There is no Kafka, no Redis pub/sub, no channel names to remember, no subscription management. The entire per-algo data flow is visible in `app/pipeline.py`.
 
 **Each module owns its config.** Every pipeline stage is an `AbstractRegistry` subclass with its own Pydantic config model — usually defined right alongside it (`TickConfig` + `TickIngestor` in `tick_ingest/service/ingestor.py`, `RiskConfig` + `RiskFilter` in `risk/service/filter.py`), though not always in the same file (`CandleConfig` lives in `candles/service/persister.py`, one file over from `CandleAggregator` in `candles/service/aggregator.py`). Reading a module's `service/` directory tells you everything about that stage — what it needs, what it produces, and what it persists.
 
-**CircuitBreaker flows by reference, not by flag.** `TickIngestor` creates the `CircuitBreaker` and exposes it as `.circuit`. `RiskFilter` receives the same object at construction time. When the WebSocket drops, `KiteIngestor` starts a 30-second timer; `RiskFilter`'s gate context reads `circuit.is_open()` directly. No shared state store, no flag keys to mistype.
+**CircuitBreaker flows by reference, not by flag.** The DI container (`di/containers/components.py`) creates a single `CircuitBreaker` and passes it to `TickIngestor`, which exposes it as `.circuit`. `RiskFilter` receives the same object at construction time. When the WebSocket drops, `KiteIngestor` starts a 30-second timer; `RiskFilter`'s gate context reads `circuit.is_open()` directly. No shared state store, no flag keys to mistype.
 
 **tick_log_id flows through the entire pipeline.** Every event from `TickEvent` to `FillEvent` carries the `tick_log_id` of the originating market tick. The `decision_logs` table uses it as a foreign key, so a single SQL query on `tick_log_id` reconstructs the complete causal chain: which tick triggered which candle, which candle triggered which signal, which signal was accepted or rejected and why, and which order was placed as a result.
 
@@ -774,4 +774,4 @@ algo_config = AlgoConfig(
 
 **Ordered startup prevents race conditions.** `Runtime` starts its components sequentially: each component's `_setup()` must complete before the next one begins. `KiteIngestor` is connected and subscribed before `CandleAggregatorComponent` runs its warmup, which completes before `HeartbeatMonitor` starts. No component can miss events from its upstream dependency.
 
-**Position updates are atomic.** Order status and position changes happen in a single SQLAlchemy transaction. Concurrent fills for the same symbol cannot race and produce an inconsistent position.
+**Position updates are race-safe, not a single transaction.** `FillHandler.handle()` marks the order FILLED and applies the fill to the position in separate transactions, but the position update itself (`PositionStore.update_position`) uses `SELECT ... FOR UPDATE` inside its own transaction, so concurrent fills for the same symbol serialize on that row lock instead of racing and producing an inconsistent position.
