@@ -145,7 +145,10 @@ When `DASHBOARD_ENABLED=true`, a live portfolio dashboard is available.
 
 ## Testing
 
-All three test suites use `pytest` via `uv run`. Run them from inside their respective directories.
+Unit tests live in this repo. Strategy (backtesting/Monte Carlo/walk-forward) and system/
+end-to-end tests live in the separate [`trading-integ-tests`](../trading-integ-tests) repo, which
+depends on this repo as an editable path dependency so local engine changes are picked up without
+reinstalling.
 
 ### Unit tests
 
@@ -158,34 +161,27 @@ uv run pytest tst/
 
 ### Strategy tests (backtesting, Monte Carlo, walk-forward)
 
-Requires Docker (uses `testcontainers` to spin up Postgres).
+Requires Docker (uses `testcontainers` to spin up Postgres). Lives in `trading-integ-tests`, not
+this repo.
 
 ```bash
-cd trading-platform/strategy-testing
+cd trading-integ-tests/strategy
 uv sync
-uv run pytest strategy-testing/
+uv run pytest .
 ```
 
-Individual suites:
-
-```bash
-uv run pytest strategy-testing/test_backtest.py            # backtesting
-uv run pytest strategy-testing/test_walk_forward.py        # walk-forward analysis
-uv run pytest strategy-testing/test_monte_carlo.py         # Monte Carlo simulation
-uv run pytest strategy-testing/test_hyperparam_search.py   # EMA crossover grid search
-uv run pytest strategy-testing/test_vwap_search.py         # VWAP reversion grid search
-uv run pytest strategy-testing/test_rsi_search.py          # RSI mean-reversion grid search
-uv run pytest strategy-testing/test_orb_search.py          # Opening range breakout grid search
-```
+See `trading-integ-tests/README.md` for individual suite files (backtesting, walk-forward,
+Monte Carlo, and per-strategy grid searches).
 
 ### System / integration tests
 
-Requires Docker. Spins up full infrastructure and tests broker failure, order lifecycle, risk guardrails, and state recovery.
+Requires Docker. Spins up full infrastructure and tests broker failure, order lifecycle, risk
+guardrails, and state recovery. Also lives in `trading-integ-tests`, not this repo.
 
 ```bash
-cd trading-platform/system-testing
+cd trading-integ-tests/system
 uv sync
-uv run pytest system-testing/
+uv run pytest .
 ```
 
 ---
