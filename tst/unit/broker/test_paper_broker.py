@@ -133,6 +133,7 @@ async def test_paper_broker_place_order_returns_paper_id() -> None:
     pb = _make_paper_broker(prices={"INFY": 1500.0})
     order_id = await pb.place_order("INFY", Side.BUY, 10, OrderType.MARKET)
     assert order_id.startswith("PAPER_")
+    await _flush_background_tasks()
 
 
 async def test_paper_broker_does_not_delegate_place_order() -> None:
@@ -140,6 +141,7 @@ async def test_paper_broker_does_not_delegate_place_order() -> None:
     pb = _make_paper_broker(prices={"INFY": 1500.0})
     order_id = await pb.place_order("INFY", Side.BUY, 10, OrderType.MARKET)
     assert not order_id.startswith("REAL_")
+    await _flush_background_tasks()
 
 
 async def test_paper_broker_place_order_unique_ids() -> None:
@@ -147,6 +149,7 @@ async def test_paper_broker_place_order_unique_ids() -> None:
     id1 = await pb.place_order("INFY", Side.BUY, 10, OrderType.MARKET)
     id2 = await pb.place_order("INFY", Side.BUY, 10, OrderType.MARKET)
     assert id1 != id2
+    await _flush_background_tasks()
 
 
 # ---------------------------------------------------------------------------
