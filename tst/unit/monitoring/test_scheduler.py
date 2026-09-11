@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from trading.config.settings import Settings
 from trading.monitoring.service.scheduler import Scheduler
 
@@ -68,10 +70,17 @@ async def test_start_and_stop_without_error() -> None:
     scheduler = make_scheduler()
     scheduler.start()
     scheduler.stop()  # should not raise
+    # AsyncIOScheduler.shutdown() runs its actual teardown (cancelling its
+    # internal APScheduler timer) via call_soon_threadsafe, not synchronously
+    # — without a yield here, this test's function-scoped event loop can
+    # close before that callback ever runs, leaking a TimerHandle bound to
+    # a now-closed loop.
+    await asyncio.sleep(0)
 
 
 async def test_double_stop_without_error() -> None:
     scheduler = make_scheduler()
     scheduler.start()
     scheduler.stop()
+    await asyncio.sleep(0)
     # APScheduler shutdown is idempotent — second stop is a no-op
