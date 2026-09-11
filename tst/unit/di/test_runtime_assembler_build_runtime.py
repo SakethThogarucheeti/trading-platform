@@ -24,6 +24,7 @@ from trading.candles.storage.models import Instrument
 from trading.config.settings import AlgoSettings, Settings
 from trading.core.lifecycle.runtime import Runtime
 from trading.di.containers.components import (
+    RuntimeDeps,
     _RuntimeAssembler,  # pyright: ignore[reportPrivateUsage]
 )
 
@@ -62,31 +63,38 @@ def _fake_pipeline() -> MagicMock:
     return pipeline
 
 
+def _deps(settings: Settings, instruments: list[Instrument], **overrides: object) -> RuntimeDeps:
+    defaults: dict[str, object] = {
+        "tick_registry": MagicMock(name="tick_registry"),
+        "candle_registry": MagicMock(name="candle_registry"),
+        "historical_data_service": MagicMock(name="historical_data_service"),
+        "heartbeat_monitor": MagicMock(name="heartbeat_monitor"),
+        "stream": MagicMock(name="stream"),
+        "broker": MagicMock(name="broker"),
+        "trading": MagicMock(name="trading"),
+        "audit": MagicMock(name="audit"),
+        "chart": MagicMock(name="chart"),
+        "config_store": MagicMock(name="config_store"),
+        "price_store": MagicMock(name="price_store"),
+        "settings": settings,
+        "sf": _mock_sf(instruments),
+        "circuit": MagicMock(name="circuit"),
+        "cacher_factory": MagicMock(name="cacher_factory"),
+    }
+    defaults.update(overrides)
+    return RuntimeDeps(**defaults)  # type: ignore[arg-type]
+
+
 async def _run_build_runtime(
     settings: Settings,
     instruments: list[Instrument],
     factory_build_and_wire: AsyncMock,
+    **dep_overrides: object,
 ) -> tuple[_RuntimeAssembler, object]:
     assembler = _RuntimeAssembler()
     with patch("trading.di.containers.components.AlgoPipelineFactory") as factory_cls:
         factory_cls.return_value.build_and_wire = factory_build_and_wire
-        runtime = await assembler.build_runtime(
-            tick_registry=MagicMock(name="tick_registry"),
-            candle_registry=MagicMock(name="candle_registry"),
-            historical_data_service=MagicMock(name="historical_data_service"),
-            heartbeat_monitor=MagicMock(name="heartbeat_monitor"),
-            stream=MagicMock(name="stream"),
-            broker=MagicMock(name="broker"),
-            trading=MagicMock(name="trading"),
-            audit=MagicMock(name="audit"),
-            chart=MagicMock(name="chart"),
-            config_store=MagicMock(name="config_store"),
-            price_store=MagicMock(name="price_store"),
-            settings=settings,
-            sf=_mock_sf(instruments),
-            circuit=MagicMock(name="circuit"),
-            cacher_factory=MagicMock(name="cacher_factory"),
-        )
+        runtime = await assembler.build_runtime(_deps(settings, instruments, **dep_overrides))
     return assembler, runtime
 
 
@@ -164,26 +172,11 @@ async def test_build_runtime_returns_runtime_wrapping_ingestor_and_candle_aggreg
     heartbeat_monitor = MagicMock(name="heartbeat_monitor")
     build_and_wire = AsyncMock(return_value=_fake_pipeline())
     assembler = _RuntimeAssembler()
+    deps = _deps(_settings(algos=[]), [_instrument()], heartbeat_monitor=heartbeat_monitor)
 
     with patch("trading.di.containers.components.AlgoPipelineFactory") as factory_cls:
         factory_cls.return_value.build_and_wire = build_and_wire
-        runtime = await assembler.build_runtime(
-            tick_registry=MagicMock(),
-            candle_registry=MagicMock(),
-            historical_data_service=MagicMock(),
-            heartbeat_monitor=heartbeat_monitor,
-            stream=MagicMock(),
-            broker=MagicMock(),
-            trading=MagicMock(),
-            audit=MagicMock(),
-            chart=MagicMock(),
-            config_store=MagicMock(),
-            price_store=MagicMock(),
-            settings=_settings(algos=[]),
-            sf=_mock_sf([_instrument()]),
-            circuit=MagicMock(),
-            cacher_factory=MagicMock(),
-        )
+        runtime = await assembler.build_runtime(deps)
 
     assert isinstance(runtime, Runtime)
     components = runtime._components  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
