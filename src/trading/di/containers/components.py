@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from dependency_injector import containers, providers
 from quantindicators.polars_store import PolarsStore
@@ -132,6 +133,35 @@ def _normalize_algo_configs(
     return list(algo_configs)
 
 
+@dataclass
+class RuntimeDeps:
+    """Bundles build_runtime's dependencies -- mirrors how SharedAlgoDeps
+    bundles AlgoPipelineFactory's, one layer up in di/providers/algo_pipeline.py.
+
+    _runtime() (the dependency_injector provider function ComponentContainer
+    actually wires) still takes each of these as its own named provider --
+    the framework requires that -- and builds this bundle internally before
+    calling build_runtime(), the same way build_runtime itself already builds
+    SharedAlgoDeps before calling AlgoPipelineFactory.
+    """
+
+    tick_registry: TickIngestor
+    candle_registry: CandleAggregator
+    historical_data_service: HistoricalDataService
+    heartbeat_monitor: HeartbeatMonitor
+    stream: BrokerStream
+    broker: Broker
+    trading: TradingStore
+    audit: AuditStore
+    chart: ChartStore
+    config_store: ConfigStore
+    price_store: AbstractPriceStore
+    settings: Settings
+    sf: async_sessionmaker[AsyncSession]
+    circuit: AbstractCircuitBreaker
+    cacher_factory: CacherFactory
+
+
 class _RuntimeAssembler:
     """
     Builds the ingestor-process AbstractRuntime: wires the tick ingestor, the
@@ -153,38 +183,21 @@ class _RuntimeAssembler:
         # last one wins, consistent across single- and multi-algo configs.
         self.order_executor: OrderExecutor | None = None
 
-    async def build_runtime(
-        self,
-        tick_registry: TickIngestor,
-        candle_registry: CandleAggregator,
-        historical_data_service: HistoricalDataService,
-        heartbeat_monitor: HeartbeatMonitor,
-        stream: BrokerStream,
-        broker: Broker,
-        trading: TradingStore,
-        audit: AuditStore,
-        chart: ChartStore,
-        config_store: ConfigStore,
-        price_store: AbstractPriceStore,
-        settings: Settings,
-        sf: async_sessionmaker[AsyncSession],
-        circuit: AbstractCircuitBreaker,
-        cacher_factory: CacherFactory,
-    ) -> AbstractRuntime:
-        instruments = await _load_instruments(sf)
+    async def build_runtime(self, deps: RuntimeDeps) -> AbstractRuntime:
+        instruments = await _load_instruments(deps.sf)
         instrument_type_map = {r.symbol: r.instrument_type for r in instruments}
-        algo_configs = _normalize_algo_configs(settings, instrument_type_map)
+        algo_configs = _normalize_algo_configs(deps.settings, instrument_type_map)
 
-        paper_price_store = price_store if settings.paper_trading else None
+        paper_price_store = deps.price_store if deps.settings.paper_trading else None
         polars_store = PolarsStore()
 
         ingestor = KiteIngestor(
-            stream=stream,
-            tick_registry=tick_registry,
-            circuit=circuit,
-            circuit_timeout_secs=settings.circuit_timeout_secs,
+            stream=deps.stream,
+            tick_registry=deps.tick_registry,
+            circuit=deps.circuit,
+            circuit_timeout_secs=deps.settings.circuit_timeout_secs,
             price_store=paper_price_store,
-            connect_timeout_secs=settings.ws_connect_timeout_secs,
+            connect_timeout_secs=deps.settings.ws_connect_timeout_secs,
         )
         self.kite_ingestor = ingestor
 
@@ -197,33 +210,33 @@ class _RuntimeAssembler:
             for inst in instruments
         ]
         candle_aggregator = CandleAggregatorComponent(
-            candle_aggregator=candle_registry,
-            historical_data_service=historical_data_service,
+            candle_aggregator=deps.candle_registry,
+            historical_data_service=deps.historical_data_service,
             symbols=symbols,
-            intervals=settings.candle_intervals,
-            warmup_count=settings.warmup_candles,
+            intervals=deps.settings.candle_intervals,
+            warmup_count=deps.settings.warmup_candles,
         )
 
         factory = AlgoPipelineFactory(SharedAlgoDeps(
-            chart=chart,
-            config_store=config_store,
-            audit=audit,
-            trading=trading,
-            broker=broker,
-            session_factory=sf,
+            chart=deps.chart,
+            config_store=deps.config_store,
+            audit=deps.audit,
+            trading=deps.trading,
+            broker=deps.broker,
+            session_factory=deps.sf,
             polars_store=polars_store,
-            settings=settings,
-            factory=cacher_factory,
+            settings=deps.settings,
+            factory=deps.cacher_factory,
         ))
 
         for algo in algo_configs:
-            intervals = algo.candle_intervals or settings.candle_intervals
+            intervals = algo.candle_intervals or deps.settings.candle_intervals
             tick_pipeline = await factory.build_and_wire(
                 algo=algo,
                 intervals=intervals,
                 instrument_type_map=instrument_type_map,
-                circuit=circuit,
-                candle_registry=candle_registry,
+                circuit=deps.circuit,
+                candle_registry=deps.candle_registry,
                 registry_target=candle_aggregator,
             )
 
@@ -238,7 +251,7 @@ class _RuntimeAssembler:
                 algo.equity,
             )
 
-        return Runtime([ingestor, candle_aggregator, heartbeat_monitor])
+        return Runtime([ingestor, candle_aggregator, deps.heartbeat_monitor])
 
 
 def _runtime_assembler() -> _RuntimeAssembler:
@@ -263,7 +276,10 @@ async def _runtime(
     circuit: AbstractCircuitBreaker,
     cacher_factory: CacherFactory,
 ) -> AbstractRuntime:
-    return await assembler.build_runtime(
+    # dependency_injector's provider mechanism requires each dependency wired
+    # as its own named provider here -- see RuntimeDeps' docstring. Bundling
+    # happens on this side of the framework boundary, not the container's.
+    deps = RuntimeDeps(
         tick_registry=tick_registry,
         candle_registry=candle_registry,
         historical_data_service=historical_data_service,
@@ -280,6 +296,7 @@ async def _runtime(
         circuit=circuit,
         cacher_factory=cacher_factory,
     )
+    return await assembler.build_runtime(deps)
 
 
 def _dashboard(
