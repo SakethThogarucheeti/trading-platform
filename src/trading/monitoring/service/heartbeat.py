@@ -76,8 +76,17 @@ class HeartbeatMonitor(Component):
             await self._check_stale()
 
     async def _check_stale(self) -> None:
+        # Same self.name fallback as _beat_loop for an empty component_names
+        # (the ingestor's case): SQLAlchemy compiles .in_([]) to an always-
+        # false predicate, not "no filter", so passing component_names=[]
+        # straight through silently disabled staleness detection entirely.
+        # Falling back to None (no filter) would be wrong too — the
+        # heartbeats table is shared across every process (see _setup's
+        # comment), so an unfiltered check would alert on OTHER processes'
+        # components as well, not just this monitor's own.
+        modules = self._component_names if self._component_names else [self.name]
         try:
-            stale = await self._heartbeat.get_stale_modules(self._timeout, modules=self._component_names)
+            stale = await self._heartbeat.get_stale_modules(self._timeout, modules=modules)
             for module in stale:
                 logger.warning("HeartbeatMonitor: %s is stale", module)
                 if self._alerter is not None:

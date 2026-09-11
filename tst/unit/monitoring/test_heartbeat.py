@@ -11,11 +11,11 @@ import pytest
 from anyio import create_task_group
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from trading.config.settings import Settings
+from trading.api.telegram import TelegramAlerter
 from trading.app.database import build_session_factory, init_db
+from trading.config.settings import Settings
 from trading.core.models import Heartbeat
 from trading.monitoring.service.heartbeat import HeartbeatMonitor
-from trading.api.telegram import TelegramAlerter
 from trading.monitoring.storage.store import HeartbeatStore
 
 
@@ -357,6 +357,45 @@ async def test_alerter_called_for_stale_module(engine: AsyncEngine, heartbeat_st
     assert "dead_module" in alerted, "stale module must trigger alerter"
 
 
+async def test_check_stale_detects_staleness_with_no_component_names(
+    engine: AsyncEngine, heartbeat_store: HeartbeatStore
+) -> None:
+    """
+    With component_names=[] (the ingestor's case), _check_stale must still
+    detect its own staleness under self.name. SQLAlchemy compiles
+    Heartbeat.module.in_([]) to an always-false predicate, not "no filter" —
+    passing component_names=[] straight through to get_stale_modules() made
+    this a permanent silent no-op for this topology.
+    """
+    sf = build_session_factory(engine)
+    alerted: list[str] = []
+
+    async def fake_alerter(module: str) -> None:
+        alerted.append(module)
+
+    monitor = HeartbeatMonitor(
+        heartbeat_store,
+        sf,
+        component_names=[],
+        beat_interval_secs=60,
+        timeout_secs=5,
+        alerter=fake_alerter,
+    )
+    # Seed a stale row under self.name, matching what _beat_loop writes to
+    # when component_names is empty.
+    await heartbeat_store.update_heartbeat(monitor.name)
+    async with sf() as session:
+        async with session.begin():
+            result = await session.get(Heartbeat, monitor.name)
+            if result:
+                result.last_seen = datetime.now(UTC) - timedelta(seconds=60)
+
+    await monitor._check_stale()
+    assert monitor.name in alerted, (
+        "stale self-heartbeat must trigger alerter even with component_names=[]"
+    )
+
+
 async def test_telegram_unexpected_http_status_logs_error_and_returns_false() -> None:
     """Covers lines 90-95: unexpected HTTP status (e.g., 403) logs error and returns False."""
     from unittest.mock import patch
@@ -393,7 +432,6 @@ async def test_telegram_unexpected_exception_returns_false() -> None:
 
 async def test_check_stale_exception_is_caught(engine: AsyncEngine) -> None:
     """Covers lines 101-102: _check_stale() catches exceptions from get_stale_modules."""
-    from unittest.mock import AsyncMock
 
     from trading.monitoring.api.interfaces import AbstractHeartbeatStore
 
