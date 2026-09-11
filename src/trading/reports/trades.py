@@ -1,9 +1,12 @@
 """
 Centralized query service for filled trades and derived P&L.
 
-Both the dashboard API (/api/pnl, /api/pnl/by-algo, /api/trades) and the
-report engine (fetch_report_data) use this module so the Order+Signal join
-and cost model exist in exactly one place.
+The dashboard API's /api/pnl and /api/pnl/by-algo, the ops-only /api/trades
+endpoint (see routers/data.py's get_trades -- implemented and tested, but
+not called by the dashboard frontend; intended for direct/curl use by
+whoever operates the bot), and the report engine (fetch_report_data) all
+use this module so the Order+Signal join and cost model exist in exactly
+one place.
 """
 
 from __future__ import annotations

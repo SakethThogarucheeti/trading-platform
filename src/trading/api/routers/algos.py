@@ -26,6 +26,9 @@ def create_algos_router(session_factory: async_sessionmaker[AsyncSession]) -> AP
 
     @router.patch("/api/algos/{name}")
     async def patch_algo(name: str, body: _AlgoPatch) -> JSONResponse:
+        """Enable/disable an algo or patch its params at runtime. Ops-only --
+        no dashboard UI control for this; the dashboard's algo view is
+        read-only (see GET /api/algos)."""
         async with session_factory() as session:
             async with session.begin():
                 algo = await session.get(AlgoConfig, name)
@@ -39,6 +42,9 @@ def create_algos_router(session_factory: async_sessionmaker[AsyncSession]) -> AP
 
     @router.post("/api/algos/{name}/reset-state")
     async def reset_algo_state(name: str) -> JSONResponse:
+        """Clear an algo's persisted AlgoState row. Ops-only -- no dashboard
+        UI trigger for this; intended for direct/curl use, e.g. to force a
+        clean warmup restart for one algo."""
         async with session_factory() as session:
             async with session.begin():
                 algo = await session.get(AlgoConfig, name)
