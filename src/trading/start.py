@@ -1,6 +1,6 @@
 """
-One-command startup: bring up Postgres + Redis via Docker Compose, wait for
-them to be healthy, then launch the trading bot in the same process.
+One-command startup: bring up Postgres via Docker Compose, wait for it to be
+healthy, then launch the trading bot in the same process.
 
 Usage
 -----
@@ -23,8 +23,8 @@ def _compose(*args: str) -> list[str]:
 
 
 def _start_infra() -> None:
-    print(">>> Starting Postgres and Redis …")
-    result = _run(_compose("up", "postgres", "redis", "-d"), capture_output=True)
+    print(">>> Starting Postgres …")
+    result = _run(_compose("up", "postgres", "-d"), capture_output=True)
     if result.returncode != 0:
         print(result.stderr)
         sys.exit("ERROR: docker compose failed — is Docker running?")
@@ -50,7 +50,6 @@ def _wait_healthy(service: str, timeout: int = 60) -> None:
 def main() -> None:
     _start_infra()
     _wait_healthy("postgres")
-    _wait_healthy("redis")
 
     print(">>> Launching trading bot …\n")
     # Replace the current process with the bot so Ctrl+C propagates naturally.
