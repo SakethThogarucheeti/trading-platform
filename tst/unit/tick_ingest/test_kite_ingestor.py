@@ -64,6 +64,11 @@ class MockBrokerStream(BrokerStream):
         if self._on_disconnect:
             self._on_disconnect(code, reason)
 
+    async def reconnect(self) -> None:
+        """Test double for BrokerStream.reconnect() — fires on_connect, like connect()."""
+        if self._on_connect:
+            self._on_connect()
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -471,6 +476,118 @@ async def test_ingestor_connect_timeout_starts_disconnected(engine: AsyncEngine)
 
     await ingestor._setup()  # completes without raising
     assert ingestor._running is False
+
+
+async def test_late_on_connected_after_setup_timeout_still_sets_running(
+    engine: AsyncEngine,
+) -> None:
+    """trading-platform#41 Flaw 1: a WebSocket that connects *after* _setup()'s
+    fail_after window already gave up must still flip _running True — otherwise
+    ticks are silently dropped forever despite a "WebSocket connected" log line."""
+
+    class _DelayedConnectStream(MockBrokerStream):
+        async def connect(self) -> None:
+            pass  # deliberately does not fire on_connect — simulates a slow handshake
+
+    stream = _DelayedConnectStream()
+    reg = make_tick_registry(stream, engine, 1)
+    ingestor = KiteIngestor(
+        stream=stream, tick_registry=reg, circuit=reg.circuit, connect_timeout_secs=0.02
+    )
+
+    await ingestor._setup()  # times out — _running stays False
+    assert ingestor._running is False
+
+    # The WebSocket finally connects, well after _setup() already gave up.
+    stream._on_connect()
+    await sleep(0.02)  # let the call_soon_threadsafe-scheduled _on_connected() run
+
+    assert ingestor._running is True
+
+    # And ticks now actually flow instead of being silently dropped.
+    calls: list[str] = []
+
+    async def _record(tick) -> None:
+        calls.append("tick")
+
+    ingestor.add_on_tick(_record)
+    stream.fire_ticks([make_raw_tick(token=1, price=100.0)])
+    await sleep(0.05)
+    assert calls == ["tick"]
+
+
+async def test_disconnect_flips_running_false(
+    stream: MockBrokerStream, tick_registry: TickIngestor, ingestor: KiteIngestor
+) -> None:
+    async def _check() -> None:
+        await sleep(0.05)
+        assert ingestor._running is True
+        stream.fire_disconnect()
+        await sleep(0.01)
+        assert ingestor._running is False
+
+    await _with_ingestor(ingestor, _check)
+
+
+async def test_supervisor_recovers_from_setup_timeout(engine: AsyncEngine) -> None:
+    """trading-platform#41 Flaw 3: _setup()'s initial connect has no retry of its
+    own — the supervisory loop started in _run() must notice and self-heal it."""
+
+    class _FailsFirstThenReconnects(MockBrokerStream):
+        async def connect(self) -> None:
+            pass  # first attempt never connects (e.g. no token yet)
+
+        async def reconnect(self) -> None:
+            if self._on_connect:
+                self._on_connect()
+
+    stream = _FailsFirstThenReconnects()
+    reg = make_tick_registry(stream, engine, 1)
+    ingestor = KiteIngestor(
+        stream=stream,
+        tick_registry=reg,
+        circuit=reg.circuit,
+        connect_timeout_secs=0.02,
+        reconnect_retry_interval_secs=0.05,
+    )
+
+    async def _check() -> None:
+        await sleep(0.2)
+        assert ingestor._running is True
+        assert stream.subscribed_tokens == [1]
+
+    await _with_ingestor(ingestor, _check)
+
+
+async def test_supervisor_does_not_reconnect_a_healthy_stream(engine: AsyncEngine) -> None:
+    """A stream that's connected and never disconnects must not have reconnect()
+    called on it just because the supervisory loop's grace period elapsed."""
+
+    class _CountingReconnectStream(MockBrokerStream):
+        def __init__(self) -> None:
+            super().__init__()
+            self.reconnect_calls = 0
+
+        async def reconnect(self) -> None:
+            self.reconnect_calls += 1
+            if self._on_connect:
+                self._on_connect()
+
+    stream = _CountingReconnectStream()
+    reg = make_tick_registry(stream, engine, 1)
+    ingestor = KiteIngestor(
+        stream=stream,
+        tick_registry=reg,
+        circuit=reg.circuit,
+        reconnect_retry_interval_secs=0.05,
+    )
+
+    async def _check() -> None:
+        await sleep(0.2)  # spans several supervisory grace periods
+        assert ingestor._running is True
+        assert stream.reconnect_calls == 0
+
+    await _with_ingestor(ingestor, _check)
 
 
 async def test_ingestor_updates_price_store_on_valid_tick(engine: AsyncEngine) -> None:

@@ -6,7 +6,7 @@ import os
 from collections.abc import Coroutine
 from typing import Any
 
-from anyio import CancelScope, Event, create_task_group, fail_after, sleep, sleep_forever
+from anyio import CancelScope, Event, Lock, create_task_group, fail_after, sleep, sleep_forever
 
 from trading.broker.api import AbstractPriceStore, BrokerStream, Tick
 from trading.core.context import thread_id
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 _CONNECT_TIMEOUT_SECS = 30.0
 _CIRCUIT_TIMEOUT_SECS = 30.0
+_RECONNECT_RETRY_INTERVAL_SECS = 60.0
 
 
 class KiteIngestor(Component):
@@ -34,8 +35,32 @@ class KiteIngestor(Component):
     Lifecycle
     ---------
     _setup:   register WS callbacks → connect → wait for on_connect → subscribe tokens
-    _run:     sleep_forever — the real work happens in bridge tasks (see below)
+    _run:     supervisory reconnect loop (self-heals a disconnected/never-connected
+              stream — see below) + sleep_forever; the tick-handling work itself
+              happens in bridge tasks (see below)
     _teardown: cancel circuit scope → cancel bridge tasks → close stream
+
+    ``_running`` tracks the actual connect/disconnect signal
+    ------------------------------------------------------------
+    ``_running`` is set True only inside ``_on_connected()`` (the real
+    connection-success callback) and False inside ``_on_ws_disconnect()`` — not
+    inside whatever ``fail_after`` window ``_setup()``/``reconnect_stream()``
+    happened to be waiting in. A WebSocket that connects *after* its caller's
+    connect-timeout window already gave up must still flip ``_running`` True;
+    otherwise ticks are silently dropped by ``_schedule_tick()`` with a
+    "WebSocket connected" log line sitting right there suggesting everything is
+    fine (this was a real bug, see trading-platform#41).
+
+    Supervisory reconnect (self-healing)
+    -------------------------------------
+    Neither ``_setup()``'s initial connect nor ``reconnect_stream()`` (called
+    once from the auth callback after login) retry on their own — one timeout
+    and the feed stays down until something else intervenes. ``_run()`` starts
+    a background loop (``_supervise_connection``) that periodically checks
+    ``_running`` and calls ``reconnect_stream()`` again if it's still down,
+    covering both entry points' failure to connect with one mechanism.
+    ``reconnect_stream()`` is guarded by ``_reconnect_lock`` so the supervisor
+    loop and an externally-triggered call (the auth callback) never race.
 
     Thread safety
     -------------
@@ -47,7 +72,7 @@ class KiteIngestor(Component):
     A callback run via call_soon_threadsafe executes as a plain event-loop
     callback, not from inside any anyio task's context — anyio's own
     TaskGroup.start_soon() rejects that starting with anyio 4.14 (see #34).
-    _schedule_tick/_schedule_circuit_timer therefore spawn their work with
+    _schedule_tick/_handle_disconnect therefore spawn their work with
     plain asyncio.Task (via _spawn_bridge_task), tracked in _bridge_tasks and
     cancelled explicitly in _teardown() to preserve the same
     cancel-on-stop behaviour a task group would otherwise give for free.
@@ -61,6 +86,7 @@ class KiteIngestor(Component):
         circuit_timeout_secs: float = _CIRCUIT_TIMEOUT_SECS,
         price_store: AbstractPriceStore | None = None,
         connect_timeout_secs: float = _CONNECT_TIMEOUT_SECS,
+        reconnect_retry_interval_secs: float = _RECONNECT_RETRY_INTERVAL_SECS,
     ) -> None:
         super().__init__(name="kite_ingestor")
         self._stream = stream
@@ -69,10 +95,12 @@ class KiteIngestor(Component):
         self._circuit_timeout_secs = circuit_timeout_secs
         self._price_store = price_store
         self._connect_timeout_secs = connect_timeout_secs
+        self._reconnect_retry_interval_secs = reconnect_retry_interval_secs
         self._loop: asyncio.AbstractEventLoop | None = None
         self._connected: Event | None = None
         self._circuit_scope: CancelScope | None = None
         self._running: bool = False
+        self._reconnect_lock = Lock()
         self._on_tick_callbacks: list[OnTickCallback] = []
         self._bridge_tasks: set[asyncio.Task[None]] = set()
 
@@ -84,19 +112,25 @@ class KiteIngestor(Component):
         """Close the current WebSocket and reconnect with whatever token is now on the client."""
         if not hasattr(self._stream, "reconnect"):
             return
-        self._connected = Event()
-        await self._stream.reconnect()  # type: ignore[attr-defined]
-        try:
-            with fail_after(self._connect_timeout_secs):
-                await self._connected.wait()
-        except TimeoutError:
-            logger.error("KiteIngestor: reconnect timed out")
-            return
-        tokens = self._tick_registry.get_tokens()
-        if tokens:
-            await self._stream.subscribe(tokens)
-            logger.info("KiteIngestor: reconnected and re-subscribed to %d tokens", len(tokens))
-        self._running = True
+        async with self._reconnect_lock:
+            if self._running:
+                # Already reconnected — e.g. a late _on_connected() landed, or a
+                # concurrent caller already won the race for this lock.
+                return
+            self._connected = Event()
+            await self._stream.reconnect()  # type: ignore[attr-defined]
+            try:
+                with fail_after(self._connect_timeout_secs):
+                    await self._connected.wait()
+            except TimeoutError:
+                logger.error("KiteIngestor: reconnect timed out")
+                return
+            tokens = self._tick_registry.get_tokens()
+            if tokens:
+                await self._stream.subscribe(tokens)
+                logger.info(
+                    "KiteIngestor: reconnected and re-subscribed to %d tokens", len(tokens)
+                )
 
     async def _setup(self) -> None:
         self._loop = asyncio.get_running_loop()
@@ -129,10 +163,34 @@ class KiteIngestor(Component):
             logger.info("KiteIngestor: connected and subscribed to %d tokens", len(tokens))
         else:
             logger.warning("KiteIngestor: no instruments configured")
-        self._running = True
 
     async def _run(self) -> None:
-        await sleep_forever()
+        async with create_task_group() as tg:
+            tg.start_soon(self._supervise_connection)
+            await sleep_forever()
+
+    async def _supervise_connection(self) -> None:
+        """
+        Self-heal a stream that's disconnected (or never connected in the first
+        place — see _setup()'s connect-timeout comment) with no other retry path.
+
+        Sleeps a full grace period before each check/attempt, both to avoid
+        spamming reconnects and to give a legitimate late _on_connected() (the
+        exact race reconnect_stream()'s own fail_after can lose) a chance to
+        land on its own first — see the class docstring.
+        """
+        while True:
+            await sleep(self._reconnect_retry_interval_secs)
+            if self._running or not hasattr(self._stream, "reconnect"):
+                continue
+            logger.warning(
+                "KiteIngestor: supervisory reconnect — disconnected for over %.0fs",
+                self._reconnect_retry_interval_secs,
+            )
+            try:
+                await self.reconnect_stream()
+            except Exception:
+                logger.exception("KiteIngestor: supervisory reconnect attempt failed")
 
     async def _teardown(self) -> None:
         self._running = False
@@ -166,6 +224,7 @@ class KiteIngestor(Component):
         self._circuit_scope = None
 
     def _on_connected(self) -> None:
+        self._running = True
         self._cancel_circuit_scope()
         self._circuit.close()
         if self._connected is not None:
@@ -177,10 +236,10 @@ class KiteIngestor(Component):
             return
         self._spawn_bridge_task(self._handle_tick(raw))
 
-    def _schedule_circuit_timer(self) -> None:
-        if not self._running:
-            return
-        if self._circuit_scope is None or self._circuit_scope.cancel_called:
+    def _handle_disconnect(self) -> None:
+        was_running = self._running
+        self._running = False
+        if was_running and (self._circuit_scope is None or self._circuit_scope.cancel_called):
             self._spawn_bridge_task(self._run_circuit_timer())
 
     def _spawn_bridge_task(self, coro: Coroutine[Any, Any, None]) -> None:
@@ -220,7 +279,7 @@ class KiteIngestor(Component):
     def _on_ws_disconnect(self, code: int, reason: str) -> None:
         logger.warning("KiteIngestor: disconnected code=%s reason=%r", code, reason)
         assert self._loop is not None
-        self._loop.call_soon_threadsafe(self._schedule_circuit_timer)
+        self._loop.call_soon_threadsafe(self._handle_disconnect)
 
     async def _handle_tick(self, raw: Tick) -> None:
         thread_id.set(os.urandom(4).hex())
