@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from collections.abc import Coroutine
+from typing import Any
 
 from anyio import CancelScope, Event, create_task_group, fail_after, sleep, sleep_forever
-from anyio.abc import TaskGroup
 
 from trading.broker.api import AbstractPriceStore, BrokerStream, Tick
 from trading.core.context import thread_id
@@ -33,15 +34,23 @@ class KiteIngestor(Component):
     Lifecycle
     ---------
     _setup:   register WS callbacks → connect → wait for on_connect → subscribe tokens
-    _run:     inner task group for circuit timer + sleep_forever for tick callbacks
-    _teardown: cancel circuit scope → close stream
+    _run:     sleep_forever — the real work happens in bridge tasks (see below)
+    _teardown: cancel circuit scope → cancel bridge tasks → close stream
 
     Thread safety
     -------------
     The Kite WebSocket fires _on_ws_* callbacks from a background thread. We
     cache the running event loop in _setup() and use call_soon_threadsafe to
-    schedule work back onto the anyio event loop from those callbacks.
+    schedule work back onto the event loop from those callbacks.
     The anyio Event and CancelScope are only accessed from the event loop thread.
+
+    A callback run via call_soon_threadsafe executes as a plain event-loop
+    callback, not from inside any anyio task's context — anyio's own
+    TaskGroup.start_soon() rejects that starting with anyio 4.14 (see #34).
+    _schedule_tick/_schedule_circuit_timer therefore spawn their work with
+    plain asyncio.Task (via _spawn_bridge_task), tracked in _bridge_tasks and
+    cancelled explicitly in _teardown() to preserve the same
+    cancel-on-stop behaviour a task group would otherwise give for free.
     """
 
     def __init__(
@@ -63,9 +72,9 @@ class KiteIngestor(Component):
         self._loop: asyncio.AbstractEventLoop | None = None
         self._connected: Event | None = None
         self._circuit_scope: CancelScope | None = None
-        self._task_group: TaskGroup | None = None
         self._running: bool = False
         self._on_tick_callbacks: list[OnTickCallback] = []
+        self._bridge_tasks: set[asyncio.Task[None]] = set()
 
     def add_on_tick(self, callback: OnTickCallback) -> None:
         """Register a downstream callback invoked for every validated tick."""
@@ -123,15 +132,21 @@ class KiteIngestor(Component):
         self._running = True
 
     async def _run(self) -> None:
-        async with create_task_group() as tg:
-            self._task_group = tg
-            await sleep_forever()
-        self._task_group = None
+        await sleep_forever()
 
     async def _teardown(self) -> None:
         self._running = False
         self._cancel_circuit_scope()
+        await self._cancel_bridge_tasks()
         await self._stream.close()
+
+    async def _cancel_bridge_tasks(self) -> None:
+        if not self._bridge_tasks:
+            return
+        tasks = list(self._bridge_tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     def _cancel_circuit_scope(self) -> None:
         if self._circuit_scope is not None:
@@ -160,16 +175,36 @@ class KiteIngestor(Component):
     def _schedule_tick(self, raw: Tick) -> None:
         if not self._running:
             return
-        tg = self._task_group
-        if tg is not None:
-            tg.start_soon(self._handle_tick, raw)
+        self._spawn_bridge_task(self._handle_tick(raw))
 
     def _schedule_circuit_timer(self) -> None:
         if not self._running:
             return
-        tg = self._task_group
-        if tg is not None and (self._circuit_scope is None or self._circuit_scope.cancel_called):
-            tg.start_soon(self._run_circuit_timer)
+        if self._circuit_scope is None or self._circuit_scope.cancel_called:
+            self._spawn_bridge_task(self._run_circuit_timer())
+
+    def _spawn_bridge_task(self, coro: Coroutine[Any, Any, None]) -> None:
+        """
+        Spawn work scheduled from a call_soon_threadsafe callback.
+
+        Deliberately plain asyncio.Task, not TaskGroup.start_soon(): a
+        call_soon_threadsafe callback runs outside any anyio task's context,
+        and anyio >=4.14 rejects start_soon() from such a context (#34).
+        Tracked in _bridge_tasks and cancelled explicitly in _teardown() to
+        preserve the cancel-on-stop behaviour a task group gives for free.
+        """
+        assert self._loop is not None
+        task = self._loop.create_task(coro)
+        self._bridge_tasks.add(task)
+        task.add_done_callback(self._on_bridge_task_done)
+
+    def _on_bridge_task_done(self, task: asyncio.Task[None]) -> None:
+        self._bridge_tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("KiteIngestor: bridge task failed", exc_info=exc)
 
     def _on_ws_connect(self) -> None:
         assert self._loop is not None
