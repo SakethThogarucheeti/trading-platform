@@ -85,6 +85,37 @@ class TradingStore:
                 pnl += sign * float(order.avg_price) * order.qty
         return pnl
 
+    async def get_filled_fills(
+        self, for_date: date, symbol: str, exclude_kite_order_id: str | None = None
+    ) -> list[tuple[str, int, float]]:
+        """
+        Return today's already-FILLED (side, qty, avg_price) fills for *symbol*,
+        oldest first — used to hydrate an in-memory FIFO queue (e.g. on process
+        restart) from what's already durably persisted, with no separate queue
+        storage of its own.
+        """
+        start = datetime(for_date.year, for_date.month, for_date.day, tzinfo=UTC)
+        end = datetime(for_date.year, for_date.month, for_date.day, 23, 59, 59, tzinfo=UTC)
+        async with self._sf() as session:
+            query = (
+                select(Order, Signal)
+                .join(Signal, Order.signal_id == Signal.id)
+                .where(
+                    Order.status == OrderStatus.FILLED.value,
+                    Signal.symbol == symbol,
+                    Order.created_at >= start,
+                    Order.created_at <= end,
+                )
+                .order_by(Order.created_at.asc())
+            )
+            if exclude_kite_order_id is not None:
+                query = query.where(Order.kite_order_id != exclude_kite_order_id)
+            result = await session.execute(query)
+            return [
+                (signal.side, order.qty, float(order.avg_price))
+                for order, signal in result.all()
+            ]
+
     async def increment_pnl_aggregate(
         self, for_date: date, delta: float, algo_name: str = "ALL", symbol: str = "ALL"
     ) -> None:

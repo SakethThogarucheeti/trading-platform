@@ -316,7 +316,9 @@ async def test_pnl_updated_in_aggregate_table_after_handle_fill(engine: AsyncEng
     await _insert_signal(engine, sig_id)
     await reg.handle(make_validated(signal_id=sig_id))
 
-    # Simulate a fill arriving (BUY fill reduces realized PnL by avg_price * qty)
+    # Simulate a fill arriving. This is an *opening* BUY fill -- FIFO-matched
+    # realized PnL (see trading.core.fifo.match_against) is 0.0 until a later
+    # fill closes against it; there is nothing yet to realize.
     await reg.handle_fill(
         kite_order_id="KITE_CB",
         avg_price=150.0,
@@ -330,8 +332,7 @@ async def test_pnl_updated_in_aggregate_table_after_handle_fill(engine: AsyncEng
     # the local wall-clock date -- these differ for ~5.5h/day in IST (UTC+5:30),
     # so date.today() here would flake right after local midnight.
     today = datetime.now(UTC).date()
-    # BUY fill: sign = -1 → PnL = -150.0 * 10 = -1500.0
-    assert await trading.get_pnl_aggregate(today) == pytest.approx(-1500.0)
+    assert await trading.get_pnl_aggregate(today) == pytest.approx(0.0)
 
 
 async def test_persist_order_status_retries_on_failure(engine: AsyncEngine) -> None:

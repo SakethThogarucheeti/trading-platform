@@ -34,6 +34,10 @@ class AbstractTradingStore(Protocol):
         self, for_date: object, delta: float, algo_name: str = "ALL", symbol: str = "ALL"
     ) -> None: ...
 
+    async def get_filled_fills(
+        self, for_date: object, symbol: str, exclude_kite_order_id: str | None = None
+    ) -> list[tuple[str, int, float]]: ...
+
 
 class AbstractPositionStore(Protocol):
     async def get_position(self, symbol: str, instrument_type: str) -> object | None: ...
