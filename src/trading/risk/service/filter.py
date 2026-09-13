@@ -107,6 +107,7 @@ class RiskFilter(AbstractRegistry):
 
     async def _build_context(self, event: SignalEvent) -> RiskContext:
         now = self._clock.now()
+        now_local = self._clock.now_tz().time()
         today = now.date()
         realized_pnl = await self._trading.get_pnl_aggregate(today)  # type: ignore[attr-defined]
         position = None
@@ -116,6 +117,7 @@ class RiskFilter(AbstractRegistry):
         circuit_open = self._circuit.is_open() if self._circuit is not None else False
         return RiskContext(
             now=now,
+            now_local=now_local,
             today=today,
             equity=max(equity, 0.0),
             max_daily_loss_pct=self._config.max_daily_loss_pct,

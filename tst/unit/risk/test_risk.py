@@ -15,10 +15,9 @@ from trading_risk_sdk.gates.time_cutoff import TimeCutoffGate
 from trading_risk_sdk.sizer import calculate_quantity
 
 from trading.app.database import build_session_factory, init_db
-from trading.core.models import Order, Position, Signal
+from trading.core.models import Position
 from trading.core.schemas import (
     InstrumentType,
-    OrderStatus,
     Side,
     SignalEvent,
     SignalType,
@@ -200,8 +199,8 @@ async def test_circuit_closed_allows_signal(engine: AsyncEngine) -> None:
 async def test_daily_loss_limit_rejects_signal(engine: AsyncEngine) -> None:
     """increment_pnl_aggregate pre-seeds the PnL total; next signal is rejected by DailyLossGate."""
     reg, trading = make_registry(engine, config=make_config(equity=100_000.0))
-    # SELL fill: sign=+1, pnl = 1.0 * 1000 * 10 = 10_000, limit = 2_000 → exceeded
-    await trading.increment_pnl_aggregate(TODAY, 1000.0 * 10)
+    # A loss of 10_000, limit = 2_000 -> exceeded. DailyLossGate only halts on losses.
+    await trading.increment_pnl_aggregate(TODAY, -1000.0 * 10)
     result = await reg.handle(make_signal())
     assert result is None
 
@@ -211,15 +210,15 @@ async def test_on_fill_increments_cache_and_blocks_second_signal(engine: AsyncEn
     import asyncio
 
     reg, trading = make_registry(engine, config=make_config(equity=100_000.0, max_daily_loss_pct=2.0))
-    # limit = 2_000. Each fill = 1_500 (SELL). After 2 fills pnl = 3_000 > 2_000.
-    await trading.increment_pnl_aggregate(TODAY, 1500.0)
+    # limit = 2_000. Each fill is a 1_500 loss. After 2 fills, loss = 3_000 > 2_000.
+    await trading.increment_pnl_aggregate(TODAY, -1500.0)
     result1 = await reg.handle(make_signal())
     assert result1 is not None  # 1_500 < 2_000, passes
     # Let handle()'s fire-and-forget decision-log task finish before reusing
     # the shared SQLite connection for the next write — see
     # test_log_decision_writes_when_tick_log_id_positive for the same pattern.
     await asyncio.sleep(0.05)
-    await trading.increment_pnl_aggregate(TODAY, 1500.0)
+    await trading.increment_pnl_aggregate(TODAY, -1500.0)
     result2 = await reg.handle(make_signal())
     assert result2 is None  # 3_000 > 2_000, rejected
 
@@ -228,7 +227,7 @@ async def test_daily_loss_gate_disabled_always_passes(engine: AsyncEngine) -> No
     """DailyLossGate(enabled=False) never rejects regardless of realized PnL."""
     reg, trading = make_registry(engine, daily_loss_enabled=False)
     # Pre-seed a massive loss — gate should still pass
-    await trading.increment_pnl_aggregate(TODAY, 100_000.0 * 100)
+    await trading.increment_pnl_aggregate(TODAY, -100_000.0 * 100)
     result = await reg.handle(make_signal())
     assert result is not None
 
@@ -341,7 +340,7 @@ async def test_reject_direct_covers_audit_log_path(engine: AsyncEngine) -> None:
 
 async def test_audit_log_failure_in_accept_is_swallowed() -> None:
     """Covers lines 130-131: audit.log_audit raises inside handle() and is swallowed."""
-    from unittest.mock import AsyncMock, MagicMock
+    from unittest.mock import AsyncMock
 
     from trading.risk.api.interfaces import AbstractAuditStore
 
@@ -517,7 +516,10 @@ async def test_time_cutoff_gate_rejects_after_cutoff() -> None:
 
     gate = TimeCutoffGate()
     ctx = RiskContext(
-        now=datetime(2024, 1, 1, 16, 0, tzinfo=UTC),  # 16:00 > cutoff 15:30
+        # now (UTC) deliberately does NOT itself say "past cutoff" -- if the gate ever
+        # regressed to reading ctx.now.time() instead of ctx.now_local, this would fail.
+        now=datetime(2024, 1, 1, 10, 0, tzinfo=UTC),
+        now_local=time(16, 0),  # 16:00 IST > cutoff 15:30
         today=datetime(2024, 1, 1).date(),
         equity=100_000.0,
         max_daily_loss_pct=2.0,
@@ -537,7 +539,10 @@ async def test_time_cutoff_gate_passes_before_cutoff() -> None:
 
     gate = TimeCutoffGate()
     ctx = RiskContext(
-        now=datetime(2024, 1, 1, 10, 0, tzinfo=UTC),
+        # now (UTC) deliberately DOES look "past cutoff" if misread as local -- if the gate
+        # ever regressed to reading ctx.now.time() instead of ctx.now_local, this would fail.
+        now=datetime(2024, 1, 1, 20, 0, tzinfo=UTC),
+        now_local=time(10, 0),  # 10:00 IST, before cutoff 15:30
         today=datetime(2024, 1, 1).date(),
         equity=100_000.0,
         max_daily_loss_pct=2.0,
@@ -560,6 +565,7 @@ async def test_circuit_breaker_gate_rejects_when_open() -> None:
 
     ctx = RiskContext(
         now=datetime(2024, 1, 1, 10, 0, tzinfo=UTC),
+        now_local=time(10, 0),
         today=datetime(2024, 1, 1).date(),
         equity=100_000.0,
         max_daily_loss_pct=2.0,
@@ -581,12 +587,13 @@ async def test_daily_loss_gate_rejects_when_limit_exceeded() -> None:
     gate = DailyLossGate(enabled=True)
     ctx = RiskContext(
         now=datetime(2024, 1, 1, 10, 0, tzinfo=UTC),
+        now_local=time(10, 0),
         today=datetime(2024, 1, 1).date(),
         equity=100_000.0,
         max_daily_loss_pct=2.0,  # limit = 2_000
         risk_per_trade_pct=1.0,
         cutoff=time(15, 30),
-        realized_pnl=5_000.0,   # > 2_000
+        realized_pnl=-5_000.0,  # a loss > 2_000 -- DailyLossGate only halts on losses
         position=None,
     )
     assert await gate.check(make_signal(), ctx) == "DAILY_LOSS_LIMIT"
@@ -605,6 +612,7 @@ async def test_duplicate_position_gate_rejects_same_direction() -> None:
     pos = Position(symbol="INFY", instrument_type="EQUITY", net_qty=10, avg_price=Decimal("100"), updated_at=NOW)
     ctx = RiskContext(
         now=datetime(2024, 1, 1, 10, 0, tzinfo=UTC),
+        now_local=time(10, 0),
         today=datetime(2024, 1, 1).date(),
         equity=100_000.0,
         max_daily_loss_pct=2.0,
