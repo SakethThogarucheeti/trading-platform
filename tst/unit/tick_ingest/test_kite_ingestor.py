@@ -301,6 +301,29 @@ async def test_teardown_cancels_pending_circuit_scope(engine: AsyncEngine) -> No
     assert stream.closed is True
 
 
+async def test_teardown_cancels_pending_bridge_task(engine: AsyncEngine) -> None:
+    """_teardown cancels a still-running bridge task (a call_soon_threadsafe-spawned
+    asyncio.Task, e.g. _handle_tick for a slow on_tick callback) without hanging or raising."""
+    stream = MockBrokerStream()
+    reg = make_tick_registry(stream, engine, 1)
+
+    async def _slow_callback(tick) -> None:
+        await sleep(60.0)
+
+    ingestor = KiteIngestor(stream=stream, tick_registry=reg, circuit=reg.circuit)
+    ingestor.add_on_tick(_slow_callback)
+
+    async def _check() -> None:
+        await sleep(0.05)
+        stream.fire_ticks([make_raw_tick(token=1, price=100.0)])
+        await sleep(0.01)
+        assert len(ingestor._bridge_tasks) == 1
+        # Stop immediately — _teardown must cancel the still-running bridge task
+
+    await _with_ingestor(ingestor, _check)
+    assert ingestor._bridge_tasks == set()
+
+
 async def test_tick_missing_instrument_token_returns_none(engine: AsyncEngine) -> None:
     """raw dict has no 'instrument_token' key → returns None."""
     stream = MockBrokerStream()
