@@ -26,3 +26,13 @@ class ZerodhaProfile(TypedDict):
     user_name: str
     email: str
     broker: str
+
+
+class ZerodhaOrder(TypedDict, total=False):
+    order_id: str
+    tag: str | None
+    status: str
+    tradingsymbol: str
+    transaction_type: str
+    average_price: float
+    filled_quantity: int

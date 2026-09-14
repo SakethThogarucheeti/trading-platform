@@ -50,8 +50,13 @@ class MockBroker(Broker):
 
         return pl.DataFrame()
 
-    async def place_order(self, symbol, side, qty, order_type, limit_price=None, instrument_type="EQUITY", tick_log_id=0) -> str:  # type: ignore[override]
-        self.place_order_calls.append(dict(symbol=symbol, side=side, qty=qty))
+    async def place_order(  # type: ignore[override]
+        self, symbol, side, qty, order_type, limit_price=None,
+        instrument_type="EQUITY", tick_log_id=0, client_tag=None,
+    ) -> str:
+        self.place_order_calls.append(
+            dict(symbol=symbol, side=side, qty=qty, client_tag=client_tag)
+        )
         if self._raises:
             raise RuntimeError("broker error")
         return self._order_id
@@ -222,7 +227,10 @@ async def test_broker_error_marks_order_rejected(engine: AsyncEngine) -> None:
 
 async def test_broker_timeout_marks_order_rejected(engine: AsyncEngine) -> None:
     class _TimeoutBroker(MockBroker):
-        async def place_order(self, symbol, side, qty, order_type, limit_price=None, instrument_type="EQUITY", tick_log_id=0) -> str:  # type: ignore[override]
+        async def place_order(  # type: ignore[override]
+            self, symbol, side, qty, order_type, limit_price=None,
+            instrument_type="EQUITY", tick_log_id=0, client_tag=None,
+        ) -> str:
             raise RuntimeError("ZerodhaBroker: place_order timed out after 10.0s")
 
     reg = make_registry(engine, _TimeoutBroker())
@@ -247,7 +255,10 @@ async def test_broker_timeout_logs_critical_ambiguity_warning(engine: AsyncEngin
     from unittest.mock import patch
 
     class _TimeoutBroker(MockBroker):
-        async def place_order(self, symbol, side, qty, order_type, limit_price=None, instrument_type="EQUITY", tick_log_id=0) -> str:  # type: ignore[override]
+        async def place_order(  # type: ignore[override]
+            self, symbol, side, qty, order_type, limit_price=None,
+            instrument_type="EQUITY", tick_log_id=0, client_tag=None,
+        ) -> str:
             raise RuntimeError("ZerodhaBroker: place_order timed out after 10.0s")
 
     reg = make_registry(engine, _TimeoutBroker())

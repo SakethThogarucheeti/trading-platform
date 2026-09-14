@@ -104,6 +104,7 @@ class Settings(BaseSettings):
     circuit_timeout_secs: float = Field(default=30.0, gt=0)
     ws_connect_timeout_secs: float = Field(default=30.0, gt=0)
     order_timeout_secs: float = Field(default=10.0, gt=0)
+    order_reconcile_interval_mins: int = Field(default=2, gt=0)
 
     # ------------------------------------------------------------------ #
     # Paper trading — simulates orders without hitting Zerodha            #

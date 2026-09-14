@@ -18,6 +18,8 @@ execution/
 │   ├── fill_handler.py   FillHandler — marks the order FILLED, applies the fill via PositionAccountant
 │   ├── position_accountant.py  PositionAccountant — updates positions on fill
 │   ├── ledger.py         PositionLedger — pure position math; PositionState value type
+│   ├── order_reconciler.py  OrderReconciler — periodic poll reconciling client_tag-matched
+│   │                         orders against Zerodha's own order book (live trading only)
 │   └── idempotency.py    Duplicate signal detection (Postgres-backed)
 ├── storage/
 │   ├── models.py         Order, Position ORM models
@@ -36,6 +38,8 @@ execution/
 **`PositionLedger`** is pure math: given a current `PositionState` and a fill (qty, price, side), returns the new `PositionState`. No IO.
 
 **`TradingStore`** owns the `signals`, `orders`, and `broker_tokens` tables. `PositionStore` owns `positions`.
+
+**`OrderReconciler`** (live trading only, scheduled every `order_reconcile_interval_mins`) closes the gap between an order that timed out or whose process died before `OrderExecutor.handle()` returned, and what Zerodha's order book actually says happened. Every order carries a `client_tag` echoed back by Kite; the reconciler polls `KiteClient.orders()`, matches by tag, corrects `kite_order_id`, and either applies the fill (`OrderExecutor.handle_fill`) or marks the order terminal (REJECTED/CANCELLED) — never both, and a row naturally drops out of the unresolved set once its status moves off PENDING/`FAILED_*`, so repeated polls are idempotent.
 
 ## Imports
 

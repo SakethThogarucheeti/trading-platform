@@ -29,6 +29,11 @@ class Order(Base):
     qty: Mapped[int]
     avg_price: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
+    # Mirrors core.models.Order.client_tag (trading-platform#31) -- same
+    # duplicated-column pattern #35 tracks for this whole class, following it
+    # here rather than deviating, since TradingStore's own queries live in
+    # this module and need to filter/read this column.
+    client_tag: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
 
 
 class Position(Base):

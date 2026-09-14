@@ -140,7 +140,12 @@ class PaperBroker(Broker):
         limit_price: float | None = None,
         instrument_type: str = "EQUITY",
         tick_log_id: int = 0,
+        client_tag: str | None = None,
     ) -> str:
+        # client_tag is unused here: paper fills are simulated synchronously in
+        # this same process (see _simulate_fill below), so there's no real-broker
+        # divergence to reconcile against later -- OrderReconciler only polls
+        # ZerodhaBroker's live order book.
         order_id = f"PAPER_{uuid4().hex[:12].upper()}"
         logger.info(
             "PaperBroker: SIMULATED %s %s x%d %s → %s",

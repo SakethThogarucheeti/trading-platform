@@ -47,6 +47,12 @@ class OrderExecutor(AbstractRegistry):
 
     async def handle(self, event: ValidatedOrderEvent) -> None:  # type: ignore[override]
         order_id = uuid4()
+        # Echoed back by the broker on every order/postback for this placement
+        # (Kite Connect's `tag`, <=20 chars) -- lets OrderReconciler find this
+        # row again by tag even if we never captured the broker's real order id
+        # (e.g. the placement call below times out). Persisted up front, before
+        # the broker call, so it's on the row regardless of how placement goes.
+        client_tag = order_id.hex[:20]
         order = Order(
             id=order_id,
             # kite_order_id is UNIQUE — a shared "" placeholder collides
@@ -61,12 +67,13 @@ class OrderExecutor(AbstractRegistry):
             qty=event.quantity,
             avg_price=Decimal("0"),
             created_at=self._clock.now(),
+            client_tag=client_tag,
         )
 
         if not await self._insert_pending_order(order, event.signal_id):
             return
 
-        kite_order_id, final_status = await self._place_with_broker(event, order_id)
+        kite_order_id, final_status = await self._place_with_broker(event, order_id, client_tag)
 
         await self._persist_order_status(order_id, kite_order_id, final_status)
         logger.info("OrderExecutor: order %s status=%s", kite_order_id, final_status.value)
@@ -82,7 +89,7 @@ class OrderExecutor(AbstractRegistry):
         return True
 
     async def _place_with_broker(
-        self, event: ValidatedOrderEvent, order_id: UUID
+        self, event: ValidatedOrderEvent, order_id: UUID, client_tag: str
     ) -> tuple[str, OrderStatus]:
         """
         Place the order with the broker, translating any failure into a REJECTED status.
@@ -92,8 +99,11 @@ class OrderExecutor(AbstractRegistry):
         REJECTED here. Anything else means the request never reached the broker
         (or was explicitly rejected). Flagged distinctly since only the first
         case risks a REJECTED-in-our-DB order that is actually live at the broker.
-        TODO: true reconciliation needs a broker-side order-status poll or
-        webhook fallback — this is logging-only, not a fix for that risk.
+
+        On a timeout specifically, `client_tag` (already persisted on the Order
+        row before this call) is how OrderReconciler's periodic poll can later
+        find this order in the broker's own order book and correct the REJECTED
+        status here if it turns out to actually be live -- see trading-platform#31.
         """
         try:
             kite_order_id = await self._broker.place_order(
@@ -104,6 +114,7 @@ class OrderExecutor(AbstractRegistry):
                 limit_price=event.limit_price,
                 instrument_type=event.instrument_type.value,
                 tick_log_id=event.tick_log_id,
+                client_tag=client_tag,
             )
             return kite_order_id, OrderStatus.PLACED
         except Exception as exc:

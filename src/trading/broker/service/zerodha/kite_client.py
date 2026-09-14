@@ -9,6 +9,7 @@ from kiteconnect import KiteConnect
 from trading.broker.service.zerodha.models import (
     ZerodhaCandle,
     ZerodhaInstrument,
+    ZerodhaOrder,
     ZerodhaProfile,
     ZerodhaSession,
 )
@@ -43,6 +44,8 @@ class _KiteProtocol(Protocol):
     ) -> Sequence[ZerodhaCandle]: ...
 
     def place_order(self, **kwargs: Any) -> str: ...
+
+    def orders(self) -> Sequence[dict[str, Any]]: ...
 
 
 class KiteClient:
@@ -95,3 +98,8 @@ class KiteClient:
 
     def place_order(self, **kwargs: Any) -> str:
         return str(self._kite.place_order(**kwargs))
+
+    def orders(self) -> Sequence[ZerodhaOrder]:
+        """Today's order book from Kite -- used by OrderReconciler to match by tag."""
+        raw: Any = self._kite.orders()
+        return cast(Sequence[ZerodhaOrder], raw)

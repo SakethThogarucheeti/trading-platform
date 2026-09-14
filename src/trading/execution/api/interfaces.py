@@ -18,6 +18,7 @@ class Broker(Protocol):
         limit_price: float | None = None,
         instrument_type: str = "EQUITY",
         tick_log_id: int = 0,
+        client_tag: str | None = None,
     ) -> str: ...
 
 

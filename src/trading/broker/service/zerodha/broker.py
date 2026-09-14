@@ -109,6 +109,7 @@ class ZerodhaBroker(Broker):
         limit_price: float | None = None,
         instrument_type: str = "EQUITY",
         tick_log_id: int = 0,
+        client_tag: str | None = None,
     ) -> str:
         """
         Place an order via Zerodha Kite REST API and return the kite_order_id.
@@ -129,6 +130,7 @@ class ZerodhaBroker(Broker):
                 product="MIS",
                 order_type=kite_order_type,
                 price=limit_price,
+                tag=client_tag,
             )
 
         try:
