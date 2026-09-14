@@ -93,6 +93,15 @@ class AlgoPipelineFactory:
             factory=s.factory,
             algos=algo_instances,
             store=s.polars_store,
+            # `intervals` is validated/resolved to exactly one entry upstream
+            # (AlgoSettings.candle_intervals_single_entry + its resolution in
+            # _RuntimeAssembler.build_runtime) -- see trading-platform#36.
+            # SignalGenerator uses this to drop candles for any other interval
+            # before they ever reach tick_bar()/on_candle(), so the shared
+            # per-symbol indicator cache and AlgoInstance.bars_seen/warmed_up
+            # counters -- neither of which is interval-aware -- never see more
+            # than one interval's candles for this algo.
+            interval=intervals[0],
         )
 
         position_store = PositionStore(s.session_factory)

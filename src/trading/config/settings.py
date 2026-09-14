@@ -50,8 +50,25 @@ class AlgoSettings(BaseModel):
         default_factory=lambda: list(_DEFAULT_RISK_GATES)
     )  # ordered, composable gate chain; defaults match today's hardcoded gate list
     execution_engine_id: str = "direct"  # registered execution engine identifier
-    candle_intervals: list[str] | None = None  # None → use global Settings.candle_intervals
+    candle_intervals: list[str] | None = None  # None → use global Settings.candle_intervals[0]
     equity: float = 100_000.0  # capital allocated for risk sizing
+
+    @field_validator("candle_intervals")
+    @classmethod
+    def candle_intervals_single_entry(cls, v: list[str] | None) -> list[str] | None:
+        """
+        Each algo trades exactly one interval — SignalGenerator filters incoming
+        candles down to it (see trading-platform#36). A multi-entry override here
+        would silently corrupt shared indicator/warmup state across intervals, the
+        way the unfiltered default config did before this validator existed.
+        """
+        if v is not None and len(v) != 1:
+            raise ValueError(
+                "AlgoSettings.candle_intervals must contain exactly one interval "
+                f"(got {v!r}) -- each algo trades exactly one interval; see "
+                "trading-platform#36"
+            )
+        return v
 
 
 class Settings(BaseSettings):
