@@ -41,3 +41,16 @@ class AbstractCandleConsumer(Protocol):
     def setup(self, candles_by_symbol: dict[str, list[CandleEvent]]) -> None: ...
 
     async def handle(self, candle: CandleEvent) -> object: ...
+
+    def symbols_needing_rewarm(self) -> set[str]:
+        """Symbols this consumer has not yet processed a live tick for.
+
+        Used to gate a post-login re-warm (trading-platform#40) so it only
+        re-seeds strategy state for symbols that missed startup warmup —
+        never a symbol already advanced by a live tick.
+        """
+        ...
+
+    def rewarm(self, candles_by_symbol: dict[str, list[CandleEvent]]) -> None:
+        """Re-seed only the symbols in `candles_by_symbol` still needing a re-warm."""
+        ...

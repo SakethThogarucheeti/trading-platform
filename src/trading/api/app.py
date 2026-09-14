@@ -19,6 +19,7 @@ from trading.api.routers.reports import create_reports_router
 from trading.api.routers.stream import create_stream_router
 from trading.broker.service.zerodha.kite_client import KiteClient
 from trading.candles.api import HistoricalDataService
+from trading.candles.service.aggregator import CandleAggregatorComponent
 from trading.core.clock import SYSTEM_CLOCK, Clock
 from trading.execution.api import OrderExecutor
 from trading.storage.cache import CacherFactory
@@ -35,6 +36,7 @@ def build_app(
     token_secret_key: str = "",
     kite_client: KiteClient | None = None,
     kite_ingestor: KiteIngestor | None = None,
+    candle_aggregator: CandleAggregatorComponent | None = None,
     order_executor: OrderExecutor | None = None,
     cacher_factory: CacherFactory | None = None,
     historical_data_service: HistoricalDataService | None = None,
@@ -60,7 +62,7 @@ def build_app(
 
     app.include_router(create_auth_router(
         session_factory, zerodha_api_key, zerodha_api_secret,
-        token_secret_key, kite_client, kite_ingestor,
+        token_secret_key, kite_client, kite_ingestor, candle_aggregator,
     ))
     app.include_router(create_market_router(session_factory, clock, heartbeat_stale_secs))
     app.include_router(create_algos_router(session_factory))

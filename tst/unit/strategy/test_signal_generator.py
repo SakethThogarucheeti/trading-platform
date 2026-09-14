@@ -160,6 +160,51 @@ async def test_bars_seen_increments_per_candle(engine: AsyncEngine) -> None:
 
 
 # ---------------------------------------------------------------------------
+# symbols_needing_rewarm / rewarm (trading-platform#40)
+# ---------------------------------------------------------------------------
+
+
+def test_symbols_needing_rewarm_before_any_tick(engine: AsyncEngine) -> None:
+    reg = make_registry(engine)
+    assert reg.symbols_needing_rewarm() == {"INFY"}
+
+
+async def test_symbols_needing_rewarm_excludes_live_touched_symbol(engine: AsyncEngine) -> None:
+    reg = make_registry(engine)
+    await reg.handle(make_candle())
+    assert reg.symbols_needing_rewarm() == set()
+
+
+def test_rewarm_calls_strategy_warmup_for_untouched_symbol(engine: AsyncEngine) -> None:
+    reg = make_registry(engine)
+    calls: list[tuple[str, list]] = []
+    reg._algos["INFY"].strategy.warmup = lambda symbol, candles: calls.append((symbol, candles))
+
+    candles = [make_candle()]
+    reg.rewarm({"INFY": candles})
+
+    assert calls == [("INFY", candles)]
+
+
+async def test_rewarm_skips_symbol_already_touched_by_live_tick(engine: AsyncEngine) -> None:
+    reg = make_registry(engine)
+    await reg.handle(make_candle())  # bars_seen -> 1
+
+    calls: list[tuple[str, list]] = []
+    reg._algos["INFY"].strategy.warmup = lambda symbol, candles: calls.append((symbol, candles))
+
+    reg.rewarm({"INFY": [make_candle()]})
+
+    assert calls == []
+
+
+def test_rewarm_ignores_symbol_not_configured_for_this_generator(engine: AsyncEngine) -> None:
+    reg = make_registry(engine)
+    # Must not raise for a symbol this SignalGenerator has no AlgoInstance for.
+    reg.rewarm({"UNKNOWN": [make_candle(symbol="UNKNOWN")]})
+
+
+# ---------------------------------------------------------------------------
 # handle — produces SignalEvent when strategy fires
 # ---------------------------------------------------------------------------
 

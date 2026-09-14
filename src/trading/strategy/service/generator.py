@@ -112,6 +112,39 @@ class SignalGenerator(AbstractRegistry):
             instance.strategy.set_store(self._indicator_store)
             instance.strategy.warmup(symbol, candles_by_symbol.get(symbol, []))
 
+    def symbols_needing_rewarm(self) -> set[str]:
+        """Symbols with no live tick processed yet (AlgoInstance.bars_seen == 0)."""
+        return {symbol for symbol, instance in self._algos.items() if instance.bars_seen == 0}
+
+    def rewarm(self, candles_by_symbol: dict[str, list[CandleEvent]]) -> None:
+        """
+        Re-seed strategy state for symbols in `candles_by_symbol`, skipping any
+        that have since processed a live tick.
+
+        Unlike setup(), this only touches symbols actually present in
+        `candles_by_symbol` — the caller (CandleAggregatorComponent) is
+        expected to have already filtered it down to symbols_needing_rewarm().
+        The bars_seen re-check here is a second guard against a live tick
+        landing between that filter and this call: warmup() doesn't increment
+        bars_seen, so calling it on an already-live symbol would silently
+        discard live-tick-derived indicator state (trading-platform#40).
+        """
+        for symbol, candles in candles_by_symbol.items():
+            instance = self._algos.get(symbol)
+            if instance is None:
+                continue
+            if instance.bars_seen > 0:
+                logger.warning(
+                    "SignalGenerator[%s]: skipping re-warm for %s — already processed "
+                    "%d live bar(s)",
+                    self._config.algo_name,
+                    symbol,
+                    instance.bars_seen,
+                )
+                continue
+            instance.strategy.set_store(self._indicator_store)
+            instance.strategy.warmup(symbol, candles)
+
     def _make_chart_cb(
         self, symbol: str, interval: str
     ) -> Callable[[str, str, float, datetime], None]:
