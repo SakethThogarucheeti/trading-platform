@@ -8,6 +8,10 @@ from trading.strategy.api.schemas import SignalEvent  # noqa: F401 — re-export
 class AbstractPositionStore(Protocol):
     async def get_position(self, symbol: str, instrument_type: str) -> object | None: ...
 
+    async def get_algo_position(
+        self, symbol: str, instrument_type: str, algo_name: str
+    ) -> object | None: ...
+
 
 class AbstractTradingStore(Protocol):
     async def get_daily_realized_pnl(self, date: object) -> float: ...

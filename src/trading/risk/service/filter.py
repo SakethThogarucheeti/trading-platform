@@ -112,7 +112,19 @@ class RiskFilter(AbstractRegistry):
         realized_pnl = await self._trading.get_pnl_aggregate(today)  # type: ignore[attr-defined]
         position = None
         if event.signal_type == SignalType.ENTRY:
-            position = await self._position.get_position(event.symbol, event.instrument_type.value)
+            if event.algo_name is not None:
+                # Per-algo exposure (trading-platform#8) -- not the shared `positions`
+                # row, which is blended across every algo trading this instrument
+                # until that table's PK is widened with algo_name.
+                position = await self._position.get_algo_position(
+                    event.symbol, event.instrument_type.value, event.algo_name
+                )
+            else:
+                # No algo_name to scope by (e.g. a manually-built SignalEvent) --
+                # fall back to the old blended-account view rather than guess.
+                position = await self._position.get_position(
+                    event.symbol, event.instrument_type.value
+                )
         equity = self._equity_provider() if self._equity_provider is not None else self._config.equity
         circuit_open = self._circuit.is_open() if self._circuit is not None else False
         return RiskContext(

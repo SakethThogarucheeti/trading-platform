@@ -28,7 +28,10 @@ but aren't imported through `risk/api`: they're resolved by config-driven `gate_
 
 ## How RiskFilter works
 
-1. Builds a `RiskContext` (equity, today's PnL from cache, current position)
+1. Builds a `RiskContext` (equity, today's PnL from cache, current position — scoped to the
+   signal's own `algo_name` via `AbstractPositionStore.get_algo_position`, not the shared
+   `positions` row blended across every algo trading the same instrument; falls back to the
+   blended `get_position` only when a signal has no `algo_name`, see trading-platform#8)
 2. Runs each `RiskGate.check(signal, ctx)` in order — first rejection wins
 3. Calls `RiskSizer.size(signal, ctx)` to determine quantity
 4. If qty > 0: saves the signal to DB, fires a decision log, returns `ValidatedOrderEvent`
