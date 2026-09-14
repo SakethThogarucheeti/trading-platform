@@ -191,7 +191,8 @@ class OrderExecutor(AbstractRegistry):
         instrument_type: str,
         side: str,
         tick_log_id: int = 0,
-    ) -> None:
-        await self._fill_handler.handle(
+    ) -> bool:
+        """Returns True if this call actually applied the fill -- see FillHandler.handle."""
+        return await self._fill_handler.handle(
             kite_order_id, avg_price, filled_qty, symbol, instrument_type, side, tick_log_id
         )

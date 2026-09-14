@@ -34,7 +34,15 @@ class FillHandler:
         instrument_type: str,
         side: str,
         tick_log_id: int = 0,
-    ) -> None:
+    ) -> bool:
+        """
+        Returns True if this call actually applied the fill, False if it was
+        a no-op (unknown order, or already FILLED -- see
+        TradingStore.update_order_status). Callers must check this before
+        logging the fill as applied, since a webhook and OrderReconciler can
+        both call this for the same kite_order_id (trading-platform#31
+        review) and only one of them actually moves the position.
+        """
         fill = FillEvent(
             kite_order_id=kite_order_id,
             avg_price=avg_price,
@@ -48,13 +56,14 @@ class FillHandler:
             )
         except NotFoundError as exc:
             logger.warning("FillHandler: fill for unknown order %s — %s", kite_order_id, exc)
-            return
+            return False
         if not applied:
             logger.info(
                 "FillHandler: order %s already FILLED — skipping duplicate fill application",
                 kite_order_id,
             )
-            return
+            return False
         fill_side = Side(side)
         await self._accountant.apply_fill(fill, fill_side, symbol, instrument_type)
         logger.info("FillHandler: fill %s avg=%.2f qty=%d", kite_order_id, avg_price, filled_qty)
+        return True

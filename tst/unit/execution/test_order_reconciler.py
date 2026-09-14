@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from trading.app.database import build_session_factory, get_session, init_db
+from trading.broker.service.zerodha.models import ZerodhaOrder
 from trading.core.clock import SYSTEM_CLOCK
 from trading.core.schemas import OrderStatus, Side
 from trading.execution.service.executor import ExecConfig, OrderExecutor
@@ -290,6 +291,70 @@ async def test_reconcile_once_is_idempotent_across_repeated_polls(engine: AsyncE
         row = result.scalar_one()
     assert row.status == OrderStatus.FILLED.value
     assert row.kite_order_id == "KITE_REAL_7"
+
+
+async def test_reconcile_complete_does_not_double_apply_fill_already_applied_elsewhere(
+    engine: AsyncEngine,
+) -> None:
+    """
+    trading-platform#31 PR review round 3: OrderReconciler's COMPLETE branch
+    must not log "filled" as if it had applied the fill when
+    OrderExecutor.handle_fill's underlying CAS guard (FillHandler ->
+    update_order_status) actually no-op'd because a postback webhook (or a
+    redelivery) already applied the same fill first -- e.g. in the gap
+    between get_unresolved_tagged_orders() finding this row and
+    _reconcile_one() actually running. Simulated directly via
+    _reconcile_one() since real concurrency isn't reproducible in a unit
+    test; the row is pre-set to FILLED to stand in for "a webhook won the
+    race already".
+    """
+    async with get_session(engine) as s:
+        order = await _insert_order(
+            s, status=OrderStatus.FILLED, kite_order_id="KITE_REAL_8", client_tag="tag8"
+        )
+        order_id = order.id
+        signal_id = order.signal_id
+
+    sf = build_session_factory(engine)
+    store = TradingStore(sf)
+    cacher_factory = CacherFactory(ValueCache(), SYSTEM_CLOCK)
+    accountant = PositionAccountant(PositionStore(sf), store, cacher_factory)
+    fill_handler = FillHandler(store, accountant)
+    executor = OrderExecutor(
+        config=ExecConfig(),
+        broker=MagicMock(),
+        session_factory=sf,
+        trading=store,
+        fill_handler=fill_handler,
+    )
+    reconciler = OrderReconciler(store, MagicMock(), executor)
+
+    async with get_session(engine) as s:
+        from sqlalchemy import select
+
+        signal = (await s.execute(select(Signal).where(Signal.id == signal_id))).scalar_one()
+
+    kite_order: ZerodhaOrder = {
+        "order_id": "KITE_REAL_8",
+        "tag": "tag8",
+        "status": "COMPLETE",
+        "average_price": 1500.0,
+        "filled_quantity": 10,
+    }
+    # Exercises the private race seam directly -- real concurrency (the
+    # actual trigger for this race) isn't reproducible against SQLite in a
+    # unit test, per review round 2's own finding.
+    await reconciler._reconcile_one(order_id, kite_order, signal)  # pyright: ignore[reportPrivateUsage]
+
+    from sqlalchemy import select
+
+    async with get_session(engine) as s:
+        result = await s.execute(select(Order).where(Order.id == order_id))
+        row = result.scalar_one()
+    # Still FILLED with the original avg_price -- the reconciler's own
+    # handle_fill call must have been a no-op, not a second fill application.
+    assert row.status == OrderStatus.FILLED.value
+    assert row.avg_price == Decimal("0")
 
 
 async def test_reconcile_once_ignores_kite_orders_with_no_tag(engine: AsyncEngine) -> None:

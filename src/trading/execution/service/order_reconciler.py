@@ -69,7 +69,7 @@ class OrderReconciler:
 
         status = kite_order.get("status", "")
         if status == "COMPLETE":
-            await self._executor.handle_fill(
+            applied = await self._executor.handle_fill(
                 kite_order_id=real_kite_order_id,
                 avg_price=float(kite_order.get("average_price", 0.0)),
                 filled_qty=int(kite_order.get("filled_quantity", 0)),
@@ -77,10 +77,18 @@ class OrderReconciler:
                 instrument_type=signal.instrument_type,
                 side=signal.side,
             )
-            logger.info(
-                "OrderReconciler: matched order %s (tag=%s) → COMPLETE, filled",
-                real_kite_order_id, kite_order.get("tag"),
-            )
+            if applied:
+                logger.info(
+                    "OrderReconciler: matched order %s (tag=%s) → COMPLETE, filled",
+                    real_kite_order_id, kite_order.get("tag"),
+                )
+            else:
+                logger.info(
+                    "OrderReconciler: order %s (tag=%s) → COMPLETE at broker, but already "
+                    "FILLED (fill applied elsewhere, e.g. postback webhook) -- not "
+                    "double-applying",
+                    real_kite_order_id, kite_order.get("tag"),
+                )
         elif status in _TERMINAL_REJECT_STATUSES:
             new_status = (
                 OrderStatus.REJECTED if status == "REJECTED" else OrderStatus.CANCELLED
