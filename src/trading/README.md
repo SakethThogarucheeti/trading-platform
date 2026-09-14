@@ -11,7 +11,7 @@ trading/
 ├── candles/        Tick → OHLCV bar aggregation and historical data
 ├── config/         Settings (env vars) and strategy config (JSON)
 ├── core/           Shared primitives — clock, lifecycle, messaging, models, schemas
-├── di/             Global dependency_injector containers (wires all modules together)
+├── di/             Global builder functions (wires all modules together)
 ├── execution/      Order placement, fill handling, position accounting
 ├── monitoring/     Heartbeat monitor and APScheduler wrapper
 ├── reports/        PnL and trade report generation
@@ -42,7 +42,7 @@ Other modules import **only** from `trading.<module>.api`. The `service/` and `s
 
 | File | Role |
 |------|------|
-| `di/containers/app.py` | `AppContainer` — composes `InfrastructureContainer`/`BrokerContainer`/`ComponentContainer` via `dependency_injector` |
+| `di/containers/app.py` | `build_ingestor_app()` — calls `build_infra()`/`build_broker()`/`build_components()` in order, yields an `IngestorApp` |
 | `app/pipeline.py`  | `TickPipeline` and `AlgoPipeline` — connects the registry chain |
 | `app/database.py`  | Engine/session factory construction, `init_db` |
 | `app/tasks.py`     | `fire()` — fire-and-forget background coroutine helper |

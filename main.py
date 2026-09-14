@@ -3,14 +3,14 @@ Trading platform entry point.
 
 Lifecycle
 ---------
-1. Build the DI container (connects DB engine).
+1. Build the app (infra, broker, components -- connects DB engine).
 2. Run Alembic migrations to bring the schema up to date.
-3. Resolve the Runtime and Scheduler from the container.
+3. Read the Runtime and Scheduler off the built components.
 4. Start the APScheduler (fires Runtime.start at 09:15 IST, Runtime.stop at 15:30 IST).
 5. If we are already inside market hours on startup, fire Runtime.start immediately.
 6. Sleep forever — the scheduler drives everything from here.
 
-The process exits cleanly on SIGTERM / KeyboardInterrupt; the DI container
+The process exits cleanly on SIGTERM / KeyboardInterrupt; build_ingestor_app
 disposes of all async resources (engine) on context-manager exit.
 """
 
@@ -30,7 +30,7 @@ from anyio import sleep_forever
 
 from trading.api.server import ApiServer
 from trading.core.lifecycle.runtime import AbstractRuntime
-from trading.di.containers.app import build_container
+from trading.di.containers.app import IngestorApp, build_ingestor_app
 from trading.monitoring.service.scheduler import Scheduler
 
 if TYPE_CHECKING:
@@ -188,8 +188,8 @@ def _is_market_hours() -> bool:
     return _MARKET_OPEN <= t < _MARKET_CLOSE
 
 
-async def _load_kite_token(container: object, settings: Settings) -> None:
-    """Load the Zerodha access token from the DB onto this container's KiteClient.
+async def _load_kite_token(app: IngestorApp, settings: Settings) -> None:
+    """Load the Zerodha access token from the DB onto this app's KiteClient.
 
     Every process that talks to Kite (ingestor, and each worker — workers hit
     the historical-candles REST API directly for warmup) needs this; it isn't
@@ -205,7 +205,7 @@ async def _load_kite_token(container: object, settings: Settings) -> None:
     _token = await _trading.get_broker_token("zerodha", settings.token_secret_key)
     await _engine.dispose()
 
-    kite_client: KiteClient = container.broker.kite_client()  # type: ignore[attr-defined]
+    kite_client: KiteClient = app.broker.kite_client
     if _token:
         kite_client.set_access_token(_token)
         logger.info("Loaded Zerodha token from DB")
@@ -223,12 +223,12 @@ async def _main() -> None:
     _run_migrations()
     await _sync_instruments(settings)
 
-    async with build_container() as container:
-        await _load_kite_token(container, settings)
+    async with build_ingestor_app(settings) as app:
+        await _load_kite_token(app, settings)
 
-        runtime: AbstractRuntime = await container.components.runtime()
-        scheduler: Scheduler = await container.components.scheduler()
-        dashboard: ApiServer | None = await container.components.dashboard()
+        runtime: AbstractRuntime = app.components.runtime
+        scheduler: Scheduler = app.components.scheduler
+        dashboard: ApiServer | None = app.components.dashboard
 
         scheduler.start()
         logger.info("Scheduler started.")

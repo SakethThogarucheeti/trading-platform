@@ -37,7 +37,6 @@ dependencies = [
     "trading-strategy-sdk",
     # Risk-calculation toolkit (gates, sizer, policy protocols)
     "trading-risk-sdk",
-    "dependency-injector>=4.49.1",
 ]
 
 [dependency-groups]

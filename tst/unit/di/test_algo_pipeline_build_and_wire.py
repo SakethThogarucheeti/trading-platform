@@ -1,7 +1,7 @@
 """Tests for di/providers/algo_pipeline.py — AlgoPipelineFactory.build_and_wire.
 
 build_and_wire() is the build_pipeline -> seed_state -> add_algo_registry
-sequence extracted out of ComponentContainer.build_runtime's per-algo loop
+sequence extracted out of components.py's _RuntimeAssembler.build_runtime's per-algo loop
 (previously duplicated inline, see trading-platform#13). build_runtime has
 no test coverage of its own (it requires a fully wired DB/broker runtime to
 exercise), so this covers the actual risk surface of the extraction

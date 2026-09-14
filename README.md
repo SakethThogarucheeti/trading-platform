@@ -2,7 +2,7 @@
 
 Event-driven intraday trading engine for Indian equity markets, built on Zerodha/Kite. Orchestration layer only — pipeline, broker adapters, and risk-filter execution; strategy and risk-filter content live in [trading-strategy-sdk](https://github.com/SakethThogarucheeti/trading-strategy-sdk) and [trading-risk-sdk](https://github.com/SakethThogarucheeti/trading-risk-sdk). Part of the [algo-trader](https://github.com/SakethThogarucheeti/algo-trader) system.
 
-**Architecture:** Direct in-process pipeline · PostgreSQL persistence · APScheduler market-hours automation · dependency-injector DI · async-first (anyio)
+**Architecture:** Direct in-process pipeline · PostgreSQL persistence · APScheduler market-hours automation · plain-function DI · async-first (anyio)
 
 ---
 
@@ -365,13 +365,15 @@ Backtesting/research (`CandlePlayer`, `SlippageFillSimulator`) lives outside thi
 
 ### Dependency Injection
 
-The system uses [`dependency_injector`](https://github.com/ets-labs/python-dependency-injector) for DI. `AppContainer` (`di/containers/app.py`) composes three declarative containers:
+Dependencies are wired via plain builder functions returning plain dataclasses (no DI framework
+— see `di/README.md` for the history). `build_ingestor_app()` (`di/containers/app.py`) calls three
+builders in order:
 
-- **`InfrastructureContainer`** — process-lifetime singletons: `Settings`, `AsyncEngine`/session factory, `PriceStore`, `ValueCache`, and the per-domain storage classes (`CandleDataStore`, `InstrumentStore`, `TradingStore`, `PositionStore`, `AuditStore`, `HeartbeatStore`, `ConfigStore`, `ChartStore`) — there's no single generic `Repository`.
-- **`BrokerContainer`** — `ZerodhaBroker` (or `PaperBroker`), `ZerodhaStream`, `KiteClient`.
-- **`ComponentContainer`** — one `SignalGenerator` + `RiskFilter` + `OrderExecutor` per algo config (built by `AlgoPipelineFactory` in `di/providers/algo_pipeline.py`, wired by `_RuntimeAssembler.build_runtime()`), plus shared `TickIngestor`, `CandleAggregator`, `HeartbeatMonitor`, `Runtime`, `Scheduler`, and (if enabled) the dashboard `ApiServer`.
+- **`build_infra()`** → `Infra` — process-lifetime singletons: `Settings`, `AsyncEngine`/session factory, `PriceStore`, `ValueCache`, and the per-domain storage classes (`CandleDataStore`, `InstrumentStore`, `TradingStore`, `PositionStore`, `AuditStore`, `HeartbeatStore`, `ConfigStore`, `ChartStore`) — there's no single generic `Repository`.
+- **`build_broker()`** → `BrokerDeps` — `ZerodhaBroker` (or `PaperBroker`), `ZerodhaStream`, `KiteClient`.
+- **`build_components()`** → `Components` — one `SignalGenerator` + `RiskFilter` + `OrderExecutor` per algo config (built by `AlgoPipelineFactory` in `di/providers/algo_pipeline.py`, wired by `_RuntimeAssembler.build_runtime()`), plus shared `TickIngestor`, `CandleAggregator`, `HeartbeatMonitor`, `Runtime`, `Scheduler`, and (if enabled) the dashboard `ApiServer`.
 
-Every component depends only on abstract interfaces (`AbstractPriceStore`, `AbstractRuntime`, `AbstractRegistry`). The concrete implementations are only named at the composition root inside the containers.
+Every component depends only on abstract interfaces (`AbstractPriceStore`, `AbstractRuntime`, `AbstractRegistry`). The concrete implementations are only named at the composition root inside these builder functions.
 
 ---
 
@@ -655,7 +657,7 @@ trading-platform/
 │   │   └── lifecycle/
 │   │       ├── component.py             # Component ABC (CREATED→RUNNING→STOPPED)
 │   │       └── runtime.py               # Runtime — ordered anyio TaskGroup startup
-│   ├── di/                              # the ONE global DI layer (dependency_injector) — see Dependency Injection above
+│   ├── di/                              # the ONE global DI layer (plain builder functions) — see Dependency Injection above
 │   │   ├── containers/                  # app.py, infra.py, broker.py, components.py
 │   │   └── providers/                   # algo_pipeline.py (AlgoPipelineFactory), indicators.py
 │   ├── tick_ingest/                     # WebSocket tick → validated TickEvent

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from dependency_injector import containers, providers
 from quantindicators.polars_store import PolarsStore
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -25,6 +25,8 @@ from trading.core.clock import Clock
 from trading.core.lifecycle.runtime import AbstractRuntime, Runtime
 from trading.core.messaging import AbstractCircuitBreaker
 from trading.core.schemas import InstrumentType
+from trading.di.containers.broker import BrokerDeps
+from trading.di.containers.infra import Infra
 from trading.di.providers.algo_pipeline import AlgoPipelineFactory, SharedAlgoDeps
 from trading.execution.api import OrderExecutor
 from trading.execution.storage.store import PositionStore, TradingStore
@@ -40,6 +42,9 @@ from trading.tick_ingest.api import (
     TickIngestor,
 )
 from trading.tick_ingest.storage.store import AuditStore
+
+if TYPE_CHECKING:
+    from trading.api.server import ApiServer
 
 logger = logging.getLogger(__name__)
 
@@ -261,61 +266,15 @@ class _RuntimeAssembler:
         return Runtime([ingestor, candle_aggregator, deps.heartbeat_monitor])
 
 
-def _runtime_assembler() -> _RuntimeAssembler:
-    return _RuntimeAssembler()
-
-
-async def _runtime(
-    assembler: _RuntimeAssembler,
-    tick_registry: TickIngestor,
-    candle_registry: CandleAggregator,
-    historical_data_service: HistoricalDataService,
-    heartbeat_monitor: HeartbeatMonitor,
-    stream: BrokerStream,
-    broker: Broker,
-    trading: TradingStore,
-    audit: AuditStore,
-    chart: ChartStore,
-    config_store: ConfigStore,
-    price_store: AbstractPriceStore,
-    settings: Settings,
-    sf: async_sessionmaker[AsyncSession],
-    circuit: AbstractCircuitBreaker,
-    cacher_factory: CacherFactory,
-) -> AbstractRuntime:
-    # dependency_injector's provider mechanism requires each dependency wired
-    # as its own named provider here -- see RuntimeDeps' docstring. Bundling
-    # happens on this side of the framework boundary, not the container's.
-    deps = RuntimeDeps(
-        tick_registry=tick_registry,
-        candle_registry=candle_registry,
-        historical_data_service=historical_data_service,
-        heartbeat_monitor=heartbeat_monitor,
-        stream=stream,
-        broker=broker,
-        trading=trading,
-        audit=audit,
-        chart=chart,
-        config_store=config_store,
-        price_store=price_store,
-        settings=settings,
-        sf=sf,
-        circuit=circuit,
-        cacher_factory=cacher_factory,
-    )
-    return await assembler.build_runtime(deps)
-
-
 def _dashboard(
     assembler: _RuntimeAssembler,
-    runtime: AbstractRuntime,  # noqa: ARG001 -- forces runtime (which sets assembler.kite_ingestor) to resolve first
     sf: async_sessionmaker[AsyncSession],
     settings: Settings,
     client: KiteClient,
     cacher_factory: CacherFactory,
     historical_data_service: HistoricalDataService,
     clock: Clock,
-) -> object | None:
+) -> ApiServer | None:
     if not settings.dashboard_enabled:
         return None
     from trading.api.server import ApiServer
@@ -368,82 +327,100 @@ def _scheduler(
     )
 
 
-class ComponentContainer(containers.DeclarativeContainer):
-    settings = providers.Dependency(instance_of=Settings)
-    clock = providers.Dependency(instance_of=Clock)
-    stream = providers.Dependency(instance_of=BrokerStream)
-    broker = providers.Dependency(instance_of=Broker)
-    client = providers.Dependency(instance_of=KiteClient)
-    sf = providers.Dependency()  # async_sessionmaker[AsyncSession]
-    candle_data_store = providers.Dependency(instance_of=CandleDataStore)
-    trading = providers.Dependency(instance_of=TradingStore)
-    audit = providers.Dependency(instance_of=AuditStore)
-    chart = providers.Dependency(instance_of=ChartStore)
-    config_store = providers.Dependency(instance_of=ConfigStore)
-    price_store = providers.Dependency(instance_of=AbstractPriceStore)
-    heartbeat_store = providers.Dependency(instance_of=HeartbeatStore)
-    position_store = providers.Dependency(instance_of=PositionStore)
-    cacher_factory = providers.Dependency(instance_of=CacherFactory)
+@dataclass
+class Components:
+    circuit_breaker: AbstractCircuitBreaker
+    tick_registry: TickIngestor
+    candle_registry: CandleAggregator
+    historical_data_service: HistoricalDataService
+    heartbeat_monitor: HeartbeatMonitor
+    runtime: AbstractRuntime
+    dashboard: ApiServer | None
+    scheduler: Scheduler
 
-    circuit_breaker = providers.Singleton(_circuit_breaker)
 
-    tick_registry = providers.Resource(
-        _tick_registry, stream=stream, audit=audit, sf=sf, settings=settings, circuit=circuit_breaker
+async def build_components(infra: Infra, broker: BrokerDeps) -> Components:
+    """
+    Build the per-process runtime components: the tick/candle registries, the
+    per-algo pipelines and CandleAggregatorComponent wiring (via
+    _RuntimeAssembler), the dashboard API server, and the scheduler.
+
+    Replaces the old ComponentContainer (trading-platform#3) -- each provider
+    function above is called directly in dependency order instead of through
+    a dependency_injector provider graph.
+    """
+    circuit_breaker = _circuit_breaker()
+
+    tick_registry = await _tick_registry(
+        stream=broker.broker_stream,
+        audit=infra.audit_store,
+        sf=infra.session_factory,
+        settings=infra.settings,
+        circuit=circuit_breaker,
     )
 
-    candle_registry = providers.Resource(
-        _candle_registry, candle=candle_data_store, audit=audit, sf=sf, settings=settings
+    candle_registry = await _candle_registry(
+        candle=infra.candle_data_store,
+        audit=infra.audit_store,
+        sf=infra.session_factory,
+        settings=infra.settings,
     )
 
-    historical_data_service = providers.Singleton(
-        _historical_data_service, broker=broker, candle=candle_data_store
+    historical_data_service = _historical_data_service(
+        broker=broker.broker, candle=infra.candle_data_store
     )
 
-    heartbeat_monitor = providers.Singleton(
-        _heartbeat_monitor, heartbeat=heartbeat_store, sf=sf, settings=settings
+    heartbeat_monitor = _heartbeat_monitor(
+        heartbeat=infra.heartbeat_store, sf=infra.session_factory, settings=infra.settings
     )
 
-    _runtime_assembler_provider = providers.Singleton(_runtime_assembler)
-
-    runtime = providers.Resource(
-        _runtime,
-        assembler=_runtime_assembler_provider,
+    assembler = _RuntimeAssembler()
+    runtime_deps = RuntimeDeps(
         tick_registry=tick_registry,
         candle_registry=candle_registry,
         historical_data_service=historical_data_service,
         heartbeat_monitor=heartbeat_monitor,
-        stream=stream,
-        broker=broker,
-        trading=trading,
-        audit=audit,
-        chart=chart,
-        config_store=config_store,
-        price_store=price_store,
-        settings=settings,
-        sf=sf,
+        stream=broker.broker_stream,
+        broker=broker.broker,
+        trading=infra.trading_store,
+        audit=infra.audit_store,
+        chart=infra.chart_store,
+        config_store=infra.config_store,
+        price_store=infra.price_store,
+        settings=infra.settings,
+        sf=infra.session_factory,
         circuit=circuit_breaker,
-        cacher_factory=cacher_factory,
+        cacher_factory=infra.cacher_factory,
     )
+    runtime = await assembler.build_runtime(runtime_deps)
 
-    dashboard = providers.Singleton(
-        _dashboard,
-        assembler=_runtime_assembler_provider,
-        runtime=runtime,
-        sf=sf,
-        settings=settings,
-        client=client,
-        cacher_factory=cacher_factory,
+    dashboard = _dashboard(
+        assembler=assembler,
+        sf=infra.session_factory,
+        settings=infra.settings,
+        client=broker.kite_client,
+        cacher_factory=infra.cacher_factory,
         historical_data_service=historical_data_service,
-        clock=clock,
+        clock=infra.clock,
     )
 
-    scheduler = providers.Singleton(
-        _scheduler,
-        settings=settings,
+    scheduler = _scheduler(
+        settings=infra.settings,
         runtime=runtime,
-        trading=trading,
-        position_store=position_store,
-        price_store=price_store,
-        cacher_factory=cacher_factory,
-        clock=clock,
+        trading=infra.trading_store,
+        position_store=infra.position_store,
+        price_store=infra.price_store,
+        cacher_factory=infra.cacher_factory,
+        clock=infra.clock,
+    )
+
+    return Components(
+        circuit_breaker=circuit_breaker,
+        tick_registry=tick_registry,
+        candle_registry=candle_registry,
+        historical_data_service=historical_data_service,
+        heartbeat_monitor=heartbeat_monitor,
+        runtime=runtime,
+        dashboard=dashboard,
+        scheduler=scheduler,
     )

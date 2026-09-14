@@ -22,7 +22,7 @@ broker/
     └── models.py         BrokerToken ORM model (encrypted credential storage)
 ```
 
-There is no `broker/di/` — live-vs-paper selection is wired in `trading.di.containers.broker.BrokerContainer` (see `di/README.md`), not a dedicated provider module in this package.
+There is no `broker/di/` — live-vs-paper selection is wired in `trading.di.containers.broker.build_broker()` (see `di/README.md`), not a dedicated provider module in this package.
 
 ## Key abstractions
 

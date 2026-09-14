@@ -2,68 +2,40 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
-from dependency_injector import containers, providers
-
-from trading.config.settings import get_settings
-from trading.di.containers.broker import BrokerContainer
-from trading.di.containers.components import ComponentContainer
-from trading.di.containers.infra import InfrastructureContainer
+from trading.config.settings import Settings, get_settings
+from trading.di.containers.broker import BrokerDeps, build_broker
+from trading.di.containers.components import Components, build_components
+from trading.di.containers.infra import Infra, build_infra
 
 
-class AppContainer(containers.DeclarativeContainer):
-    """
-    Top-level container for the ingestor process.
+@dataclass
+class IngestorApp:
+    """Top-level assembly for the ingestor process: infra, broker, and the
+    runtime components built from them."""
 
-    Composes InfrastructureContainer -> BrokerContainer -> ComponentContainer,
-    wiring each sub-container's declared Dependency providers to the providers
-    that satisfy them, mirroring the single make_async_container(...) call
-    Dishka used before this migration.
-    """
-
-    settings = providers.Singleton(get_settings)
-
-    infra = providers.Container(InfrastructureContainer, settings=settings)
-
-    broker = providers.Container(
-        BrokerContainer,
-        settings=infra.settings,
-        price_store=infra.price_store,
-    )
-
-    components = providers.Container(
-        ComponentContainer,
-        settings=infra.settings,
-        clock=infra.clock,
-        stream=broker.broker_stream,
-        broker=broker.broker,
-        client=broker.kite_client,
-        sf=infra.session_factory,
-        candle_data_store=infra.candle_data_store,
-        trading=infra.trading_store,
-        audit=infra.audit_store,
-        chart=infra.chart_store,
-        config_store=infra.config_store,
-        price_store=infra.price_store,
-        heartbeat_store=infra.heartbeat_store,
-        position_store=infra.position_store,
-        cacher_factory=infra.cacher_factory,
-    )
+    infra: Infra
+    broker: BrokerDeps
+    components: Components
 
 
 @asynccontextmanager
-async def build_container() -> AsyncIterator[AppContainer]:
+async def build_ingestor_app(settings: Settings | None = None) -> AsyncIterator[IngestorApp]:
     """
-    Build the DI container for the ingestor process.
+    Build the app for the ingestor process.
 
-    Tests override providers directly, e.g.::
-
-        async with build_container() as c:
-            c.infra.settings.override(providers.Object(test_settings))
+    Plain builder functions replaced the old dependency_injector container
+    hierarchy here (trading-platform#3) -- construction is eager, which
+    matches what the container actually did at runtime: main.py resolved
+    every provider unconditionally at boot, so nothing relied on the
+    framework's nominal lazy-singleton semantics.
     """
-    container = AppContainer()
-    await container.init_resources()
+    settings = settings or get_settings()
+    infra = await build_infra(settings)
     try:
-        yield container
+        broker = build_broker(infra.settings, infra.price_store)
+        components = await build_components(infra, broker)
+        yield IngestorApp(infra=infra, broker=broker, components=components)
     finally:
-        await container.shutdown_resources()
+        await infra.db_engine.dispose()
