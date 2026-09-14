@@ -210,6 +210,40 @@ class PositionStore:
                 Position, {"symbol": symbol, "instrument_type": instrument_type}
             )
 
+    async def get_algo_position(
+        self, symbol: str, instrument_type: str, algo_name: str
+    ) -> PositionState | None:
+        """
+        This algo's own exposure, replayed from its own FILLED orders/signals --
+        not the shared ``positions`` row, which is blended across every algo that
+        trades this (symbol, instrument_type) until that table's PK is widened
+        with ``algo_name`` (trading-platform#8). Reuses ``PositionLedger.apply_fill``
+        fill-by-fill so the sign/avg-price convention matches the real ``positions``
+        row exactly, just scoped to one algo.
+        """
+        async with self._sf() as session:
+            result = await session.execute(
+                select(Order, Signal)
+                .join(Signal, Order.signal_id == Signal.id)
+                .where(
+                    Order.status == OrderStatus.FILLED.value,
+                    Signal.symbol == symbol,
+                    Signal.instrument_type == instrument_type,
+                    Signal.algo_name == algo_name,
+                )
+                .order_by(Order.created_at.asc())
+            )
+            state: PositionState | None = None
+            for order, signal in result.all():
+                side = Side.BUY if signal.side == Side.BUY.value else Side.SELL
+                state = PositionLedger.apply_fill(
+                    current=state,
+                    fill_qty=order.qty,
+                    fill_price=order.avg_price,
+                    side=side,
+                )
+            return state
+
     async def update_position(
         self, fill: FillEvent, side: Side, symbol: str, instrument_type: str
     ) -> None:

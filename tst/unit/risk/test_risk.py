@@ -18,13 +18,16 @@ from trading.app.database import build_session_factory, init_db
 from trading.core.models import Position
 from trading.core.schemas import (
     InstrumentType,
+    OrderStatus,
     Side,
     SignalEvent,
     SignalType,
     ValidatedOrderEvent,
 )
+from trading.execution.storage.models import Order
 from trading.execution.storage.store import PositionStore, TradingStore
 from trading.risk.service.filter import RiskConfig, RiskFilter
+from trading.strategy.storage.models import Signal
 from trading.tick_ingest.service.ingestor import CircuitBreaker
 from trading.tick_ingest.storage.store import AuditStore
 
@@ -238,6 +241,7 @@ async def test_daily_loss_gate_disabled_always_passes(engine: AsyncEngine) -> No
 
 
 async def test_entry_with_existing_position_rejected(engine: AsyncEngine) -> None:
+    """No algo_name on the signal -> falls back to the blended `positions` row."""
     from trading.app.database import get_session
 
     async with get_session(engine) as s:
@@ -252,11 +256,12 @@ async def test_entry_with_existing_position_rejected(engine: AsyncEngine) -> Non
         )
 
     reg, factory = make_registry(engine)
-    result = await reg.handle(make_signal(signal_type=SignalType.ENTRY))
+    result = await reg.handle(make_signal(signal_type=SignalType.ENTRY, algo_name=None))
     assert result is None
 
 
 async def test_exit_with_existing_position_passes(engine: AsyncEngine) -> None:
+    """No algo_name on the signal -> falls back to the blended `positions` row."""
     from trading.app.database import get_session
 
     async with get_session(engine) as s:
@@ -271,7 +276,100 @@ async def test_exit_with_existing_position_passes(engine: AsyncEngine) -> None:
         )
 
     reg, factory = make_registry(engine)
-    result = await reg.handle(make_signal(signal_type=SignalType.EXIT, side=Side.SELL))
+    result = await reg.handle(
+        make_signal(signal_type=SignalType.EXIT, side=Side.SELL, algo_name=None)
+    )
+    assert result is not None
+
+
+# ---------------------------------------------------------------------------
+# Per-algo position scoping (trading-platform#8) -- a signal WITH an
+# algo_name is scoped to that algo's own FILLED orders/signals, not the
+# shared `positions` row blended across every algo trading this instrument.
+# ---------------------------------------------------------------------------
+
+
+async def _fill_order(
+    session, *, algo_name: str, symbol: str, side: Side, qty: int, avg_price: str
+) -> None:
+    """Insert a FILLED Signal+Order pair, mirroring what OrderExecutor persists on fill."""
+    signal_id = uuid4()
+    session.add(
+        Signal(
+            id=signal_id,
+            strategy_id="test",
+            algo_name=algo_name,
+            symbol=symbol,
+            instrument_type="EQUITY",
+            side=side.value,
+            signal_type=SignalType.ENTRY.value,
+            stop_distance=Decimal("10"),
+            created_at=NOW,
+        )
+    )
+    session.add(
+        Order(
+            id=uuid4(),
+            kite_order_id=f"KITE_{uuid4().hex[:8]}",
+            signal_id=signal_id,
+            status=OrderStatus.FILLED.value,
+            qty=qty,
+            avg_price=Decimal(avg_price),
+            created_at=NOW,
+        )
+    )
+
+
+async def test_entry_not_blocked_by_a_different_algos_position(engine: AsyncEngine) -> None:
+    """
+    Reproduces the trading-platform#8 bug: algo B's own first-ever entry on a
+    symbol must not be rejected just because algo A already holds a net
+    position on the same symbol -- each algo's exposure is scoped
+    independently now, not read from the shared `positions` row.
+    """
+    from trading.app.database import get_session
+
+    async with get_session(engine) as s:
+        await _fill_order(
+            s, algo_name="algo_a", symbol="INFY", side=Side.SELL, qty=34, avg_price="1131.83"
+        )
+
+    reg, factory = make_registry(engine)
+    result = await reg.handle(
+        make_signal(signal_type=SignalType.ENTRY, side=Side.BUY, algo_name="algo_b")
+    )
+    assert result is not None
+
+
+async def test_entry_rejected_when_same_algo_already_in_position(engine: AsyncEngine) -> None:
+    """The scoped protection still works for the algo that actually holds the position."""
+    from trading.app.database import get_session
+
+    async with get_session(engine) as s:
+        await _fill_order(
+            s, algo_name="algo_a", symbol="INFY", side=Side.BUY, qty=10, avg_price="1500"
+        )
+
+    reg, factory = make_registry(engine)
+    result = await reg.handle(
+        make_signal(signal_type=SignalType.ENTRY, side=Side.BUY, algo_name="algo_a")
+    )
+    assert result is None
+
+
+async def test_exit_scoped_to_algo_passes_regardless_of_other_algos(engine: AsyncEngine) -> None:
+    """EXIT signals never read position (see _build_context) -- unaffected by scoping."""
+    from trading.app.database import get_session
+
+    async with get_session(engine) as s:
+        await _fill_order(
+            s, algo_name="algo_a", symbol="INFY", side=Side.SELL, qty=34, avg_price="1131.83"
+        )
+
+    reg, factory = make_registry(engine)
+    result = await reg.handle(
+        make_signal(signal_type=SignalType.EXIT, side=Side.BUY, algo_name="algo_b")
+    )
     assert result is not None
 
 
