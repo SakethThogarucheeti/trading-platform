@@ -75,6 +75,7 @@ class SignalGenerator(AbstractRegistry):
         algos: dict[str, AlgoInstance] | None = None,
         store: PolarsStore | None = None,
         clock: Clock | None = None,
+        interval: str = "",
     ) -> None:
         self._config = config
         self._chart = chart
@@ -85,6 +86,15 @@ class SignalGenerator(AbstractRegistry):
         self._store: PolarsStore = store if store is not None else PolarsStore()
         self._indicator_store: AbstractCandleStore = self._store
         self._clock: Clock = clock or SystemClock()
+        # The one interval this algo trades -- candles for any other interval
+        # are dropped in _tick_bar_and_check_ready() before they ever reach
+        # tick_bar()/on_candle(), since neither the shared per-symbol indicator
+        # cache nor AlgoInstance.bars_seen/warmed_up is interval-aware (see
+        # trading-platform#36). "" (the default) disables filtering entirely --
+        # only production wiring (AlgoPipelineFactory.build_pipeline) sets a
+        # real interval; tests that don't care about interval filtering can
+        # construct a SignalGenerator without one.
+        self._interval = interval
 
         if not self._algos:
             logger.warning(
@@ -198,6 +208,16 @@ class SignalGenerator(AbstractRegistry):
                 "volume": candle.volume,
             },
         )
+
+        if self._interval and candle.interval != self._interval:
+            # This algo trades only self._interval -- a candle for any other
+            # interval must still be pushed into the shared store above (other
+            # code fetch()es other intervals from it directly, e.g. multi-
+            # timeframe indicators) but must not advance this algo's strategy:
+            # neither the per-symbol indicator cache nor AlgoInstance.bars_seen/
+            # warmed_up is interval-aware, so letting a second interval reach
+            # tick_bar()/on_candle() here would silently corrupt both (trading-platform#36).
+            return None
 
         if not instance.is_ready():
             logger.warning(

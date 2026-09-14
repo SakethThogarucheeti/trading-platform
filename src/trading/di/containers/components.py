@@ -232,7 +232,12 @@ class _RuntimeAssembler:
         ))
 
         for algo in algo_configs:
-            intervals = algo.candle_intervals or deps.settings.candle_intervals
+            # AlgoSettings.candle_intervals is validated to at most one entry
+            # (see trading.config.settings.AlgoSettings.candle_intervals_single_entry).
+            # Resolving "unset" to the first global interval, rather than the
+            # whole global list, is what makes every algo single-interval by
+            # construction -- see trading-platform#36.
+            intervals = algo.candle_intervals or [deps.settings.candle_intervals[0]]
             tick_pipeline = await factory.build_and_wire(
                 algo=algo,
                 intervals=intervals,

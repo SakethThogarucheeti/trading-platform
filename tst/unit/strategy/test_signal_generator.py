@@ -560,3 +560,98 @@ def test_warmup_pre_builds_ema_crossover_indicators(engine: AsyncEngine) -> None
     reg2.setup(warmup)
     # After setup() with a candle for INFY, indicators are pre-built
     assert "INFY" in reg2._algos["INFY"].strategy._inds  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# handle — interval filter (trading-platform#36)
+# ---------------------------------------------------------------------------
+
+
+def _make_registry_with_interval(engine: AsyncEngine, interval: str) -> SignalGenerator:
+    sf = build_session_factory(engine)
+    instrument_strategy_map = {"INFY": "ema_crossover"}
+    instrument_types = {"INFY": "EQUITY"}
+    config = AlgoRunConfig(
+        instrument_strategy_map=instrument_strategy_map,
+        instrument_types=instrument_types,
+        equity=100_000.0,
+        warmup_candles=5,
+        algo_name="test_algo",
+    )
+    algos = _build_algos(instrument_strategy_map, instrument_types)
+    reg = SignalGenerator(
+        config=config,
+        chart=ChartStore(sf),
+        config_store=ConfigStore(sf),
+        audit=AuditStore(sf),
+        factory=_make_factory(),
+        algos=algos,
+        store=PolarsStore(),
+        interval=interval,
+    )
+    reg.setup()
+    return reg
+
+
+async def test_handle_drops_candle_for_other_interval(engine: AsyncEngine) -> None:
+    reg = _make_registry_with_interval(engine, "5min")
+    result = await reg.handle(make_candle(interval="1min"))
+    assert result == []
+    assert reg._algos["INFY"].bars_seen == 0
+
+
+async def test_handle_processes_candle_for_matching_interval(engine: AsyncEngine) -> None:
+    reg = _make_registry_with_interval(engine, "5min")
+    await reg.handle(make_candle(interval="5min"))
+    assert reg._algos["INFY"].bars_seen == 1
+
+
+async def test_handle_mixed_intervals_only_advances_on_match(engine: AsyncEngine) -> None:
+    reg = _make_registry_with_interval(engine, "5min")
+    await reg.handle(make_candle(interval="1min"))
+    await reg.handle(make_candle(interval="5min"))
+    await reg.handle(make_candle(interval="1min"))
+    assert reg._algos["INFY"].bars_seen == 1
+
+
+async def test_handle_still_pushes_other_interval_candles_to_shared_store(
+    engine: AsyncEngine,
+) -> None:
+    """A dropped-interval candle must still reach the shared PolarsStore --
+    other code (e.g. multi-timeframe indicators) may fetch() it directly."""
+    sf = build_session_factory(engine)
+    instrument_strategy_map = {"INFY": "ema_crossover"}
+    instrument_types = {"INFY": "EQUITY"}
+    config = AlgoRunConfig(
+        instrument_strategy_map=instrument_strategy_map,
+        instrument_types=instrument_types,
+        equity=100_000.0,
+        warmup_candles=5,
+        algo_name="test_algo",
+    )
+    algos = _build_algos(instrument_strategy_map, instrument_types)
+    store = PolarsStore()
+    reg = SignalGenerator(
+        config=config,
+        chart=ChartStore(sf),
+        config_store=ConfigStore(sf),
+        audit=AuditStore(sf),
+        factory=_make_factory(),
+        algos=algos,
+        store=store,
+        interval="5min",
+    )
+    reg.setup()
+    await reg.handle(make_candle(interval="1min"))
+    rows = await store.fetch("INFY", "1min", limit=10)
+    assert len(rows) == 1
+
+
+async def test_handle_permissive_default_interval_processes_any_interval(
+    engine: AsyncEngine,
+) -> None:
+    """No interval= passed -> "" default -> no filtering, existing callers unaffected."""
+    reg = make_registry(engine)
+    await reg.handle(make_candle(interval="1min"))
+    await reg.handle(make_candle(interval="5min"))
+    assert reg._algos["INFY"].bars_seen == 2
