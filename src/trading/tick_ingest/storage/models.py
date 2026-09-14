@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, DateTime, String
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy import BigInteger, DateTime, Numeric, String, func
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
@@ -25,8 +25,8 @@ class TickLog(Base):
     instrument_token: Mapped[int] = mapped_column(index=True)
     symbol: Mapped[str] = mapped_column(String, index=True)
     instrument_type: Mapped[str] = mapped_column(String)
-    last_price: Mapped[Decimal] = mapped_column()
+    last_price: Mapped[Decimal] = mapped_column(Numeric(12, 4))
     volume: Mapped[int] = mapped_column(BigInteger)
     received_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), index=True
+        DateTime(timezone=True), server_default=func.now(), index=True
     )

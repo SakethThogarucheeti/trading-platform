@@ -77,6 +77,13 @@ class DecisionLog(Base):
     __tablename__ = "decision_logs"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    # NOTE: no ForeignKey("tick_logs.id") here even though core.models.DecisionLog has one and
+    # the live DB constraint exists (decision_logs_tick_log_id_fkey) -- `tick_logs` lives under
+    # tick_ingest.storage.models's own independent DeclarativeBase/metadata, and a string-based
+    # ForeignKey can only resolve against a table registered in *this* module's own metadata.
+    # Adding it raises NoReferencedTableError at mapper-configure time. Closing this for real
+    # needs the shared-registry work scoped to #35's Option 1, not this freeze-the-drift pass.
+    # See trading-platform#35.
     tick_log_id: Mapped[int] = mapped_column(index=True)
     step: Mapped[str] = mapped_column(String, index=True)
     algo_name: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
