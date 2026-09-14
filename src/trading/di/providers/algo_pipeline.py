@@ -188,8 +188,9 @@ class AlgoPipelineFactory:
         signal generator into the given candle-aggregator component.
 
         This is the build_pipeline -> seed_state -> add_algo_registry sequence
-        that ComponentContainer.build_runtime performs identically per algo in
-        its loop. The caller owns circuit/candle_registry/registry_target
+        that components.py's _RuntimeAssembler.build_runtime performs
+        identically per algo in its loop. The caller owns
+        circuit/candle_registry/registry_target
         wiring and registers the returned pipeline's `run` as an on_tick
         callback (KiteIngestor dispatches all registered callbacks
         concurrently, so each algo's pipeline runs independently).
