@@ -19,6 +19,7 @@ class Scheduler:
         on_eod: Any | None = None,
         on_sync: Any | None = None,
         on_position_reset: Any | None = None,
+        on_order_reconcile: Any | None = None,
     ) -> None:
         self._settings = settings
         self._on_market_open = on_market_open
@@ -26,6 +27,7 @@ class Scheduler:
         self._on_eod = on_eod
         self._on_sync = on_sync
         self._on_position_reset = on_position_reset
+        self._on_order_reconcile = on_order_reconcile
         self._scheduler: AsyncIOScheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
         self._register_jobs()
 
@@ -48,6 +50,13 @@ class Scheduler:
             self._scheduler.add_job(self._on_sync, trigger="cron", day_of_week="sun", hour=10, minute=0, id="instrument_sync")  # type: ignore
         if self._on_position_reset:
             self._scheduler.add_job(self._on_position_reset, trigger="cron", day_of_week="mon-fri", hour=15, minute=29, id="position_reset")  # type: ignore
+        if self._on_order_reconcile:
+            self._scheduler.add_job(  # type: ignore
+                self._on_order_reconcile,
+                trigger="interval",
+                minutes=self._settings.order_reconcile_interval_mins,
+                id="order_reconcile",
+            )
 
     def get_job_ids(self) -> list[str]:
         return [job.id for job in self._scheduler.get_jobs()]  # type: ignore

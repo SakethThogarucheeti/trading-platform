@@ -35,6 +35,7 @@ class Broker(ABC):
         limit_price: float | None = None,
         instrument_type: str = "EQUITY",
         tick_log_id: int = 0,
+        client_tag: str | None = None,
     ) -> str:
         """
         Place an order and return the broker-assigned order ID.
@@ -51,6 +52,11 @@ class Broker(ABC):
             MARKET, LIMIT, SL, or SL_M.
         limit_price:
             Required for LIMIT and SL orders; None for MARKET/SL_M.
+        client_tag:
+            Our own locally-generated id, echoed back by the broker on every
+            order/postback it returns for it (see ZerodhaBroker) -- lets us find
+            this order again by tag if we never captured the broker's real
+            order id (e.g. the placement call timed out).
 
         Returns
         -------

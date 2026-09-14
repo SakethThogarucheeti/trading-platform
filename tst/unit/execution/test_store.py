@@ -1,4 +1,9 @@
-"""Tests for execution/storage/store.py — PositionStore.get_algo_position (trading-platform#8)"""
+"""
+Tests for execution/storage/store.py:
+- PositionStore.get_algo_position (trading-platform#8)
+- TradingStore.get_unresolved_tagged_orders / reconcile_order_id /
+  mark_order_terminal (trading-platform#31)
+"""
 
 from __future__ import annotations
 
@@ -12,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from trading.app.database import build_session_factory, get_session, init_db
 from trading.core.schemas import OrderStatus, Side
 from trading.execution.storage.models import Order
-from trading.execution.storage.store import PositionStore
+from trading.execution.storage.store import NotFoundError, PositionStore, TradingStore
 from trading.strategy.storage.models import Signal
 
 NOW = datetime.now(UTC)
@@ -139,3 +144,163 @@ async def test_get_algo_position_ignores_unfilled_orders(engine: AsyncEngine) ->
     store = PositionStore(build_session_factory(engine))
     result = await store.get_algo_position("INFY", "EQUITY", "algo_a")
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# TradingStore: order tag+poll reconciliation (trading-platform#31)
+# ---------------------------------------------------------------------------
+
+
+async def _insert_order(
+    session,
+    *,
+    status: OrderStatus,
+    kite_order_id: str,
+    client_tag: str | None,
+) -> Order:
+    signal_id = uuid4()
+    session.add(
+        Signal(
+            id=signal_id,
+            strategy_id="test",
+            algo_name="algo_a",
+            symbol="INFY",
+            instrument_type="EQUITY",
+            side=Side.BUY.value,
+            signal_type="ENTRY",
+            stop_distance=Decimal("10"),
+            created_at=NOW,
+        )
+    )
+    order = Order(
+        id=uuid4(),
+        kite_order_id=kite_order_id,
+        signal_id=signal_id,
+        status=status.value,
+        qty=10,
+        avg_price=Decimal("0"),
+        created_at=NOW,
+        client_tag=client_tag,
+    )
+    session.add(order)
+    return order
+
+
+async def test_get_unresolved_tagged_orders_finds_pending_tagged(engine: AsyncEngine) -> None:
+    async with get_session(engine) as s:
+        await _insert_order(
+            s, status=OrderStatus.PENDING, kite_order_id="PENDING_1", client_tag="tag1"
+        )
+
+    store = TradingStore(build_session_factory(engine))
+    unresolved = await store.get_unresolved_tagged_orders()
+    assert len(unresolved) == 1
+    order, signal = unresolved[0]
+    assert order.client_tag == "tag1"
+    assert signal.symbol == "INFY"
+
+
+async def test_get_unresolved_tagged_orders_finds_failed_tagged(engine: AsyncEngine) -> None:
+    async with get_session(engine) as s:
+        order = await _insert_order(
+            s, status=OrderStatus.REJECTED, kite_order_id="FAILED_x", client_tag="tag2"
+        )
+        order.kite_order_id = f"FAILED_{order.id}"
+
+    store = TradingStore(build_session_factory(engine))
+    unresolved = await store.get_unresolved_tagged_orders()
+    assert len(unresolved) == 1
+    assert unresolved[0][0].client_tag == "tag2"
+
+
+async def test_get_unresolved_tagged_orders_ignores_untagged(engine: AsyncEngine) -> None:
+    async with get_session(engine) as s:
+        await _insert_order(
+            s, status=OrderStatus.PENDING, kite_order_id="PENDING_2", client_tag=None
+        )
+
+    store = TradingStore(build_session_factory(engine))
+    unresolved = await store.get_unresolved_tagged_orders()
+    assert unresolved == []
+
+
+async def test_get_unresolved_tagged_orders_ignores_placed_and_filled(engine: AsyncEngine) -> None:
+    async with get_session(engine) as s:
+        await _insert_order(s, status=OrderStatus.PLACED, kite_order_id="K1", client_tag="tag3")
+        await _insert_order(s, status=OrderStatus.FILLED, kite_order_id="K2", client_tag="tag4")
+
+    store = TradingStore(build_session_factory(engine))
+    unresolved = await store.get_unresolved_tagged_orders()
+    assert unresolved == []
+
+
+async def test_reconcile_order_id_updates_kite_order_id(engine: AsyncEngine) -> None:
+    async with get_session(engine) as s:
+        order = await _insert_order(
+            s, status=OrderStatus.PENDING, kite_order_id="PENDING_3", client_tag="tag5"
+        )
+        order_id = order.id
+
+    store = TradingStore(build_session_factory(engine))
+    await store.reconcile_order_id(order_id, "KITE_REAL_1")
+
+    async with get_session(engine) as s:
+        from sqlalchemy import select
+
+        result = await s.execute(select(Order).where(Order.id == order_id))
+        row = result.scalar_one()
+    assert row.kite_order_id == "KITE_REAL_1"
+
+
+async def test_reconcile_order_id_raises_for_missing_order(engine: AsyncEngine) -> None:
+    store = TradingStore(build_session_factory(engine))
+    with pytest.raises(NotFoundError):
+        await store.reconcile_order_id(uuid4(), "KITE_X")
+
+
+async def test_mark_order_terminal_updates_status(engine: AsyncEngine) -> None:
+    async with get_session(engine) as s:
+        order = await _insert_order(
+            s, status=OrderStatus.PENDING, kite_order_id="PENDING_4", client_tag="tag6"
+        )
+        order_id = order.id
+
+    store = TradingStore(build_session_factory(engine))
+    await store.mark_order_terminal(order_id, OrderStatus.CANCELLED)
+
+    async with get_session(engine) as s:
+        from sqlalchemy import select
+
+        result = await s.execute(select(Order).where(Order.id == order_id))
+        row = result.scalar_one()
+    assert row.status == OrderStatus.CANCELLED.value
+
+
+async def test_mark_order_terminal_raises_for_missing_order(engine: AsyncEngine) -> None:
+    store = TradingStore(build_session_factory(engine))
+    with pytest.raises(NotFoundError):
+        await store.mark_order_terminal(uuid4(), OrderStatus.REJECTED)
+
+
+async def test_mark_order_terminal_does_not_clobber_already_filled(engine: AsyncEngine) -> None:
+    """
+    trading-platform#31 PR review: if a fill (via the webhook or this same
+    reconciler's own COMPLETE branch) already landed, a second/racing poll
+    finding stale REJECTED/CANCELLED data at the broker must not revert an
+    already-FILLED order.
+    """
+    async with get_session(engine) as s:
+        order = await _insert_order(
+            s, status=OrderStatus.FILLED, kite_order_id="KITE_REAL_2", client_tag="tag7"
+        )
+        order_id = order.id
+
+    store = TradingStore(build_session_factory(engine))
+    await store.mark_order_terminal(order_id, OrderStatus.REJECTED)
+
+    async with get_session(engine) as s:
+        from sqlalchemy import select
+
+        result = await s.execute(select(Order).where(Order.id == order_id))
+        row = result.scalar_one()
+    assert row.status == OrderStatus.FILLED.value

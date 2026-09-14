@@ -61,6 +61,19 @@ def test_partial_callbacks_only_register_present_jobs() -> None:
     assert "instrument_sync" not in ids
 
 
+def test_order_reconcile_registered_on_interval_trigger() -> None:
+    async def noop() -> None:
+        pass
+
+    scheduler = make_scheduler(on_order_reconcile=noop)
+    ids = scheduler.get_job_ids()
+    assert "order_reconcile" in ids
+    job = scheduler._scheduler.get_job("order_reconcile")  # type: ignore[attr-defined]
+    assert job is not None
+    expected_secs = make_settings().order_reconcile_interval_mins * 60
+    assert job.trigger.interval.total_seconds() == expected_secs  # type: ignore[attr-defined]
+
+
 # ---------------------------------------------------------------------------
 # Start/stop lifecycle
 # ---------------------------------------------------------------------------

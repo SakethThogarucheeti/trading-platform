@@ -146,3 +146,51 @@ async def test_fill_passes_tick_log_id() -> None:
 
     fill_arg: FillEvent = mock_accountant.apply_fill.call_args[0][0]
     assert fill_arg.tick_log_id == 99
+
+
+async def test_fill_returns_true_when_applied() -> None:
+    """PR #86 review: callers (OrderExecutor.handle_fill, OrderReconciler) must be
+    able to tell a real fill application apart from a no-op."""
+    mock_trading = MagicMock(spec=AbstractTradingStore)
+    mock_trading.update_order_status = AsyncMock(return_value=True)
+    mock_accountant = MagicMock(spec=PositionAccountant)
+    mock_accountant.apply_fill = AsyncMock()
+
+    handler = FillHandler(trading=mock_trading, accountant=mock_accountant)
+    applied = await handler.handle(
+        kite_order_id="KITE_003",
+        avg_price=100.0,
+        filled_qty=5,
+        symbol="INFY",
+        instrument_type="EQUITY",
+        side="BUY",
+    )
+
+    assert applied is True
+
+
+async def test_fill_returns_false_and_skips_accountant_when_already_filled() -> None:
+    """
+    trading-platform#31 PR review round 1: a webhook and OrderReconciler can
+    both call FillHandler.handle for the same kite_order_id.
+    update_order_status returning False (already FILLED) must skip
+    apply_fill entirely and be visible to the caller so it doesn't log the
+    fill as newly applied.
+    """
+    mock_trading = MagicMock(spec=AbstractTradingStore)
+    mock_trading.update_order_status = AsyncMock(return_value=False)
+    mock_accountant = MagicMock(spec=PositionAccountant)
+    mock_accountant.apply_fill = AsyncMock()
+
+    handler = FillHandler(trading=mock_trading, accountant=mock_accountant)
+    applied = await handler.handle(
+        kite_order_id="KITE_004",
+        avg_price=100.0,
+        filled_qty=5,
+        symbol="INFY",
+        instrument_type="EQUITY",
+        side="BUY",
+    )
+
+    assert applied is False
+    mock_accountant.apply_fill.assert_not_called()

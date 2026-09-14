@@ -91,6 +91,12 @@ class Order(Base):
     qty: Mapped[int]
     avg_price: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
+    # Client-side tag we ask the broker to echo back on every order (Kite Connect's
+    # `tag` param, <=20 chars) -- lets OrderReconciler find *our* row again by tag
+    # even when a placement timed out and we never captured Zerodha's real
+    # order id (trading-platform#31). Nullable: only orders placed after this
+    # column existed have one.
+    client_tag: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
 
     signal: Mapped[Signal] = relationship("Signal", back_populates="orders")
 

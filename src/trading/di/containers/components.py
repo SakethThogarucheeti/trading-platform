@@ -29,6 +29,7 @@ from trading.di.containers.broker import BrokerDeps
 from trading.di.containers.infra import Infra
 from trading.di.providers.algo_pipeline import AlgoPipelineFactory, SharedAlgoDeps
 from trading.execution.api import OrderExecutor
+from trading.execution.service.order_reconciler import OrderReconciler
 from trading.execution.storage.store import PositionStore, TradingStore
 from trading.monitoring.service.heartbeat import HeartbeatMonitor
 from trading.monitoring.service.scheduler import Scheduler
@@ -306,8 +307,11 @@ def _scheduler(
     price_store: AbstractPriceStore,
     cacher_factory: CacherFactory,
     clock: Clock,
+    kite_client: KiteClient,
+    order_executor: OrderExecutor | None,
 ) -> Scheduler:
     on_position_reset = None
+    on_order_reconcile = None
     if settings.paper_trading:
         from trading.execution.service.eod_square_off import square_off_open_positions
         from trading.execution.service.position_accountant import PositionAccountant
@@ -318,12 +322,20 @@ def _scheduler(
             await square_off_open_positions(trading, accountant, price_store, clock)
 
         on_position_reset = eod_square_off
+    elif order_executor is not None:
+        # Only meaningful against Zerodha's real order book (trading-platform#31)
+        # -- paper orders never reach it, PaperBroker ignores client_tag.
+        # order_executor is None only when no algos are configured (no orders
+        # are ever placed either), in which case there's nothing to reconcile.
+        reconciler = OrderReconciler(trading, kite_client, order_executor)
+        on_order_reconcile = reconciler.reconcile_once
 
     return Scheduler(
         settings,
         on_market_open=runtime.start,
         on_market_close=runtime.stop,
         on_position_reset=on_position_reset,
+        on_order_reconcile=on_order_reconcile,
     )
 
 
@@ -412,6 +424,8 @@ async def build_components(infra: Infra, broker: BrokerDeps) -> Components:
         price_store=infra.price_store,
         cacher_factory=infra.cacher_factory,
         clock=infra.clock,
+        kite_client=broker.kite_client,
+        order_executor=assembler.order_executor,
     )
 
     return Components(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -50,8 +50,20 @@ class MockBroker(Broker):
 
         return pl.DataFrame()
 
-    async def place_order(self, symbol, side, qty, order_type, limit_price=None, instrument_type="EQUITY", tick_log_id=0) -> str:  # type: ignore[override]
-        self.place_order_calls.append(dict(symbol=symbol, side=side, qty=qty))
+    async def place_order(
+        self,
+        symbol: str,
+        side: Side,
+        qty: int,
+        order_type: OrderType,
+        limit_price: float | None = None,
+        instrument_type: str = "EQUITY",
+        tick_log_id: int = 0,
+        client_tag: str | None = None,
+    ) -> str:
+        self.place_order_calls.append(
+            dict(symbol=symbol, side=side, qty=qty, client_tag=client_tag)
+        )
         if self._raises:
             raise RuntimeError("broker error")
         return self._order_id
@@ -222,7 +234,17 @@ async def test_broker_error_marks_order_rejected(engine: AsyncEngine) -> None:
 
 async def test_broker_timeout_marks_order_rejected(engine: AsyncEngine) -> None:
     class _TimeoutBroker(MockBroker):
-        async def place_order(self, symbol, side, qty, order_type, limit_price=None, instrument_type="EQUITY", tick_log_id=0) -> str:  # type: ignore[override]
+        async def place_order(
+            self,
+            symbol: str,
+            side: Side,
+            qty: int,
+            order_type: OrderType,
+            limit_price: float | None = None,
+            instrument_type: str = "EQUITY",
+            tick_log_id: int = 0,
+            client_tag: str | None = None,
+        ) -> str:
             raise RuntimeError("ZerodhaBroker: place_order timed out after 10.0s")
 
     reg = make_registry(engine, _TimeoutBroker())
@@ -247,7 +269,17 @@ async def test_broker_timeout_logs_critical_ambiguity_warning(engine: AsyncEngin
     from unittest.mock import patch
 
     class _TimeoutBroker(MockBroker):
-        async def place_order(self, symbol, side, qty, order_type, limit_price=None, instrument_type="EQUITY", tick_log_id=0) -> str:  # type: ignore[override]
+        async def place_order(
+            self,
+            symbol: str,
+            side: Side,
+            qty: int,
+            order_type: OrderType,
+            limit_price: float | None = None,
+            instrument_type: str = "EQUITY",
+            tick_log_id: int = 0,
+            client_tag: str | None = None,
+        ) -> str:
             raise RuntimeError("ZerodhaBroker: place_order timed out after 10.0s")
 
     reg = make_registry(engine, _TimeoutBroker())
@@ -391,3 +423,66 @@ async def test_persist_order_status_retries_on_failure(engine: AsyncEngine) -> N
     assert "UNRECOVERABLE" in mock_crit.call_args[0][0]
     # tenacity retried 3 times → 3 failing session calls (calls 2, 3, 4)
     assert attempt_count == 3
+
+
+async def test_persist_order_status_does_not_clobber_reconciler_resolved_order(
+    engine: AsyncEngine,
+) -> None:
+    """
+    trading-platform#31 PR review: under the still-open anyio bug (#85),
+    Broker.place_order can keep running in the background past its own
+    timeout and return successfully well after OrderReconciler already
+    matched this order by client_tag and resolved it (fill or terminal
+    status). The late write from this original call must not clobber that
+    resolution.
+    """
+    sig_id = uuid4()
+    await _insert_signal(engine, sig_id)
+
+    order_id_holder: dict[str, UUID] = {}
+
+    class _RaceBroker(MockBroker):
+        async def place_order(
+            self,
+            symbol: str,
+            side: Side,
+            qty: int,
+            order_type: OrderType,
+            limit_price: float | None = None,
+            instrument_type: str = "EQUITY",
+            tick_log_id: int = 0,
+            client_tag: str | None = None,
+        ) -> str:
+            # Simulate OrderReconciler winning the race: it finds this
+            # PENDING row by client_tag, corrects kite_order_id, and applies
+            # a fill -- all while this "still in flight" call is unaware.
+            async with get_session(engine) as s:
+                from sqlalchemy import select
+
+                result = await s.execute(
+                    select(Order).where(Order.signal_id == sig_id)
+                )
+                row = result.scalars().one()
+                order_id_holder["id"] = row.id
+                row.kite_order_id = "KITE_REAL_RECONCILED"
+                row.status = OrderStatus.FILLED.value
+                row.avg_price = Decimal("101.5")
+            return await super().place_order(
+                symbol, side, qty, order_type, limit_price,
+                instrument_type, tick_log_id, client_tag,
+            )
+
+    reg = make_registry(engine, _RaceBroker())
+    await reg.handle(make_validated(signal_id=sig_id))
+
+    async with get_session(engine) as s:
+        from sqlalchemy import select
+
+        result = await s.execute(select(Order).where(Order.id == order_id_holder["id"]))
+        row = result.scalar_one()
+
+    # The reconciler's resolution must survive -- not overwritten back to
+    # PLACED/KITE_001 by this call's own late-returning place_order result.
+    assert row.status == OrderStatus.FILLED.value
+    assert row.kite_order_id == "KITE_REAL_RECONCILED"
+    assert float(row.avg_price) == 101.5
