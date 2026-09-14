@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from trading_strategy_sdk.factory import create_strategy
 
 from trading.app.database import build_session_factory, init_db
-from trading.core.clock import SYSTEM_CLOCK
+from trading.core.clock import SYSTEM_CLOCK, SimulatedClock
 from trading.core.schemas import CandleEvent, InstrumentType, SignalEvent
 from trading.storage.cache import CacherFactory, ValueCache
 from trading.strategy.service.generator import AlgoInstance, AlgoRunConfig, SignalGenerator
@@ -655,3 +655,176 @@ async def test_handle_permissive_default_interval_processes_any_interval(
     await reg.handle(make_candle(interval="1min"))
     await reg.handle(make_candle(interval="5min"))
     assert reg._algos["INFY"].bars_seen == 2
+
+
+# ---------------------------------------------------------------------------
+# restore_state (trading-platform#79)
+# ---------------------------------------------------------------------------
+
+RESTORE_NOW = datetime(2026, 9, 14, 10, 0, 0, tzinfo=UTC)
+
+
+def _cached_state(symbol: str, fast: float, slow: float) -> dict[str, object]:
+    return {
+        "prev_fast": {symbol: fast},
+        "prev_slow": {symbol: slow},
+        "last_fast": fast,
+        "last_slow": slow,
+        "last_atr": 1.0,
+        "last_close": 100.0,
+    }
+
+
+def _make_registry_for_restore(
+    engine: AsyncEngine, interval: str, factory: CacherFactory, clock: SimulatedClock
+) -> SignalGenerator:
+    sf = build_session_factory(engine)
+    instrument_strategy_map = {"INFY": "ema_crossover", "RELIANCE": "ema_crossover"}
+    instrument_types = {"INFY": "EQUITY", "RELIANCE": "EQUITY"}
+    config = AlgoRunConfig(
+        instrument_strategy_map=instrument_strategy_map,
+        instrument_types=instrument_types,
+        equity=100_000.0,
+        warmup_candles=5,
+        algo_name="test_algo",
+    )
+    algos = _build_algos(instrument_strategy_map, instrument_types)
+    reg = SignalGenerator(
+        config=config,
+        chart=ChartStore(sf),
+        config_store=ConfigStore(sf),
+        audit=AuditStore(sf),
+        factory=factory,
+        algos=algos,
+        store=PolarsStore(),
+        interval=interval,
+        clock=clock,
+    )
+    reg.setup()
+    return reg
+
+
+class TestRestoreState:
+    async def test_noop_when_interval_unset(self, engine: AsyncEngine) -> None:
+        """make_registry()'s default interval="" (permissive/test construction,
+        see SignalGenerator.__init__) means restore_state() must no-op --
+        the cache key schema requires a real interval."""
+        reg = make_registry(engine)
+        await reg._factory.rolling_state().save(
+            algo="ema_crossover",
+            symbol="INFY",
+            interval="5min",
+            tick_log_id=1,
+            data=_cached_state("INFY", 111.0, 222.0),
+            saved_at=RESTORE_NOW,
+        )
+
+        await reg.restore_state()
+
+        assert reg._algos["INFY"].strategy._prev_fast == {}  # type: ignore[union-attr]
+
+    async def test_restores_valid_same_day_cached_state(self, engine: AsyncEngine) -> None:
+        clock = SimulatedClock()
+        clock.advance(RESTORE_NOW)
+        factory = CacherFactory(ValueCache(), SYSTEM_CLOCK)
+        reg = _make_registry_for_restore(engine, "5min", factory, clock)
+        await factory.rolling_state().save(
+            algo="ema_crossover",
+            symbol="INFY",
+            interval="5min",
+            tick_log_id=42,
+            data=_cached_state("INFY", 111.0, 222.0),
+            saved_at=RESTORE_NOW,
+        )
+
+        await reg.restore_state()
+
+        strat = reg._algos["INFY"].strategy
+        assert strat._prev_fast == {"INFY": 111.0}  # type: ignore[union-attr]
+        assert strat._prev_slow == {"INFY": 222.0}  # type: ignore[union-attr]
+        assert strat._last_close == 100.0  # type: ignore[union-attr]
+        # RELIANCE had no cache entry -- left on its post-warmup default, untouched
+        assert reg._algos["RELIANCE"].strategy._prev_fast == {}  # type: ignore[union-attr]
+
+    async def test_stale_cross_day_cached_state_is_not_restored(
+        self, engine: AsyncEngine
+    ) -> None:
+        clock = SimulatedClock()
+        clock.advance(RESTORE_NOW)
+        factory = CacherFactory(ValueCache(), SYSTEM_CLOCK)
+        reg = _make_registry_for_restore(engine, "5min", factory, clock)
+        saved_at = RESTORE_NOW - dt.timedelta(days=1)
+        await factory.rolling_state().save(
+            algo="ema_crossover",
+            symbol="INFY",
+            interval="5min",
+            tick_log_id=1,
+            data=_cached_state("INFY", 111.0, 222.0),
+            saved_at=saved_at,
+        )
+
+        await reg.restore_state()
+
+        assert reg._algos["INFY"].strategy._prev_fast == {}  # type: ignore[union-attr]
+
+    async def test_missing_cache_entry_leaves_warmup_state(self, engine: AsyncEngine) -> None:
+        clock = SimulatedClock()
+        clock.advance(RESTORE_NOW)
+        factory = CacherFactory(ValueCache(), SYSTEM_CLOCK)
+        reg = _make_registry_for_restore(engine, "5min", factory, clock)
+
+        await reg.restore_state()
+
+        assert reg._algos["INFY"].strategy._prev_fast == {}  # type: ignore[union-attr]
+        assert reg._algos["RELIANCE"].strategy._prev_fast == {}  # type: ignore[union-attr]
+
+    async def test_symbols_filter_restricts_restoration(self, engine: AsyncEngine) -> None:
+        clock = SimulatedClock()
+        clock.advance(RESTORE_NOW)
+        factory = CacherFactory(ValueCache(), SYSTEM_CLOCK)
+        reg = _make_registry_for_restore(engine, "5min", factory, clock)
+        for symbol in ("INFY", "RELIANCE"):
+            await factory.rolling_state().save(
+                algo="ema_crossover",
+                symbol=symbol,
+                interval="5min",
+                tick_log_id=1,
+                data=_cached_state(symbol, 1.0, 2.0),
+                saved_at=RESTORE_NOW,
+            )
+
+        await reg.restore_state(symbols={"INFY"})
+
+        assert reg._algos["INFY"].strategy._prev_fast == {"INFY": 1.0}  # type: ignore[union-attr]
+        # Excluded by the symbols filter -- must stay on its post-warmup default,
+        # even though a valid cache entry exists for it too.
+        assert reg._algos["RELIANCE"].strategy._prev_fast == {}  # type: ignore[union-attr]
+
+    async def test_invalid_cached_state_shape_is_cleared_and_ignored(
+        self, engine: AsyncEngine
+    ) -> None:
+        """restore_from_state() returns False on a malformed state dict (e.g. missing
+        prev_fast) -- restore_state() must clear that cache entry rather than leave a
+        permanently-unrestorable row, and leave warmup state standing for this call."""
+        clock = SimulatedClock()
+        clock.advance(RESTORE_NOW)
+        factory = CacherFactory(ValueCache(), SYSTEM_CLOCK)
+        reg = _make_registry_for_restore(engine, "5min", factory, clock)
+        await factory.rolling_state().save(
+            algo="ema_crossover",
+            symbol="INFY",
+            interval="5min",
+            tick_log_id=1,
+            data={"garbage": True},
+            saved_at=RESTORE_NOW,
+        )
+
+        await reg.restore_state()
+
+        assert reg._algos["INFY"].strategy._prev_fast == {}  # type: ignore[union-attr]
+        assert (
+            await factory.rolling_state().load_latest(
+                "ema_crossover", "INFY", "5min", now=RESTORE_NOW
+            )
+            is None
+        )

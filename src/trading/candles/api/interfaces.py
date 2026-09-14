@@ -54,3 +54,11 @@ class AbstractCandleConsumer(Protocol):
     def rewarm(self, candles_by_symbol: dict[str, list[CandleEvent]]) -> None:
         """Re-seed only the symbols in `candles_by_symbol` still needing a re-warm."""
         ...
+
+    async def restore_state(self, symbols: set[str] | None = None) -> None:
+        """
+        Restore rolling strategy state from the durable cache for `symbols`
+        (or every configured symbol, if None), overriding the warmup seed
+        wherever a valid, same-day cache entry exists (trading-platform#79).
+        """
+        ...

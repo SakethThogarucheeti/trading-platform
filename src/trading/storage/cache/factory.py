@@ -3,6 +3,7 @@ from __future__ import annotations
 from trading.core.clock import Clock
 from trading.storage.cache.api import ApiResponseCacher
 from trading.storage.cache.backend import ValueCache
+from trading.storage.cache.base import KVCache
 from trading.storage.cache.rolling_state import RollingStateCacher
 
 
@@ -17,17 +18,32 @@ class CacherFactory:
     PnL is no longer cached here — it moved to a Postgres-backed running
     total (TradingStore.increment_pnl_aggregate/get_pnl_aggregate) so it's
     correct across concurrent worker processes; see execution/storage/store.py.
+
+    `rolling_state_cache`, when given, backs rolling_state() specifically
+    (trading-platform#79 -- a durable PostgresKVCache in production, so
+    strategy state survives a restart) while `cache` continues to back
+    api() as before. Defaults to `cache` itself when omitted, preserving
+    every existing single-cache call site (tests construct
+    `CacherFactory(ValueCache(), clock)` throughout) unchanged.
     """
 
-    def __init__(self, cache: ValueCache, clock: Clock) -> None:
+    def __init__(
+        self,
+        cache: ValueCache,
+        clock: Clock,
+        rolling_state_cache: KVCache | None = None,
+    ) -> None:
         self._cache = cache
         self._clock = clock
+        self._rolling_state_cache: KVCache = (
+            rolling_state_cache if rolling_state_cache is not None else cache
+        )
         self._rolling_state: RollingStateCacher | None = None
         self._api: ApiResponseCacher | None = None
 
     def rolling_state(self) -> RollingStateCacher:
         if self._rolling_state is None:
-            self._rolling_state = RollingStateCacher(self._cache)
+            self._rolling_state = RollingStateCacher(self._rolling_state_cache)
         return self._rolling_state
 
     def api(self) -> ApiResponseCacher:

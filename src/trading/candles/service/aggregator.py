@@ -213,6 +213,14 @@ class CandleAggregatorComponent(Component):
         all_candles = await self._fetch_warmup_candles()
         candles_by_symbol = self._group_by_symbol(all_candles)
         await self._replay_through_consumers(all_candles, candles_by_symbol)
+        # Runs after the full warmup replay above, so a valid restored entry
+        # (trading-platform#79) is what's left standing for a symbol, not
+        # overwritten by the historical-candle replay that just ran. No
+        # per-consumer symbol filter needed here -- unlike
+        # rewarm_after_login() below, nothing in this startup path could
+        # already be live-tick-derived state to protect.
+        for consumer in self._algo_callbacks:
+            await consumer.restore_state()
         logger.info("CandleAggregatorComponent: warm-up complete (%d candles)", len(all_candles))
 
     async def rewarm_after_login(self) -> None:
@@ -249,6 +257,19 @@ class CandleAggregatorComponent(Component):
 
         for consumer in self._algo_callbacks:
             consumer.rewarm(candles_by_symbol)
+            # trading-platform#79: restore, per-consumer, only the symbols
+            # THIS consumer still needs (its own symbols_needing_rewarm(),
+            # re-checked now rather than reusing `untouched` -- rewarm()
+            # doesn't change it, but recomputing is cheap and avoids relying
+            # on that invariant holding forever) intersected with what we
+            # actually fetched candles for. `untouched` itself is a
+            # cross-consumer union and must NOT be passed directly: a
+            # symbol pending for one consumer can already be live-tick-
+            # advanced for another, and restore_state() would clobber that
+            # consumer's real state if asked to restore it.
+            restore_targets = consumer.symbols_needing_rewarm() & set(candles_by_symbol)
+            if restore_targets:
+                await consumer.restore_state(symbols=restore_targets)
 
         logger.info(
             "CandleAggregatorComponent: post-login re-warm attempted for %d symbol(s): %s",

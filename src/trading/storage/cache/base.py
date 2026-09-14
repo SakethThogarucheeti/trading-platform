@@ -2,8 +2,20 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
+from typing import Any, Protocol
 
-from trading.storage.cache.backend import ValueCache
+
+class KVCache(Protocol):
+    """
+    Structural interface every cache backend must satisfy. ValueCache
+    (in-memory) and PostgresKVCache (durable, trading-platform#79) both
+    conform to this without inheriting from it -- BaseCacher only ever
+    calls these three methods.
+    """
+
+    async def get(self, key: str) -> Any | None: ...
+    async def set(self, key: str, value: Any, ttl: int | None = None) -> None: ...
+    async def delete(self, key: str) -> None: ...
 
 
 class BaseCacher[T](ABC):
@@ -22,7 +34,7 @@ class BaseCacher[T](ABC):
     The producer is called only on a cache miss; its result is cached and returned.
     """
 
-    def __init__(self, cache: ValueCache) -> None:
+    def __init__(self, cache: KVCache) -> None:
         self._cache = cache
 
     @abstractmethod

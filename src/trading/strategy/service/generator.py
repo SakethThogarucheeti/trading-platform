@@ -245,6 +245,7 @@ class SignalGenerator(AbstractRegistry):
                     interval=candle.interval,
                     tick_log_id=candle.tick_log_id,
                     data=rolling,
+                    saved_at=self._clock.now(),
                 )
             )
 
@@ -280,15 +281,48 @@ class SignalGenerator(AbstractRegistry):
         )
         return [signal_event]
 
-    async def restore_state(self) -> None:
+    async def restore_state(self, symbols: set[str] | None = None) -> None:
+        """
+        Restore rolling strategy state from the durable cache, overriding
+        the just-seeded warmup state wherever a valid, same-day cache entry
+        exists (trading-platform#79). Call after setup()'s warmup-candle
+        replay completes (or after rewarm(), for `symbols` it just re-warmed)
+        so the restored state is what's left standing, not the other way
+        around.
+
+        Keyed by self._interval -- this SignalGenerator's one configured
+        interval (trading-platform#36) -- not `instance.interval`: that
+        field is only populated by an AlgoInstance's first tick_bar() call,
+        which for a freshly re-warmed symbol hasn't necessarily happened by
+        the time this runs. A no-op (return) when self._interval is unset —
+        permissive/test construction, see __init__ -- since the cache key
+        schema requires a real interval.
+
+        `symbols`, when given, restricts restoration to that subset. The
+        post-login re-warm path (CandleAggregatorComponent.rewarm_after_login)
+        must pass exactly the set of symbols it just re-warmed for THIS
+        consumer (its own symbols_needing_rewarm(), not the cross-consumer
+        union callers compute candles for) -- otherwise a symbol already
+        live for this consumer but still pending for another could have its
+        real, live-tick-derived state clobbered by a restore. The initial
+        startup path (CandleAggregatorComponent._setup()) has no such
+        cross-consumer union and passes no filter, restoring every
+        configured symbol.
+        """
+        if not self._interval:
+            return
         state_cacher = self._factory.rolling_state()
-        for symbol, instance in self._algos.items():
-            if not instance.interval:
+        now = self._clock.now()
+        target_symbols = symbols if symbols is not None else set(self._algos)
+        for symbol in target_symbols:
+            instance = self._algos.get(symbol)
+            if instance is None:
                 continue
             result = await state_cacher.load_latest(
                 algo=instance.strategy.id,
                 symbol=symbol,
-                interval=instance.interval,
+                interval=self._interval,
+                now=now,
             )
             if result is None:
                 continue
@@ -308,7 +342,7 @@ class SignalGenerator(AbstractRegistry):
                     symbol,
                 )
                 await state_cacher.clear(
-                    algo=instance.strategy.id, symbol=symbol, interval=instance.interval
+                    algo=instance.strategy.id, symbol=symbol, interval=self._interval
                 )
 
     async def _upsert_state(self, instance: AlgoInstance) -> None:

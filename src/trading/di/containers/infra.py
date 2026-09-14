@@ -12,6 +12,7 @@ from trading.core.clock import Clock, SystemClock
 from trading.execution.storage.store import PositionStore, TradingStore
 from trading.monitoring.storage.store import HeartbeatStore
 from trading.storage.cache import CacherFactory, ValueCache
+from trading.storage.cache.postgres_backend import PostgresKVCache
 from trading.strategy.storage.store import ChartStore, ConfigStore
 from trading.tick_ingest.storage.store import AuditStore
 
@@ -67,5 +68,10 @@ async def build_infra(settings: Settings, engine: AsyncEngine | None = None) -> 
         chart_store=ChartStore(session_factory),
         price_store=PriceStore(slippage_pct=settings.paper_slippage_pct / 100),
         value_cache=value_cache,
-        cacher_factory=CacherFactory(value_cache, clock),
+        # rolling_state_cache is durable (Postgres-backed) so SignalGenerator's
+        # in-progress strategy state survives a process restart --
+        # trading-platform#79; api() stays on the in-memory value_cache.
+        cacher_factory=CacherFactory(
+            value_cache, clock, rolling_state_cache=PostgresKVCache(session_factory)
+        ),
     )

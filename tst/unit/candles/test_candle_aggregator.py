@@ -25,6 +25,11 @@ _INFY_SYMBOL = SymbolConfig(
     instrument_token=1,
     instrument_type=InstrumentType.EQUITY,
 )
+_RELIANCE_SYMBOL = SymbolConfig(
+    symbol="RELIANCE",
+    instrument_token=2,
+    instrument_type=InstrumentType.EQUITY,
+)
 
 
 def _stub_service(candles: list[CandleEvent] | None = None) -> HistoricalDataService:
@@ -62,11 +67,12 @@ def _make_component(
     service: HistoricalDataService,
     candle_registry: object | None = None,
     warmup_count: int = 5,
+    symbols: list[SymbolConfig] | None = None,
 ) -> CandleAggregatorComponent:
     return CandleAggregatorComponent(
         candle_aggregator=candle_registry or MagicMock(),
         historical_data_service=service,
-        symbols=[_INFY_SYMBOL],
+        symbols=symbols if symbols is not None else [_INFY_SYMBOL],
         intervals=["1min"],
         warmup_count=warmup_count,
     )
@@ -131,6 +137,7 @@ async def test_candle_aggregator_add_algo_registry_and_warmup_replay(
     mock_algo_reg = MagicMock()
     mock_algo_reg.setup = MagicMock()
     mock_algo_reg.handle = AsyncMock(return_value=[])
+    mock_algo_reg.restore_state = AsyncMock()
 
     agg = _make_component(_stub_service([candle]))
     agg.add_algo_registry(mock_algo_reg)
@@ -141,6 +148,7 @@ async def test_candle_aggregator_add_algo_registry_and_warmup_replay(
     called_candle = mock_algo_reg.handle.call_args[0][0]
     assert called_candle.symbol == "INFY"
     assert called_candle.close == pytest.approx(103.0)
+    mock_algo_reg.restore_state.assert_called_once_with()
 
 
 async def test_candle_aggregator_warmup_error_does_not_abort(
@@ -163,6 +171,7 @@ async def test_candle_aggregator_warmup_error_does_not_abort(
     mock_algo_reg = MagicMock()
     mock_algo_reg.setup = MagicMock()
     mock_algo_reg.handle = AsyncMock(side_effect=RuntimeError("boom"))
+    mock_algo_reg.restore_state = AsyncMock()
 
     agg = _make_component(_stub_service([candle]))
     agg.add_algo_registry(mock_algo_reg)
@@ -177,6 +186,7 @@ async def test_candle_aggregator_no_warmup_candles_no_replay(
     mock_algo_reg = MagicMock()
     mock_algo_reg.setup = MagicMock()
     mock_algo_reg.handle = AsyncMock(return_value=[])
+    mock_algo_reg.restore_state = AsyncMock()
 
     agg = _make_component(_stub_service([]))
     agg.add_algo_registry(mock_algo_reg)
@@ -184,6 +194,7 @@ async def test_candle_aggregator_no_warmup_candles_no_replay(
     await agg._setup()
 
     mock_algo_reg.handle.assert_not_called()
+    mock_algo_reg.restore_state.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +206,7 @@ def _make_consumer(needing_rewarm: set[str]) -> MagicMock:
     consumer = MagicMock()
     consumer.symbols_needing_rewarm = MagicMock(return_value=needing_rewarm)
     consumer.rewarm = MagicMock()
+    consumer.restore_state = AsyncMock()
     return consumer
 
 
@@ -235,6 +247,7 @@ async def test_rewarm_after_login_fetches_only_untouched_symbols(engine: AsyncEn
     (candles_by_symbol,) = consumer.rewarm.call_args[0]
     assert list(candles_by_symbol) == ["INFY"]
     assert candles_by_symbol["INFY"][0].close == pytest.approx(103.0)
+    consumer.restore_state.assert_called_once_with(symbols={"INFY"})
 
 
 async def test_rewarm_after_login_unions_untouched_symbols_across_consumers(
@@ -247,7 +260,45 @@ async def test_rewarm_after_login_unions_untouched_symbols_across_consumers(
 
     await agg.rewarm_after_login()
 
-    service.fetch.assert_called_once()  # type: ignore[attr-defined]
+
+async def test_rewarm_after_login_restore_state_scoped_per_consumer_not_shared_union(
+    engine: AsyncEngine,
+) -> None:
+    """trading-platform#79: restore_state() must be called with THIS consumer's own
+    symbols_needing_rewarm() intersected with fetched candles -- never the raw
+    cross-consumer `untouched` union. A symbol pending for one consumer (INFY here)
+    but already live for another (RELIANCE, bars_seen>0 for consumer_b) must not
+    have consumer_b's restore_state() invoked for it -- that would risk clobbering
+    real live-tick-derived state with a stale/irrelevant restore (the #40 class of
+    regression)."""
+    candle = CandleEvent(
+        symbol="INFY",
+        instrument_type=InstrumentType.EQUITY,
+        interval="1min",
+        open=100.0,
+        high=105.0,
+        low=99.0,
+        close=103.0,
+        volume=1000,
+        timestamp=datetime(2025, 1, 6, 9, 15, tzinfo=UTC),
+        tick_log_id=0,
+    )
+    # _fetch_warmup_candles tags each fetched row with the SymbolConfig it was
+    # requested for, not whatever's in the stubbed df -- one candle's worth of
+    # stubbed data is enough to get a non-empty result for both symbols below.
+    service = _stub_service([candle])
+    agg = _make_component(service, symbols=[_INFY_SYMBOL, _RELIANCE_SYMBOL])
+    # consumer_a still needs both symbols re-warmed.
+    consumer_a = _make_consumer({"INFY", "RELIANCE"})
+    # consumer_b only still needs INFY -- RELIANCE is already live for it.
+    consumer_b = _make_consumer({"INFY"})
+    agg.add_algo_registry(consumer_a)
+    agg.add_algo_registry(consumer_b)
+
+    await agg.rewarm_after_login()
+
+    consumer_a.restore_state.assert_called_once_with(symbols={"INFY", "RELIANCE"})
+    consumer_b.restore_state.assert_called_once_with(symbols={"INFY"})
 
 
 # ---------------------------------------------------------------------------

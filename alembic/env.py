@@ -17,6 +17,7 @@ from trading.core.models import Base as CoreBase  # transitional: audit_logs
 from trading.execution.storage.models import Base as ExecutionBase
 from trading.monitoring.storage.models import Base as MonitoringBase
 from trading.risk.storage.models import Base as RiskBase
+from trading.storage.cache.models import Base as CacheBase
 from trading.strategy.storage.models import Base as StrategyBase
 from trading.tick_ingest.storage.models import Base as TickIngestBase
 
@@ -37,6 +38,7 @@ target_metadata = [
     RiskBase.metadata,
     ExecutionBase.metadata,
     MonitoringBase.metadata,
+    CacheBase.metadata,
 ]
 
 
