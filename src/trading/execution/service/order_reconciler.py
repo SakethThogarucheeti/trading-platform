@@ -85,11 +85,18 @@ class OrderReconciler:
             new_status = (
                 OrderStatus.REJECTED if status == "REJECTED" else OrderStatus.CANCELLED
             )
-            await self._trading.mark_order_terminal(order_id, new_status)
-            logger.info(
-                "OrderReconciler: matched order %s (tag=%s) → %s",
-                real_kite_order_id, kite_order.get("tag"), status,
-            )
+            applied = await self._trading.mark_order_terminal(order_id, new_status)
+            if applied:
+                logger.info(
+                    "OrderReconciler: matched order %s (tag=%s) → %s",
+                    real_kite_order_id, kite_order.get("tag"), status,
+                )
+            else:
+                logger.info(
+                    "OrderReconciler: order %s (tag=%s) already FILLED -- ignoring "
+                    "stale broker %s, not clobbering",
+                    real_kite_order_id, kite_order.get("tag"), status,
+                )
         else:
             # Still open/pending at the broker -- kite_order_id is now corrected,
             # but no terminal outcome yet; leave status alone for the next poll

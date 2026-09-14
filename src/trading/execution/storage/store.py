@@ -116,16 +116,17 @@ class TradingStore:
                     raise NotFoundError(f"Order not found: {order_id!r}")
                 row.kite_order_id = kite_order_id
 
-    async def mark_order_terminal(self, order_id: UUID, status: OrderStatus) -> None:
+    async def mark_order_terminal(self, order_id: UUID, status: OrderStatus) -> bool:
         """
         Directly correct a row's status when the broker reports a terminal
         non-fill outcome (REJECTED/CANCELLED) for a tag-matched order --
         no fill to apply, so this skips FillHandler/PositionAccountant entirely.
 
-        No-op (logged by the caller via the return value) if the row is
-        already FILLED -- a fill (from the webhook or this same reconciler's
-        own COMPLETE branch) that lands first must not be clobbered back to
-        a terminal non-fill status by stale/racing broker order-book data.
+        Returns False (no-op) if the row is already FILLED -- a fill (from
+        the webhook or this same reconciler's own COMPLETE branch) that
+        lands first must not be clobbered back to a terminal non-fill status
+        by stale/racing broker order-book data. Callers must check the
+        return value before logging the requested status as applied.
         """
         async with self._sf() as session:
             async with session.begin():
@@ -133,8 +134,9 @@ class TradingStore:
                 if row is None:
                     raise NotFoundError(f"Order not found: {order_id!r}")
                 if row.status == OrderStatus.FILLED.value:
-                    return
+                    return False
                 row.status = status.value
+                return True
 
     async def get_daily_realized_pnl(self, for_date: date) -> float:
         start = datetime(for_date.year, for_date.month, for_date.day, tzinfo=UTC)

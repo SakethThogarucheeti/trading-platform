@@ -75,8 +75,12 @@ class OrderExecutor(AbstractRegistry):
 
         kite_order_id, final_status = await self._place_with_broker(event, order_id, client_tag)
 
-        await self._persist_order_status(order_id, kite_order_id, final_status)
-        logger.info("OrderExecutor: order %s status=%s", kite_order_id, final_status.value)
+        applied = await self._persist_order_status(order_id, kite_order_id, final_status)
+        if applied:
+            logger.info("OrderExecutor: order %s status=%s", kite_order_id, final_status.value)
+        # else: _persist_order_status already logged the actual (reconciler-resolved)
+        # outcome -- this placement's own kite_order_id/final_status lost the race and
+        # logging them here would contradict what's actually in the DB.
 
     async def _insert_pending_order(self, order: Order, signal_id: UUID) -> bool:
         """Insert the PENDING order row unless `signal_id` is a duplicate. Returns False (and logs) if it was dropped."""
@@ -128,7 +132,7 @@ class OrderExecutor(AbstractRegistry):
                 logger.error("OrderExecutor: broker.place_order failed — %s", exc)
             return f"FAILED_{order_id}", OrderStatus.REJECTED
 
-    async def _persist_order_status(self, order_id: UUID, kite_order_id: str, status: OrderStatus) -> None:
+    async def _persist_order_status(self, order_id: UUID, kite_order_id: str, status: OrderStatus) -> bool:
         """
         Writes the placement result, unless OrderReconciler already resolved
         this order first (trading-platform#31 review): the `Broker.place_order`
@@ -139,6 +143,10 @@ class OrderExecutor(AbstractRegistry):
         here; once the row has moved off PENDING, whichever resolution got
         there first (a real fill or a reconciler correction) wins and this
         late write becomes a no-op rather than clobbering it.
+
+        Returns False on that no-op path -- callers must check this before
+        logging `status`/`kite_order_id`, since those are this placement's
+        own (possibly stale) values, not what's actually persisted.
         """
 
         @retry(
@@ -147,12 +155,12 @@ class OrderExecutor(AbstractRegistry):
             retry=retry_if_exception_type(Exception),
             reraise=True,
         )
-        async def _attempt() -> None:
+        async def _attempt() -> bool:
             async with self._session_factory() as session:
                 async with session.begin():
                     row = await session.get(Order, order_id, with_for_update=True)
                     if row is None:
-                        return
+                        return False
                     if row.status != OrderStatus.PENDING.value:
                         logger.info(
                             "OrderExecutor: order %s already resolved to status=%s "
@@ -160,17 +168,19 @@ class OrderExecutor(AbstractRegistry):
                             "placement result status=%s",
                             order_id, row.status, status.value,
                         )
-                        return
+                        return False
                     row.kite_order_id = kite_order_id
                     row.status = status.value
+                    return True
 
         try:
-            await _attempt()
+            return await _attempt()
         except Exception as exc:
             logger.critical(
                 "UNRECOVERABLE: order placed (kite_order_id=%s) but DB update failed after 3 attempts — error=%s",
                 kite_order_id, exc,
             )
+            return False
 
     async def handle_fill(
         self,
