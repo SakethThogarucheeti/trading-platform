@@ -17,6 +17,13 @@ class Order(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
     kite_order_id: Mapped[str] = mapped_column(String, unique=True, index=True)
+    # NOTE: no ForeignKey("signals.id") here even though core.models.Order has one and the
+    # live DB constraint exists (orders_signal_id_fkey) -- `signals` lives under
+    # strategy.storage.models's own independent DeclarativeBase/metadata, and a string-based
+    # ForeignKey can only resolve against a table registered in *this* module's own metadata.
+    # Adding it raises NoReferencedTableError at mapper-configure time (confirmed via
+    # tst/unit/execution/test_executor.py). Closing this for real needs the shared-registry
+    # work scoped to #35's Option 1, not this freeze-the-drift pass. See trading-platform#35.
     signal_id: Mapped[UUID] = mapped_column(index=True)
     status: Mapped[str] = mapped_column(String)
     qty: Mapped[int]
