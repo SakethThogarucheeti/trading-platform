@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from trading.app.database import build_session_factory, get_session, init_db
 from trading.candles.storage.models import Instrument
+from trading.candles.storage.store import InstrumentStore
 from trading.core.models import Order, Signal
 from trading.core.schemas import (
     FillEvent,
@@ -21,11 +22,10 @@ from trading.core.schemas import (
     SignalEvent,
     SignalType,
 )
-from trading.tick_ingest.storage.store import AuditStore
-from trading.strategy.storage.store import ChartStore, ConfigStore
-from trading.monitoring.storage.store import HeartbeatStore
-from trading.candles.storage.store import InstrumentStore
 from trading.execution.storage.store import NotFoundError, PositionStore, TradingStore
+from trading.monitoring.storage.store import HeartbeatStore
+from trading.strategy.storage.store import ChartStore, ConfigStore
+from trading.tick_ingest.storage.store import AuditStore
 
 NOW = datetime.now(UTC)
 TODAY = NOW.date()
@@ -211,6 +211,57 @@ async def test_update_order_status_missing_raises(trading_store: TradingStore) -
         await trading_store.update_order_status("GHOST", OrderStatus.FILLED)
 
 
+async def test_update_order_status_returns_true_on_real_transition(
+    trading_store: TradingStore,
+) -> None:
+    sig_id = await _insert_signal(trading_store)
+    await trading_store.save_order(
+        Order(
+            id=uuid4(),
+            kite_order_id="K201",
+            signal_id=sig_id,
+            status=OrderStatus.PLACED.value,
+            qty=10,
+            avg_price=Decimal("0"),
+            created_at=NOW,
+        )
+    )
+    applied = await trading_store.update_order_status("K201", OrderStatus.FILLED, avg_price=150.0)
+    assert applied is True
+
+
+async def test_update_order_status_is_idempotent_once_filled(
+    trading_store: TradingStore,
+) -> None:
+    """
+    trading-platform#31 PR review: a fill for the same kite_order_id can now
+    arrive via two paths (the postback webhook and OrderReconciler both
+    resolving the same order) -- a second call must be a no-op, not a second
+    apply.
+    """
+    sig_id = await _insert_signal(trading_store)
+    await trading_store.save_order(
+        Order(
+            id=uuid4(),
+            kite_order_id="K202",
+            signal_id=sig_id,
+            status=OrderStatus.PLACED.value,
+            qty=10,
+            avg_price=Decimal("0"),
+            created_at=NOW,
+        )
+    )
+    first = await trading_store.update_order_status("K202", OrderStatus.FILLED, avg_price=150.0)
+    second = await trading_store.update_order_status("K202", OrderStatus.FILLED, avg_price=999.0)
+    assert first is True
+    assert second is False
+
+    order = await trading_store.get_order_by_kite_id("K202")
+    assert order is not None
+    # The second (duplicate) call's avg_price must not have overwritten the first.
+    assert float(order.avg_price) == 150.0
+
+
 # ---------------------------------------------------------------------------
 # Positions
 # ---------------------------------------------------------------------------
@@ -348,6 +399,7 @@ async def test_update_heartbeat_upserts(engine: AsyncEngine, heartbeat_store: He
     await heartbeat_store.update_heartbeat("candle_aggregator")  # second call, same module
     async with get_session(engine) as s:
         from sqlalchemy import func, select
+
         from trading.core.models import Heartbeat
         count = await s.execute(select(func.count()).where(Heartbeat.module == "candle_aggregator"))
     assert count.scalar() == 1  # only one row, not two
@@ -380,6 +432,7 @@ async def test_log_audit_appends(engine: AsyncEngine, audit_store: AuditStore) -
     await audit_store.log_audit("risk", "INFO", "signal rejected")
     async with get_session(engine) as s:
         from sqlalchemy import select
+
         from trading.core.models import AuditLog
         result = await s.execute(select(AuditLog))
         logs = result.scalars().all()

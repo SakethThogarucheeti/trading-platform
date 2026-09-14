@@ -55,17 +55,29 @@ class TradingStore:
 
     async def update_order_status(
         self, kite_order_id: str, status: OrderStatus, avg_price: float = 0
-    ) -> None:
+    ) -> bool:
+        """
+        Returns False (no-op) if the order is already FILLED -- guards against
+        the same fill being applied twice, e.g. a webhook postback and
+        OrderReconciler both resolving the same kite_order_id in the same poll
+        window (trading-platform#31 review). `with_for_update()` serializes
+        that race against a concurrent caller rather than just checking then
+        writing. Any other current status may still transition to FILLED,
+        including a reconciler-driven REJECTED-from-timeout correction.
+        """
         async with self._sf() as session:
             async with session.begin():
                 result = await session.execute(
-                    select(Order).where(Order.kite_order_id == kite_order_id)
+                    select(Order).where(Order.kite_order_id == kite_order_id).with_for_update()
                 )
                 order = result.scalar_one_or_none()
                 if order is None:
                     raise NotFoundError(f"Order not found: {kite_order_id!r}")
+                if order.status == OrderStatus.FILLED.value:
+                    return False
                 order.status = status.value
                 order.avg_price = Decimal(str(avg_price))
+                return True
 
     async def get_unresolved_tagged_orders(self) -> list[tuple[Order, Signal]]:
         """
@@ -99,7 +111,7 @@ class TradingStore:
         """Correct a row's kite_order_id once OrderReconciler matches it by client_tag."""
         async with self._sf() as session:
             async with session.begin():
-                row = await session.get(Order, order_id)
+                row = await session.get(Order, order_id, with_for_update=True)
                 if row is None:
                     raise NotFoundError(f"Order not found: {order_id!r}")
                 row.kite_order_id = kite_order_id
@@ -109,12 +121,19 @@ class TradingStore:
         Directly correct a row's status when the broker reports a terminal
         non-fill outcome (REJECTED/CANCELLED) for a tag-matched order --
         no fill to apply, so this skips FillHandler/PositionAccountant entirely.
+
+        No-op (logged by the caller via the return value) if the row is
+        already FILLED -- a fill (from the webhook or this same reconciler's
+        own COMPLETE branch) that lands first must not be clobbered back to
+        a terminal non-fill status by stale/racing broker order-book data.
         """
         async with self._sf() as session:
             async with session.begin():
-                row = await session.get(Order, order_id)
+                row = await session.get(Order, order_id, with_for_update=True)
                 if row is None:
                     raise NotFoundError(f"Order not found: {order_id!r}")
+                if row.status == OrderStatus.FILLED.value:
+                    return
                 row.status = status.value
 
     async def get_daily_realized_pnl(self, for_date: date) -> float:

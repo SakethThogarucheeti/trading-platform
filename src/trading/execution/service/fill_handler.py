@@ -43,9 +43,17 @@ class FillHandler:
             tick_log_id=tick_log_id,
         )
         try:
-            await self._trading.update_order_status(kite_order_id, OrderStatus.FILLED, avg_price)
+            applied = await self._trading.update_order_status(
+                kite_order_id, OrderStatus.FILLED, avg_price
+            )
         except NotFoundError as exc:
             logger.warning("FillHandler: fill for unknown order %s — %s", kite_order_id, exc)
+            return
+        if not applied:
+            logger.info(
+                "FillHandler: order %s already FILLED — skipping duplicate fill application",
+                kite_order_id,
+            )
             return
         fill_side = Side(side)
         await self._accountant.apply_fill(fill, fill_side, symbol, instrument_type)

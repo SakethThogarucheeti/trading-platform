@@ -129,6 +129,18 @@ class OrderExecutor(AbstractRegistry):
             return f"FAILED_{order_id}", OrderStatus.REJECTED
 
     async def _persist_order_status(self, order_id: UUID, kite_order_id: str, status: OrderStatus) -> None:
+        """
+        Writes the placement result, unless OrderReconciler already resolved
+        this order first (trading-platform#31 review): the `Broker.place_order`
+        call above can, under a still-open anyio bug (#85), keep running in
+        the background past its own timeout and return successfully well
+        after a poll already matched this order by `client_tag` and applied a
+        fill or a terminal status. Only PENDING -> anything is safe to write
+        here; once the row has moved off PENDING, whichever resolution got
+        there first (a real fill or a reconciler correction) wins and this
+        late write becomes a no-op rather than clobbering it.
+        """
+
         @retry(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=0.1, min=0.1, max=1.0),
@@ -138,10 +150,19 @@ class OrderExecutor(AbstractRegistry):
         async def _attempt() -> None:
             async with self._session_factory() as session:
                 async with session.begin():
-                    row = await session.get(Order, order_id)
-                    if row is not None:
-                        row.kite_order_id = kite_order_id
-                        row.status = status.value
+                    row = await session.get(Order, order_id, with_for_update=True)
+                    if row is None:
+                        return
+                    if row.status != OrderStatus.PENDING.value:
+                        logger.info(
+                            "OrderExecutor: order %s already resolved to status=%s "
+                            "(likely by OrderReconciler) — not overwriting with late "
+                            "placement result status=%s",
+                            order_id, row.status, status.value,
+                        )
+                        return
+                    row.kite_order_id = kite_order_id
+                    row.status = status.value
 
         try:
             await _attempt()

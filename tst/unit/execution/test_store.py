@@ -280,3 +280,27 @@ async def test_mark_order_terminal_raises_for_missing_order(engine: AsyncEngine)
     store = TradingStore(build_session_factory(engine))
     with pytest.raises(NotFoundError):
         await store.mark_order_terminal(uuid4(), OrderStatus.REJECTED)
+
+
+async def test_mark_order_terminal_does_not_clobber_already_filled(engine: AsyncEngine) -> None:
+    """
+    trading-platform#31 PR review: if a fill (via the webhook or this same
+    reconciler's own COMPLETE branch) already landed, a second/racing poll
+    finding stale REJECTED/CANCELLED data at the broker must not revert an
+    already-FILLED order.
+    """
+    async with get_session(engine) as s:
+        order = await _insert_order(
+            s, status=OrderStatus.FILLED, kite_order_id="KITE_REAL_2", client_tag="tag7"
+        )
+        order_id = order.id
+
+    store = TradingStore(build_session_factory(engine))
+    await store.mark_order_terminal(order_id, OrderStatus.REJECTED)
+
+    async with get_session(engine) as s:
+        from sqlalchemy import select
+
+        result = await s.execute(select(Order).where(Order.id == order_id))
+        row = result.scalar_one()
+    assert row.status == OrderStatus.FILLED.value

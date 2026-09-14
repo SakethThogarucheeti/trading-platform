@@ -69,8 +69,9 @@ def test_order_reconcile_registered_on_interval_trigger() -> None:
     ids = scheduler.get_job_ids()
     assert "order_reconcile" in ids
     job = scheduler._scheduler.get_job("order_reconcile")  # type: ignore[attr-defined]
+    assert job is not None
     expected_secs = make_settings().order_reconcile_interval_mins * 60
-    assert job.trigger.interval.total_seconds() == expected_secs
+    assert job.trigger.interval.total_seconds() == expected_secs  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
