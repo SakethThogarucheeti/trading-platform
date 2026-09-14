@@ -6,16 +6,20 @@ from datetime import UTC, datetime
 
 from anyio import sleep_forever
 
+from trading.app.tasks import fire
 from trading.candles.api.interfaces import AbstractCandleConsumer
 from trading.candles.api.schemas import CandleEvent
-from trading.candles.service.bar_accumulator import AbstractBarAccumulator, BarAccumulator, SymbolConfig
+from trading.candles.service.bar_accumulator import (
+    AbstractBarAccumulator,
+    BarAccumulator,
+    SymbolConfig,
+)
 from trading.candles.service.historical import HistoricalDataService, warmup_start
 from trading.candles.service.persister import AbstractCandleLogger, CandleConfig
 from trading.core.clock import Clock, SystemClock
 from trading.core.lifecycle.component import Component
 from trading.core.messaging import AbstractRegistry
 from trading.core.schemas import InstrumentType
-from trading.app.tasks import fire
 from trading.tick_ingest.api.schemas import TickEvent
 
 logger = logging.getLogger(__name__)
@@ -130,13 +134,21 @@ class CandleAggregatorComponent(Component):
         """Register a candle consumer to receive warmup candles during _setup."""
         self._algo_callbacks.append(consumer)
 
-    async def _fetch_warmup_candles(self) -> list[CandleEvent]:
-        """Fetch warmup-window historical candles for every configured symbol/interval, sorted by timestamp."""
+    async def _fetch_warmup_candles(self, symbols: set[str] | None = None) -> list[CandleEvent]:
+        """
+        Fetch warmup-window historical candles, sorted by timestamp.
+
+        `symbols`, when given, restricts the fetch to just those symbols
+        (used by rewarm_after_login() so a post-login re-warm doesn't
+        re-fetch data for symbols already warmed up or live-touched).
+        """
         now = self._clock.now()
         start = warmup_start(now, self._intervals, self._warmup_count)
 
         all_candles: list[CandleEvent] = []
         for sc in self._symbols:
+            if symbols is not None and sc.symbol not in symbols:
+                continue
             for interval in self._intervals:
                 try:
                     result = await self._historical_data_service.fetch(
@@ -202,6 +214,47 @@ class CandleAggregatorComponent(Component):
         candles_by_symbol = self._group_by_symbol(all_candles)
         await self._replay_through_consumers(all_candles, candles_by_symbol)
         logger.info("CandleAggregatorComponent: warm-up complete (%d candles)", len(all_candles))
+
+    async def rewarm_after_login(self) -> None:
+        """
+        Re-attempt warmup for symbols that missed it at startup.
+
+        _setup() runs once at process start and fetches nothing (0 candles)
+        when the container comes up before the daily Zerodha login completes
+        — there's no broker session yet. Call this from the auth callback
+        once login completes so those symbols get a real warmup instead of
+        running strategy logic on an empty indicator store for the rest of
+        the day. Scoped to symbols_needing_rewarm() (AlgoInstance.bars_seen
+        == 0) so a symbol that already received live ticks is never
+        re-seeded — see SignalGenerator.rewarm()'s docstring for why that
+        matters (trading-platform#40).
+        """
+        untouched: set[str] = set()
+        for consumer in self._algo_callbacks:
+            untouched |= consumer.symbols_needing_rewarm()
+
+        if not untouched:
+            logger.info("CandleAggregatorComponent: no symbols need re-warm after login")
+            return
+
+        all_candles = await self._fetch_warmup_candles(symbols=untouched)
+        candles_by_symbol = self._group_by_symbol(all_candles)
+
+        fetched = set(candles_by_symbol)
+        for symbol in untouched - fetched:
+            logger.warning(
+                "CandleAggregatorComponent: no warmup candles fetched for %s — still uninitialized",
+                symbol,
+            )
+
+        for consumer in self._algo_callbacks:
+            consumer.rewarm(candles_by_symbol)
+
+        logger.info(
+            "CandleAggregatorComponent: post-login re-warm attempted for %d symbol(s): %s",
+            len(untouched),
+            sorted(untouched),
+        )
 
     async def _run(self) -> None:
         await sleep_forever()

@@ -11,18 +11,14 @@ import pytest
 from anyio import create_task_group, sleep
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from trading.broker.api import Broker
+from trading.app.database import build_session_factory, init_db
+from trading.candles.service.aggregator import CandleAggregator, CandleAggregatorComponent
 from trading.candles.service.bar_accumulator import SymbolConfig
 from trading.candles.service.historical import HistoricalDataResult, HistoricalDataService
-from trading.app.database import build_session_factory, init_db
-from trading.candles.storage.models import Instrument
-from trading.core.schemas import CandleEvent, InstrumentType, TickEvent
-from trading.candles.service.aggregator import CandleAggregator, CandleAggregatorComponent
 from trading.candles.service.persister import CandleConfig
+from trading.candles.storage.models import Instrument
 from trading.core.lifecycle.component import ComponentState
-from trading.tick_ingest.storage.store import AuditStore
-from trading.candles.storage.store import CandleDataStore
-
+from trading.core.schemas import CandleEvent, InstrumentType, TickEvent
 
 _INFY_SYMBOL = SymbolConfig(
     symbol="INFY",
@@ -188,6 +184,70 @@ async def test_candle_aggregator_no_warmup_candles_no_replay(
     await agg._setup()
 
     mock_algo_reg.handle.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# CandleAggregatorComponent.rewarm_after_login() (trading-platform#40)
+# ---------------------------------------------------------------------------
+
+
+def _make_consumer(needing_rewarm: set[str]) -> MagicMock:
+    consumer = MagicMock()
+    consumer.symbols_needing_rewarm = MagicMock(return_value=needing_rewarm)
+    consumer.rewarm = MagicMock()
+    return consumer
+
+
+async def test_rewarm_after_login_skips_fetch_when_no_symbols_untouched(
+    engine: AsyncEngine,
+) -> None:
+    service = _stub_service()
+    agg = _make_component(service)
+    agg.add_algo_registry(_make_consumer(set()))
+
+    await agg.rewarm_after_login()
+
+    service.fetch.assert_not_called()  # type: ignore[attr-defined]
+
+
+async def test_rewarm_after_login_fetches_only_untouched_symbols(engine: AsyncEngine) -> None:
+    candle = CandleEvent(
+        symbol="INFY",
+        instrument_type=InstrumentType.EQUITY,
+        interval="1min",
+        open=100.0,
+        high=105.0,
+        low=99.0,
+        close=103.0,
+        volume=1000,
+        timestamp=datetime(2025, 1, 6, 9, 15, tzinfo=UTC),
+        tick_log_id=0,
+    )
+    service = _stub_service([candle])
+    agg = _make_component(service)
+    consumer = _make_consumer({"INFY"})
+    agg.add_algo_registry(consumer)
+
+    await agg.rewarm_after_login()
+
+    service.fetch.assert_called_once()  # type: ignore[attr-defined]
+    consumer.rewarm.assert_called_once()
+    (candles_by_symbol,) = consumer.rewarm.call_args[0]
+    assert list(candles_by_symbol) == ["INFY"]
+    assert candles_by_symbol["INFY"][0].close == pytest.approx(103.0)
+
+
+async def test_rewarm_after_login_unions_untouched_symbols_across_consumers(
+    engine: AsyncEngine,
+) -> None:
+    service = _stub_service([])
+    agg = _make_component(service)
+    agg.add_algo_registry(_make_consumer({"INFY"}))
+    agg.add_algo_registry(_make_consumer(set()))
+
+    await agg.rewarm_after_login()
+
+    service.fetch.assert_called_once()  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------

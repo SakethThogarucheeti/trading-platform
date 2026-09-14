@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from trading.api.app import build_app
 from trading.broker.service.zerodha.kite_client import KiteClient
 from trading.candles.api import HistoricalDataService
+from trading.candles.service.aggregator import CandleAggregatorComponent
 from trading.core.clock import SYSTEM_CLOCK, Clock
 from trading.core.lifecycle.component import Component
 from trading.execution.api import OrderExecutor
@@ -39,6 +40,7 @@ class ApiServer(Component):
         token_secret_key: str = "",
         kite_client: KiteClient | None = None,
         kite_ingestor: KiteIngestor | None = None,
+        candle_aggregator: CandleAggregatorComponent | None = None,
         order_executor: OrderExecutor | None = None,
         cacher_factory: CacherFactory | None = None,
         historical_data_service: HistoricalDataService | None = None,
@@ -55,6 +57,7 @@ class ApiServer(Component):
         self._token_secret_key = token_secret_key
         self._kite_client = kite_client
         self._kite_ingestor = kite_ingestor
+        self._candle_aggregator = candle_aggregator
         self._order_executor = order_executor
         self._cacher_factory = cacher_factory
         self._historical_data_service = historical_data_service
@@ -75,6 +78,7 @@ class ApiServer(Component):
             token_secret_key=self._token_secret_key,
             kite_client=self._kite_client,
             kite_ingestor=self._kite_ingestor,
+            candle_aggregator=self._candle_aggregator,
             order_executor=self._order_executor,
             cacher_factory=self._cacher_factory,
             historical_data_service=self._historical_data_service,

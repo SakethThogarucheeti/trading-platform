@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.broker.service.zerodha.kite_client import KiteClient
+from trading.candles.service.aggregator import CandleAggregatorComponent
 from trading.execution.storage.store import TradingStore
 from trading.tick_ingest.api import KiteIngestor
 
@@ -23,6 +24,7 @@ def create_auth_router(
     token_secret_key: str,
     kite_client: KiteClient | None,
     kite_ingestor: KiteIngestor | None,
+    candle_aggregator: CandleAggregatorComponent | None = None,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -56,6 +58,9 @@ def create_auth_router(
 
         if kite_ingestor is not None:
             asyncio.get_running_loop().create_task(kite_ingestor.reconnect_stream())
+
+        if candle_aggregator is not None:
+            asyncio.get_running_loop().create_task(candle_aggregator.rewarm_after_login())
 
         return JSONResponse(
             content={

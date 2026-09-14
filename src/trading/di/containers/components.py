@@ -177,6 +177,7 @@ class _RuntimeAssembler:
 
     def __init__(self) -> None:
         self.kite_ingestor: KiteIngestor | None = None
+        self.candle_aggregator: CandleAggregatorComponent | None = None
         # Fills post back to a single shared /api/postback endpoint regardless
         # of which algo placed the order (handle_fill() is a stateless DB
         # lookup by kite_order_id), so any one algo's OrderExecutor works —
@@ -216,6 +217,7 @@ class _RuntimeAssembler:
             intervals=deps.settings.candle_intervals,
             warmup_count=deps.settings.warmup_candles,
         )
+        self.candle_aggregator = candle_aggregator
 
         factory = AlgoPipelineFactory(SharedAlgoDeps(
             chart=deps.chart,
@@ -324,6 +326,7 @@ def _dashboard(
         token_secret_key=settings.token_secret_key,
         kite_client=client,
         kite_ingestor=assembler.kite_ingestor,
+        candle_aggregator=assembler.candle_aggregator,
         order_executor=assembler.order_executor,
         cacher_factory=cacher_factory,
         historical_data_service=historical_data_service,
