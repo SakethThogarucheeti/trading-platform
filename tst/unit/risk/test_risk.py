@@ -479,12 +479,14 @@ async def test_audit_log_failure_in_accept_is_swallowed() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Lines 136-137: save_signal failure is caught silently
+# trading-platform#93: save_signal failure must reject, not silently proceed
 # ---------------------------------------------------------------------------
 
 
-async def test_save_signal_failure_is_swallowed() -> None:
-    """Covers lines 136-137: trading.save_signal raises inside handle() and is swallowed."""
+async def test_save_signal_failure_rejects_order() -> None:
+    """trading.save_signal raising inside handle() must reject the order, not
+    return a ValidatedOrderEvent carrying a signal_id that was never persisted
+    (that FK doesn't exist yet, and OrderExecutor's insert would fail on it)."""
     from unittest.mock import AsyncMock
 
     from trading.risk.api.interfaces import AbstractAuditStore
@@ -520,9 +522,8 @@ async def test_save_signal_failure_is_swallowed() -> None:
         circuit=cb,
     )
     sig = make_signal(tick_log_id=1)
-    # save_signal failure should be swallowed
     result = await reg.handle(sig)
-    assert result is not None
+    assert result is None
 
 
 # ---------------------------------------------------------------------------

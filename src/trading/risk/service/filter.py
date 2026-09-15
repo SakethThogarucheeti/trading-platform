@@ -24,6 +24,7 @@ from trading.strategy.api.schemas import SignalEvent
 logger = logging.getLogger(__name__)
 
 _ZERO_QUANTITY = "ZERO_QUANTITY"
+_SIGNAL_PERSIST_FAILED = "SIGNAL_PERSIST_FAILED"
 
 
 @dataclass
@@ -99,7 +100,13 @@ class RiskFilter(AbstractRegistry):
         try:
             await self._trading.save_signal(event)
         except Exception:
-            logger.warning("RiskFilter: failed to persist signal %s", event.signal_id)
+            logger.exception(
+                "RiskFilter: failed to persist signal %s -- rejecting rather than "
+                "placing an order with a signal_id that was never saved",
+                event.signal_id,
+            )
+            await self._reject(event, _SIGNAL_PERSIST_FAILED)
+            return None
 
         fire(self._log_decision("SIGNAL_ACCEPTED", event, SignalAcceptedContext(qty=qty, order_type="MARKET")))
         logger.info("RiskFilter: ACCEPTED signal=%s symbol=%s side=%s qty=%d", event.signal_id, event.symbol, event.side.value, qty)
