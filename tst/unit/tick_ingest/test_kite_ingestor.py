@@ -367,10 +367,10 @@ async def test_ingestor_handle_tick_unknown_token_returns_none(engine: AsyncEngi
     await _with_ingestor(ingestor, _check)
 
 
-async def test_tick_registry_db_persist_failure_returns_tick_with_minus_one_id(
+async def test_tick_registry_db_persist_failure_drops_the_tick(
     engine: AsyncEngine,
 ) -> None:
-    """audit.log_tick() raises → tick_log_id set to -1 but TickEvent returned."""
+    """audit.log_tick() raises -> tick is dropped (None), never propagated with no audit trail."""
     from trading.tick_ingest.api.interfaces import AbstractAuditStore
 
     class _FailingAuditStore(AbstractAuditStore):
@@ -389,8 +389,7 @@ async def test_tick_registry_db_persist_failure_returns_tick_with_minus_one_id(
     reg = TickIngestor(config=config, stream=stream, audit=_FailingAuditStore(), circuit=CircuitBreaker())
 
     result = await reg.handle(make_raw_tick(token=1, price=100.0))
-    assert result is not None
-    assert result.tick_log_id == -1
+    assert result is None
 
 
 async def test_ingestor_on_tick_callback_exception_is_swallowed(engine: AsyncEngine) -> None:

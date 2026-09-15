@@ -79,7 +79,11 @@ class TickIngestor(AbstractRegistry):
         Validate and persist one raw tick dict from the broker WebSocket.
 
         Returns a TickEvent with a real DB-assigned tick_log_id, or None
-        if the tick is for an unknown instrument or fails validation.
+        if the tick is for an unknown instrument, fails validation, or the
+        DB persist itself fails -- a tick is dropped rather than propagated
+        without an audit trail, since downstream decision-log writes key off
+        tick_log_id and a real order must never be placed off an untraceable
+        tick.
         """
         token: int | None = raw.get("instrument_token")
         if token is None:
@@ -107,8 +111,13 @@ class TickIngestor(AbstractRegistry):
         try:
             tick_log_id = await self._audit.log_tick(raw_event, symbol)
         except Exception as exc:
-            logger.warning("TickIngestor: DB persist failed for token %s — %s", token, exc)
-            tick_log_id = -1
+            logger.warning(
+                "TickIngestor: DB persist failed for token %s -- dropping this tick "
+                "rather than proceeding without an audit trail: %s",
+                token,
+                exc,
+            )
+            return None
 
         return raw_event.model_copy(update={"tick_log_id": tick_log_id})
 
