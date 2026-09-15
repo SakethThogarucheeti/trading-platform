@@ -2,16 +2,33 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, call
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from trading.core.schemas import FillEvent, Side
+from trading.execution.api.interfaces import AbstractTradingStore
 from trading.execution.service.fill_handler import FillHandler
 from trading.execution.service.position_accountant import PositionAccountant
-from trading.execution.api.interfaces import AbstractTradingStore
 from trading.execution.storage.store import NotFoundError
+
+# Opaque stand-in for the AsyncSession `transaction()` yields — tests only need
+# to assert it's the same object threaded through to update_order_status_in_session
+# and accountant.apply_fill, never to actually use it as a real session.
+_FAKE_SESSION = MagicMock(name="fake_session")
+
+
+def _make_trading_mock() -> MagicMock:
+    mock_trading = MagicMock(spec=AbstractTradingStore)
+    mock_trading.update_order_status_in_session = AsyncMock()
+
+    @asynccontextmanager
+    async def _transaction():
+        yield _FAKE_SESSION
+
+    mock_trading.transaction = MagicMock(side_effect=_transaction)
+    return mock_trading
 
 
 # ---------------------------------------------------------------------------
@@ -23,8 +40,7 @@ def _make_fill_handler(
     trading: AbstractTradingStore | None = None,
     accountant: PositionAccountant | None = None,
 ) -> FillHandler:
-    mock_trading = trading or MagicMock(spec=AbstractTradingStore)
-    mock_trading.update_order_status = AsyncMock()
+    mock_trading = trading or _make_trading_mock()
     mock_accountant = accountant or MagicMock(spec=PositionAccountant)
     mock_accountant.apply_fill = AsyncMock()
     return FillHandler(trading=mock_trading, accountant=mock_accountant)
@@ -36,8 +52,7 @@ def _make_fill_handler(
 
 
 async def test_fill_marks_order_filled() -> None:
-    mock_trading = MagicMock(spec=AbstractTradingStore)
-    mock_trading.update_order_status = AsyncMock()
+    mock_trading = _make_trading_mock()
     mock_accountant = MagicMock(spec=PositionAccountant)
     mock_accountant.apply_fill = AsyncMock()
 
@@ -53,12 +68,13 @@ async def test_fill_marks_order_filled() -> None:
     )
 
     from trading.core.schemas import OrderStatus
-    mock_trading.update_order_status.assert_called_once_with("KITE_001", OrderStatus.FILLED, 150.0)
+    mock_trading.update_order_status_in_session.assert_called_once_with(
+        _FAKE_SESSION, "KITE_001", OrderStatus.FILLED, 150.0
+    )
 
 
 async def test_fill_calls_accountant_apply_fill() -> None:
-    mock_trading = MagicMock(spec=AbstractTradingStore)
-    mock_trading.update_order_status = AsyncMock()
+    mock_trading = _make_trading_mock()
     mock_accountant = MagicMock(spec=PositionAccountant)
     mock_accountant.apply_fill = AsyncMock()
 
@@ -75,20 +91,21 @@ async def test_fill_calls_accountant_apply_fill() -> None:
 
     assert mock_accountant.apply_fill.call_count == 1
     call_args = mock_accountant.apply_fill.call_args
-    fill_arg: FillEvent = call_args[0][0]
+    assert call_args[0][0] is _FAKE_SESSION
+    fill_arg: FillEvent = call_args[0][1]
     assert fill_arg.kite_order_id == "KITE_001"
     assert fill_arg.avg_price == 150.0
     assert fill_arg.filled_qty == 10
     assert fill_arg.tick_log_id == 42
-    assert call_args[0][1] == Side.BUY
-    assert call_args[0][2] == "INFY"
-    assert call_args[0][3] == "EQUITY"
+    assert call_args[0][2] == Side.BUY
+    assert call_args[0][3] == "INFY"
+    assert call_args[0][4] == "EQUITY"
 
 
 async def test_fill_unknown_order_returns_early() -> None:
     """NotFoundError from trading store → accountant.apply_fill never called."""
-    mock_trading = MagicMock(spec=AbstractTradingStore)
-    mock_trading.update_order_status = AsyncMock(side_effect=NotFoundError("not found"))
+    mock_trading = _make_trading_mock()
+    mock_trading.update_order_status_in_session = AsyncMock(side_effect=NotFoundError("not found"))
     mock_accountant = MagicMock(spec=PositionAccountant)
     mock_accountant.apply_fill = AsyncMock()
 
@@ -107,8 +124,10 @@ async def test_fill_unknown_order_returns_early() -> None:
 
 async def test_fill_unexpected_error_propagates() -> None:
     """A non-NotFoundError from trading store must propagate, not be swallowed."""
-    mock_trading = MagicMock(spec=AbstractTradingStore)
-    mock_trading.update_order_status = AsyncMock(side_effect=RuntimeError("db connection lost"))
+    mock_trading = _make_trading_mock()
+    mock_trading.update_order_status_in_session = AsyncMock(
+        side_effect=RuntimeError("db connection lost")
+    )
     mock_accountant = MagicMock(spec=PositionAccountant)
     mock_accountant.apply_fill = AsyncMock()
 
@@ -128,8 +147,7 @@ async def test_fill_unexpected_error_propagates() -> None:
 
 async def test_fill_passes_tick_log_id() -> None:
     """tick_log_id is forwarded into the FillEvent passed to accountant."""
-    mock_trading = MagicMock(spec=AbstractTradingStore)
-    mock_trading.update_order_status = AsyncMock()
+    mock_trading = _make_trading_mock()
     mock_accountant = MagicMock(spec=PositionAccountant)
     mock_accountant.apply_fill = AsyncMock()
 
@@ -144,15 +162,15 @@ async def test_fill_passes_tick_log_id() -> None:
         tick_log_id=99,
     )
 
-    fill_arg: FillEvent = mock_accountant.apply_fill.call_args[0][0]
+    fill_arg: FillEvent = mock_accountant.apply_fill.call_args[0][1]
     assert fill_arg.tick_log_id == 99
 
 
 async def test_fill_returns_true_when_applied() -> None:
     """PR #86 review: callers (OrderExecutor.handle_fill, OrderReconciler) must be
     able to tell a real fill application apart from a no-op."""
-    mock_trading = MagicMock(spec=AbstractTradingStore)
-    mock_trading.update_order_status = AsyncMock(return_value=True)
+    mock_trading = _make_trading_mock()
+    mock_trading.update_order_status_in_session = AsyncMock(return_value=True)
     mock_accountant = MagicMock(spec=PositionAccountant)
     mock_accountant.apply_fill = AsyncMock()
 
@@ -173,12 +191,12 @@ async def test_fill_returns_false_and_skips_accountant_when_already_filled() -> 
     """
     trading-platform#31 PR review round 1: a webhook and OrderReconciler can
     both call FillHandler.handle for the same kite_order_id.
-    update_order_status returning False (already FILLED) must skip
+    update_order_status_in_session returning False (already FILLED) must skip
     apply_fill entirely and be visible to the caller so it doesn't log the
     fill as newly applied.
     """
-    mock_trading = MagicMock(spec=AbstractTradingStore)
-    mock_trading.update_order_status = AsyncMock(return_value=False)
+    mock_trading = _make_trading_mock()
+    mock_trading.update_order_status_in_session = AsyncMock(return_value=False)
     mock_accountant = MagicMock(spec=PositionAccountant)
     mock_accountant.apply_fill = AsyncMock()
 

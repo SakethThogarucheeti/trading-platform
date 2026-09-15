@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from datetime import date
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from trading.core.clock import Clock, SystemClock
 from trading.core.fifo import match_against
 from trading.core.schemas import Side
@@ -40,14 +42,27 @@ class PositionAccountant:
 
     async def apply_fill(
         self,
+        session: AsyncSession,
         fill: FillEvent,
         side: Side,
         symbol: str,
         instrument_type: str,
     ) -> None:
-        await self._position.update_position(fill, side, symbol, instrument_type)
+        """
+        `session` must be an already-open transaction (from
+        `AbstractTradingStore.transaction()`) that the caller commits/rolls
+        back once this returns -- the position update and the PnL-aggregate
+        increment below must land atomically together with whatever else the
+        caller is writing in the same transaction (trading-platform#91/#96),
+        rather than as two independently-committed writes.
+        """
+        await self._position.update_position_in_session(
+            session, fill, side, symbol, instrument_type
+        )
         today = self._clock.today()
-        long_queue, short_queue = await self._get_queues(symbol, today, fill.kite_order_id)
+        long_queue, short_queue = await self._get_queues(
+            session, symbol, today, fill.kite_order_id
+        )
 
         if side == Side.BUY:
             realized, remaining = match_against(
@@ -61,20 +76,23 @@ class PositionAccountant:
                 short_queue.append((remaining, fill.avg_price))
         self._queues[symbol] = (today, (long_queue, short_queue))
 
-        await self._trading.increment_pnl_aggregate(today, realized)  # type: ignore[attr-defined]
+        await self._trading.increment_pnl_aggregate_in_session(session, today, realized)
         await self._factory.api().invalidate_pnl(today)  # type: ignore[attr-defined]
 
     async def _get_queues(
-        self, symbol: str, today: date, current_kite_order_id: str
+        self, session: AsyncSession, symbol: str, today: date, current_kite_order_id: str
     ) -> _FifoQueues:
+        """`session` is the same in-flight transaction apply_fill was given --
+        hydration must stay on that connection rather than opening a second,
+        interleaved session mid-transaction (trading-platform#91)."""
         cached = self._queues.get(symbol)
         if cached is not None and cached[0] == today:
             return cached[1]
 
         long_queue: list[tuple[int, float]] = []
         short_queue: list[tuple[int, float]] = []
-        fills = await self._trading.get_filled_fills(
-            today, symbol, exclude_kite_order_id=current_kite_order_id
+        fills = await self._trading.get_filled_fills_in_session(
+            session, today, symbol, exclude_kite_order_id=current_kite_order_id
         )
         for fill_side, qty, price in fills:
             if fill_side == Side.BUY.value:

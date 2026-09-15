@@ -50,20 +50,27 @@ class FillHandler:
             timestamp=self._clock.now(),
             tick_log_id=tick_log_id,
         )
+        fill_side = Side(side)
         try:
-            applied = await self._trading.update_order_status(
-                kite_order_id, OrderStatus.FILLED, avg_price
-            )
+            # The order-status transition and the position/PnL-aggregate
+            # writes it triggers must commit or roll back together -- three
+            # independently-committed transactions here could leave the
+            # order marked FILLED with the position/PnL update lost, or vice
+            # versa, on a crash between them (trading-platform#91).
+            async with self._trading.transaction() as session:
+                applied = await self._trading.update_order_status_in_session(
+                    session, kite_order_id, OrderStatus.FILLED, avg_price
+                )
+                if not applied:
+                    logger.info(
+                        "FillHandler: order %s already FILLED — skipping duplicate fill "
+                        "application",
+                        kite_order_id,
+                    )
+                    return False
+                await self._accountant.apply_fill(session, fill, fill_side, symbol, instrument_type)
         except NotFoundError as exc:
             logger.warning("FillHandler: fill for unknown order %s — %s", kite_order_id, exc)
             return False
-        if not applied:
-            logger.info(
-                "FillHandler: order %s already FILLED — skipping duplicate fill application",
-                kite_order_id,
-            )
-            return False
-        fill_side = Side(side)
-        await self._accountant.apply_fill(fill, fill_side, symbol, instrument_type)
         logger.info("FillHandler: fill %s avg=%.2f qty=%d", kite_order_id, avg_price, filled_qty)
         return True
