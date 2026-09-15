@@ -77,7 +77,7 @@ def create_data_router(
             raise HTTPException(status_code=400, detail=f"Invalid datetime: {exc}") from exc
 
         trades = await fetch_filled_trades(
-            session_factory, start=start_dt, end=end_dt, algo_name=algo_name
+            session_factory, start=start_dt, end=end_dt, clock=clock, algo_name=algo_name
         )
         return JSONResponse(content=[
             {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import AbstractAsyncContextManager
+from decimal import Decimal
 from typing import Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,21 +40,25 @@ class AbstractTradingStore(Protocol):
     async def save_signal(self, event: object) -> object: ...
 
     async def increment_pnl_aggregate(
-        self, for_date: object, delta: float, algo_name: str = "ALL", symbol: str = "ALL"
+        self,
+        for_date: object,
+        delta: float | Decimal,
+        algo_name: str = "ALL",
+        symbol: str = "ALL",
     ) -> None: ...
 
     async def increment_pnl_aggregate_in_session(
         self,
         session: AsyncSession,
         for_date: object,
-        delta: float,
+        delta: float | Decimal,
         algo_name: str = "ALL",
         symbol: str = "ALL",
     ) -> None: ...
 
     async def get_filled_fills(
         self, for_date: object, symbol: str, exclude_kite_order_id: str | None = None
-    ) -> list[tuple[str, int, float]]: ...
+    ) -> list[tuple[str, int, Decimal]]: ...
 
     async def get_filled_fills_in_session(
         self,
@@ -61,7 +66,7 @@ class AbstractTradingStore(Protocol):
         for_date: object,
         symbol: str,
         exclude_kite_order_id: str | None = None,
-    ) -> list[tuple[str, int, float]]: ...
+    ) -> list[tuple[str, int, Decimal]]: ...
 
     def transaction(self) -> AbstractAsyncContextManager[AsyncSession]: ...
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
 
@@ -57,9 +58,13 @@ def _make_factory() -> CacherFactory:
 
 
 def _make_trading(fills: list[tuple[str, int, float]] | None = None) -> AbstractTradingStore:
+    """`fills` prices are given as plain float for test-writing convenience
+    and converted here to `Decimal` -- matching what
+    `get_filled_fills_in_session` actually returns in production (#92)."""
     mock = MagicMock(spec=AbstractTradingStore)
     mock.increment_pnl_aggregate_in_session = AsyncMock()
-    mock.get_filled_fills_in_session = AsyncMock(return_value=fills or [])
+    decimal_fills = [(side, qty, Decimal(str(price))) for side, qty, price in (fills or [])]
+    mock.get_filled_fills_in_session = AsyncMock(return_value=decimal_fills)
     return mock
 
 

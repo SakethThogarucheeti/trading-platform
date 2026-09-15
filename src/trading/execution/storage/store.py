@@ -189,7 +189,7 @@ class TradingStore:
 
     async def get_filled_fills(
         self, for_date: date, symbol: str, exclude_kite_order_id: str | None = None
-    ) -> list[tuple[str, int, float]]:
+    ) -> list[tuple[str, int, Decimal]]:
         """
         Return today's already-FILLED (side, qty, avg_price) fills for *symbol*,
         oldest first — used to hydrate an in-memory FIFO queue (e.g. on process
@@ -207,11 +207,15 @@ class TradingStore:
         for_date: date,
         symbol: str,
         exclude_kite_order_id: str | None = None,
-    ) -> list[tuple[str, int, float]]:
+    ) -> list[tuple[str, int, Decimal]]:
         """Same as get_filled_fills, but runs on a caller-supplied session --
         used by PositionAccountant.apply_fill so this read stays on the same
         connection as the fill's writes rather than opening a second,
-        interleaved session mid-transaction (trading-platform#91)."""
+        interleaved session mid-transaction (trading-platform#91).
+
+        Returns `avg_price` as the `Decimal` the DB column already stores
+        (no `float()` cast) so FIFO-hydration feeds `match_against` exact
+        values rather than reintroducing float error on read (#92)."""
         start = datetime(for_date.year, for_date.month, for_date.day, tzinfo=UTC)
         end = datetime(for_date.year, for_date.month, for_date.day, 23, 59, 59, tzinfo=UTC)
         query = (
@@ -228,12 +232,14 @@ class TradingStore:
         if exclude_kite_order_id is not None:
             query = query.where(Order.kite_order_id != exclude_kite_order_id)
         result = await session.execute(query)
-        return [
-            (signal.side, order.qty, float(order.avg_price)) for order, signal in result.all()
-        ]
+        return [(signal.side, order.qty, order.avg_price) for order, signal in result.all()]
 
     async def increment_pnl_aggregate(
-        self, for_date: date, delta: float, algo_name: str = "ALL", symbol: str = "ALL"
+        self,
+        for_date: date,
+        delta: float | Decimal,
+        algo_name: str = "ALL",
+        symbol: str = "ALL",
     ) -> None:
         """
         Atomically add *delta* to the running realized-PnL total for the day.
@@ -254,12 +260,18 @@ class TradingStore:
         self,
         session: AsyncSession,
         for_date: date,
-        delta: float,
+        delta: float | Decimal,
         algo_name: str = "ALL",
         symbol: str = "ALL",
     ) -> None:
         """Same as increment_pnl_aggregate, but runs inside a caller-supplied,
-        already-open transaction instead of opening its own."""
+        already-open transaction instead of opening its own.
+
+        `delta` accepts `Decimal` directly (PositionAccountant.apply_fill
+        now computes exact FIFO-matched P&L, #92) as well as `float` (other
+        callers, e.g. tests seeding a PnL total) -- `Decimal(str(delta))`
+        below round-trips a `Decimal` input exactly, so accepting both here
+        costs no precision either way."""
         result = await session.execute(
             select(StrategyAggregate)
             .where(

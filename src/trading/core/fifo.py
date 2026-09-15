@@ -6,13 +6,15 @@ P&L the same way.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 
 def match_against(
-    opposing_queue: list[tuple[int, float]],
+    opposing_queue: list[tuple[int, Decimal]],
     qty: int,
-    price: float,
-    sign: float,
-) -> tuple[float, int]:
+    price: Decimal,
+    sign: int,
+) -> tuple[Decimal, int]:
     """
     Drain `opposing_queue` FIFO against an incoming fill of `qty` @ `price`.
 
@@ -20,8 +22,12 @@ def match_against(
     short_price - price) and +1 for an incoming SELL matching against
     long_queue (profit = price - long_price) — i.e. profit = sign * (price - queue_price).
     Returns (realized_pnl_from_matches, qty_remaining_after_matching).
+
+    Prices are `Decimal` (not `float`) so that summing many fills' realized
+    P&L across a trading day doesn't accumulate float rounding error into a
+    value `DailyLossGate` compares against a threshold (trading-platform#92).
     """
-    realized = 0.0
+    realized = Decimal(0)
     remaining = qty
     while remaining > 0 and opposing_queue:
         queue_qty, queue_price = opposing_queue[0]
