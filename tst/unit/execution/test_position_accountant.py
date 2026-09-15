@@ -33,6 +33,11 @@ def _make_fill(
 
 _UTC_ZONE = ZoneInfo("UTC")
 
+# Opaque stand-in for the AsyncSession apply_fill threads through to the
+# store methods below — these tests mock the stores directly, so the actual
+# session value is never touched, only forwarded.
+_FAKE_SESSION = MagicMock(name="fake_session")
+
 
 class _FixedClock(Clock):
     def __init__(self, dt: datetime, tz: ZoneInfo = _UTC_ZONE) -> None:
@@ -53,8 +58,8 @@ def _make_factory() -> CacherFactory:
 
 def _make_trading(fills: list[tuple[str, int, float]] | None = None) -> AbstractTradingStore:
     mock = MagicMock(spec=AbstractTradingStore)
-    mock.increment_pnl_aggregate = AsyncMock()
-    mock.get_filled_fills = AsyncMock(return_value=fills or [])
+    mock.increment_pnl_aggregate_in_session = AsyncMock()
+    mock.get_filled_fills_in_session = AsyncMock(return_value=fills or [])
     return mock
 
 
@@ -65,16 +70,19 @@ def _make_trading(fills: list[tuple[str, int, float]] | None = None) -> Abstract
 
 async def test_apply_fill_calls_update_position() -> None:
     mock_position = MagicMock(spec=AbstractPositionStore)
-    mock_position.update_position = AsyncMock()
+    mock_position.update_position_in_session = AsyncMock()
 
     accountant = PositionAccountant(
         position=mock_position, trading=_make_trading(), factory=_make_factory()
     )
 
     fill = _make_fill()
-    await accountant.apply_fill(fill, Side.BUY, "INFY", "EQUITY")
+    await accountant.apply_fill(
+        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY")
 
-    mock_position.update_position.assert_called_once_with(fill, Side.BUY, "INFY", "EQUITY")
+    mock_position.update_position_in_session.assert_called_once_with(
+        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY"
+    )
 
 
 async def test_apply_fill_opening_buy_realizes_zero_pnl() -> None:
@@ -82,7 +90,7 @@ async def test_apply_fill_opening_buy_realizes_zero_pnl() -> None:
     it only becomes realized once a later fill closes against it (see
     test_apply_fill_matches_fifo_on_close below)."""
     mock_position = MagicMock(spec=AbstractPositionStore)
-    mock_position.update_position = AsyncMock()
+    mock_position.update_position_in_session = AsyncMock()
     mock_trading = _make_trading()
 
     fixed_date = date(2025, 1, 6)
@@ -92,9 +100,11 @@ async def test_apply_fill_opening_buy_realizes_zero_pnl() -> None:
     )
 
     fill = _make_fill(avg_price=150.0, qty=10)
-    await accountant.apply_fill(fill, Side.BUY, "INFY", "EQUITY")
+    await accountant.apply_fill(
+        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY")
 
-    mock_trading.increment_pnl_aggregate.assert_awaited_once_with(fixed_date, pytest.approx(0.0))
+    mock_trading.increment_pnl_aggregate_in_session.assert_awaited_once_with(
+        _FAKE_SESSION,fixed_date, pytest.approx(0.0))
 
 
 async def test_apply_fill_uses_ist_calendar_day_not_utc(
@@ -105,7 +115,7 @@ async def test_apply_fill_uses_ist_calendar_day_not_utc(
     A regression here would silently attribute realized P&L to the wrong trading day
     in the aggregate DailyLossGate reads from."""
     mock_position = MagicMock(spec=AbstractPositionStore)
-    mock_position.update_position = AsyncMock()
+    mock_position.update_position_in_session = AsyncMock()
     mock_trading = _make_trading()
 
     # 2025-01-07 01:00 IST == 2025-01-06 19:30 UTC -- same instant, different calendar day.
@@ -120,16 +130,18 @@ async def test_apply_fill_uses_ist_calendar_day_not_utc(
     )
 
     fill = _make_fill(avg_price=150.0, qty=10)
-    await accountant.apply_fill(fill, Side.BUY, "INFY", "EQUITY")
+    await accountant.apply_fill(
+        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY")
 
-    mock_trading.increment_pnl_aggregate.assert_awaited_once_with(
+    mock_trading.increment_pnl_aggregate_in_session.assert_awaited_once_with(
+        _FAKE_SESSION,
         date(2025, 1, 7), pytest.approx(0.0)
     )
 
 
 async def test_apply_fill_opening_sell_realizes_zero_pnl() -> None:
     mock_position = MagicMock(spec=AbstractPositionStore)
-    mock_position.update_position = AsyncMock()
+    mock_position.update_position_in_session = AsyncMock()
     mock_trading = _make_trading()
 
     fixed_date = date(2025, 1, 6)
@@ -139,15 +151,17 @@ async def test_apply_fill_opening_sell_realizes_zero_pnl() -> None:
     )
 
     fill = _make_fill(avg_price=100.0, qty=10)
-    await accountant.apply_fill(fill, Side.SELL, "INFY", "EQUITY")
+    await accountant.apply_fill(
+        _FAKE_SESSION, fill, Side.SELL, "INFY", "EQUITY")
 
-    mock_trading.increment_pnl_aggregate.assert_awaited_once_with(fixed_date, pytest.approx(0.0))
+    mock_trading.increment_pnl_aggregate_in_session.assert_awaited_once_with(
+        _FAKE_SESSION,fixed_date, pytest.approx(0.0))
 
 
 async def test_apply_fill_matches_fifo_on_close() -> None:
     """BUY 10 @ 100 then SELL 10 @ 150 realizes (150-100)*10 = 500 on the closing fill."""
     mock_position = MagicMock(spec=AbstractPositionStore)
-    mock_position.update_position = AsyncMock()
+    mock_position.update_position_in_session = AsyncMock()
     mock_trading = _make_trading()
 
     fixed_date = date(2025, 1, 6)
@@ -157,20 +171,27 @@ async def test_apply_fill_matches_fifo_on_close() -> None:
     )
 
     await accountant.apply_fill(
-        _make_fill(avg_price=100.0, qty=10, kite_order_id="KITE_OPEN"), Side.BUY, "INFY", "EQUITY"
+        _FAKE_SESSION,
+        _make_fill(avg_price=100.0, qty=10, kite_order_id="KITE_OPEN"),
+        Side.BUY,
+        "INFY",
+        "EQUITY",
     )
     await accountant.apply_fill(
+        _FAKE_SESSION,
         _make_fill(avg_price=150.0, qty=10, kite_order_id="KITE_CLOSE"),
         Side.SELL,
         "INFY",
         "EQUITY",
     )
 
-    assert mock_trading.increment_pnl_aggregate.await_args_list[0].args == (
+    assert mock_trading.increment_pnl_aggregate_in_session.await_args_list[0].args == (
+        _FAKE_SESSION,
         fixed_date,
         pytest.approx(0.0),
     )
-    assert mock_trading.increment_pnl_aggregate.await_args_list[1].args == (
+    assert mock_trading.increment_pnl_aggregate_in_session.await_args_list[1].args == (
+        _FAKE_SESSION,
         fixed_date,
         pytest.approx(500.0),
     )
@@ -179,7 +200,7 @@ async def test_apply_fill_matches_fifo_on_close() -> None:
 async def test_apply_fill_partial_close_matches_only_closed_qty() -> None:
     """BUY 10 @ 100, then SELL 4 @ 150 realizes (150-100)*4 = 200, leaving 6 long open."""
     mock_position = MagicMock(spec=AbstractPositionStore)
-    mock_position.update_position = AsyncMock()
+    mock_position.update_position_in_session = AsyncMock()
     mock_trading = _make_trading()
 
     fixed_date = date(2025, 1, 6)
@@ -189,16 +210,22 @@ async def test_apply_fill_partial_close_matches_only_closed_qty() -> None:
     )
 
     await accountant.apply_fill(
-        _make_fill(avg_price=100.0, qty=10, kite_order_id="KITE_OPEN"), Side.BUY, "INFY", "EQUITY"
+        _FAKE_SESSION,
+        _make_fill(avg_price=100.0, qty=10, kite_order_id="KITE_OPEN"),
+        Side.BUY,
+        "INFY",
+        "EQUITY",
     )
     await accountant.apply_fill(
+        _FAKE_SESSION,
         _make_fill(avg_price=150.0, qty=4, kite_order_id="KITE_PARTIAL"),
         Side.SELL,
         "INFY",
         "EQUITY",
     )
 
-    assert mock_trading.increment_pnl_aggregate.await_args_list[1].args == (
+    assert mock_trading.increment_pnl_aggregate_in_session.await_args_list[1].args == (
+        _FAKE_SESSION,
         fixed_date,
         pytest.approx(200.0),
     )
@@ -210,7 +237,7 @@ async def test_apply_fill_hydrates_queue_from_persisted_fills() -> None:
     it, having been marked FILLED before apply_fill runs) — the closing fill must
     still match against it via a fresh hydration read, not treat it as a fresh open."""
     mock_position = MagicMock(spec=AbstractPositionStore)
-    mock_position.update_position = AsyncMock()
+    mock_position.update_position_in_session = AsyncMock()
     mock_trading = _make_trading(fills=[("BUY", 10, 100.0)])
 
     fixed_date = date(2025, 1, 6)
@@ -220,12 +247,14 @@ async def test_apply_fill_hydrates_queue_from_persisted_fills() -> None:
     )
 
     fill = _make_fill(avg_price=150.0, qty=10, kite_order_id="KITE_CLOSE")
-    await accountant.apply_fill(fill, Side.SELL, "INFY", "EQUITY")
+    await accountant.apply_fill(
+        _FAKE_SESSION, fill, Side.SELL, "INFY", "EQUITY")
 
-    mock_trading.get_filled_fills.assert_awaited_once_with(
-        fixed_date, "INFY", exclude_kite_order_id="KITE_CLOSE"
+    mock_trading.get_filled_fills_in_session.assert_awaited_once_with(
+        _FAKE_SESSION, fixed_date, "INFY", exclude_kite_order_id="KITE_CLOSE"
     )
-    mock_trading.increment_pnl_aggregate.assert_awaited_once_with(
+    mock_trading.increment_pnl_aggregate_in_session.assert_awaited_once_with(
+        _FAKE_SESSION,
         fixed_date, pytest.approx(500.0)
     )
 
@@ -234,7 +263,7 @@ async def test_apply_fill_does_not_rehydrate_once_symbol_is_cached() -> None:
     """After the first fill for a symbol this process, later fills for the same
     symbol/day must not re-query get_filled_fills — the in-memory queue is reused."""
     mock_position = MagicMock(spec=AbstractPositionStore)
-    mock_position.update_position = AsyncMock()
+    mock_position.update_position_in_session = AsyncMock()
     mock_trading = _make_trading()
 
     clock = _FixedClock(datetime(2025, 1, 6, 9, 15, tzinfo=UTC))
@@ -243,34 +272,42 @@ async def test_apply_fill_does_not_rehydrate_once_symbol_is_cached() -> None:
     )
 
     await accountant.apply_fill(
-        _make_fill(avg_price=100.0, qty=10, kite_order_id="KITE_1"), Side.BUY, "INFY", "EQUITY"
-    )
-    await accountant.apply_fill(
-        _make_fill(avg_price=110.0, qty=5, kite_order_id="KITE_2"), Side.BUY, "INFY", "EQUITY"
-    )
-
-    assert mock_trading.get_filled_fills.await_count == 1
-
-
-async def test_apply_fill_symbols_are_tracked_independently() -> None:
-    """A closing fill for one symbol must not match against another symbol's queue."""
-    mock_position = MagicMock(spec=AbstractPositionStore)
-    mock_position.update_position = AsyncMock()
-    mock_trading = _make_trading()
-
-    clock = _FixedClock(datetime(2025, 1, 6, 9, 15, tzinfo=UTC))
-    accountant = PositionAccountant(
-        position=mock_position, trading=mock_trading, factory=_make_factory(), clock=clock
-    )
-
-    await accountant.apply_fill(
-        _make_fill(avg_price=100.0, qty=10, kite_order_id="KITE_INFY"),
+        _FAKE_SESSION,
+        _make_fill(avg_price=100.0, qty=10, kite_order_id="KITE_1"),
         Side.BUY,
         "INFY",
         "EQUITY",
     )
     await accountant.apply_fill(
-        _make_fill(avg_price=200.0, qty=10, kite_order_id="KITE_TCS"),
+        _FAKE_SESSION,
+        _make_fill(avg_price=110.0, qty=5, kite_order_id="KITE_2"),
+        Side.BUY,
+        "INFY",
+        "EQUITY",
+    )
+
+    assert mock_trading.get_filled_fills_in_session.await_count == 1
+
+
+async def test_apply_fill_symbols_are_tracked_independently() -> None:
+    """A closing fill for one symbol must not match against another symbol's queue."""
+    mock_position = MagicMock(spec=AbstractPositionStore)
+    mock_position.update_position_in_session = AsyncMock()
+    mock_trading = _make_trading()
+
+    clock = _FixedClock(datetime(2025, 1, 6, 9, 15, tzinfo=UTC))
+    accountant = PositionAccountant(
+        position=mock_position, trading=mock_trading, factory=_make_factory(), clock=clock
+    )
+
+    await accountant.apply_fill(
+        _FAKE_SESSION, _make_fill(avg_price=100.0, qty=10, kite_order_id="KITE_INFY"),
+        Side.BUY,
+        "INFY",
+        "EQUITY",
+    )
+    await accountant.apply_fill(
+        _FAKE_SESSION, _make_fill(avg_price=200.0, qty=10, kite_order_id="KITE_TCS"),
         Side.SELL,
         "TCS",
         "EQUITY",
@@ -278,11 +315,13 @@ async def test_apply_fill_symbols_are_tracked_independently() -> None:
 
     fixed_date = date(2025, 1, 6)
     # Both are opening fills for their respective symbols — neither matches the other.
-    assert mock_trading.increment_pnl_aggregate.await_args_list[0].args == (
+    assert mock_trading.increment_pnl_aggregate_in_session.await_args_list[0].args == (
+        _FAKE_SESSION,
         fixed_date,
         pytest.approx(0.0),
     )
-    assert mock_trading.increment_pnl_aggregate.await_args_list[1].args == (
+    assert mock_trading.increment_pnl_aggregate_in_session.await_args_list[1].args == (
+        _FAKE_SESSION,
         fixed_date,
         pytest.approx(0.0),
     )
@@ -290,7 +329,7 @@ async def test_apply_fill_symbols_are_tracked_independently() -> None:
 
 async def test_apply_fill_invalidates_api_cache() -> None:
     mock_position = MagicMock(spec=AbstractPositionStore)
-    mock_position.update_position = AsyncMock()
+    mock_position.update_position_in_session = AsyncMock()
 
     mock_api = MagicMock()
     mock_api.invalidate_pnl = AsyncMock()
@@ -303,7 +342,8 @@ async def test_apply_fill_invalidates_api_cache() -> None:
     )
 
     fill = _make_fill()
-    await accountant.apply_fill(fill, Side.BUY, "INFY", "EQUITY")
+    await accountant.apply_fill(
+        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY")
 
     mock_api.invalidate_pnl.assert_called_once_with(date(2025, 1, 6))
 
@@ -317,15 +357,15 @@ async def test_apply_fill_sequencing() -> None:
     async def _record_position(*a, **kw) -> None:
         call_order.append("db")
 
-    mock_position.update_position = _record_position
+    mock_position.update_position_in_session = _record_position
 
     mock_trading = MagicMock(spec=AbstractTradingStore)
-    mock_trading.get_filled_fills = AsyncMock(return_value=[])
+    mock_trading.get_filled_fills_in_session = AsyncMock(return_value=[])
 
     async def _record_pnl(*a, **kw) -> None:
         call_order.append("pnl")
 
-    mock_trading.increment_pnl_aggregate = _record_pnl
+    mock_trading.increment_pnl_aggregate_in_session = _record_pnl
 
     mock_api = MagicMock()
 
@@ -342,6 +382,7 @@ async def test_apply_fill_sequencing() -> None:
         position=mock_position, trading=mock_trading, factory=mock_factory, clock=clock
     )
 
-    await accountant.apply_fill(_make_fill(), Side.BUY, "INFY", "EQUITY")
+    await accountant.apply_fill(
+        _FAKE_SESSION, _make_fill(), Side.BUY, "INFY", "EQUITY")
 
     assert call_order == ["db", "pnl", "api"]

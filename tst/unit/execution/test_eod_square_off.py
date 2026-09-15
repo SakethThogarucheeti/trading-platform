@@ -31,20 +31,28 @@ def _make_position(symbol: str, instrument_type: str, net_qty: int, avg_price: f
 
 
 def _make_trading(positions: list[MagicMock]) -> MagicMock:
-    """A TradingStore stand-in whose _sf() session yields `positions` for the
-    open-position query, plus AsyncMock save_signal/save_order."""
-    result = MagicMock()
-    result.scalars.return_value.all.return_value = positions
+    """A TradingStore stand-in whose transaction() session yields `positions`
+    for the initial open-position enumeration, then re-yields each one in
+    turn (as a locked re-read would) for the per-position apply, plus
+    AsyncMock save_signal/save_order."""
+    enum_result = MagicMock()
+    enum_result.scalars.return_value.all.return_value = positions
+
+    locked_results: list[MagicMock] = []
+    for pos in positions:
+        locked_result = MagicMock()
+        locked_result.scalar_one_or_none.return_value = pos
+        locked_results.append(locked_result)
 
     session = MagicMock()
-    session.execute = AsyncMock(return_value=result)
+    session.execute = AsyncMock(side_effect=[enum_result, *locked_results])
 
     @asynccontextmanager
-    async def sf():
+    async def _transaction():
         yield session
 
     trading = MagicMock()
-    trading._sf = sf
+    trading.transaction = MagicMock(side_effect=_transaction)
     trading.save_signal = AsyncMock()
     trading.save_order = AsyncMock()
     return trading
@@ -106,12 +114,12 @@ async def test_long_position_squared_off_with_sell_and_full_audit_trail() -> Non
     # Position update goes through the accountant (updates position, PnL cache,
     # and invalidates the PnL cache) rather than a bare position_store call.
     accountant.apply_fill.assert_called_once()
-    fill: FillEvent = accountant.apply_fill.call_args[0][0]
+    fill: FillEvent = accountant.apply_fill.call_args[0][1]
     assert fill.avg_price == 1129.4
     assert fill.filled_qty == 3
-    assert accountant.apply_fill.call_args[0][1] == Side.SELL
-    assert accountant.apply_fill.call_args[0][2] == "INFY"
-    assert accountant.apply_fill.call_args[0][3] == "EQUITY"
+    assert accountant.apply_fill.call_args[0][2] == Side.SELL
+    assert accountant.apply_fill.call_args[0][3] == "INFY"
+    assert accountant.apply_fill.call_args[0][4] == "EQUITY"
 
 
 async def test_short_position_squared_off_with_buy() -> None:
@@ -127,7 +135,7 @@ async def test_short_position_squared_off_with_buy() -> None:
     event = trading.save_signal.call_args[0][0]
     assert event.side == Side.BUY
     assert event.quantity == 2
-    assert accountant.apply_fill.call_args[0][1] == Side.BUY
+    assert accountant.apply_fill.call_args[0][2] == Side.BUY
 
 
 async def test_falls_back_to_position_avg_price_when_price_store_has_none() -> None:

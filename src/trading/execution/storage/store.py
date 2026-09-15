@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -23,6 +25,20 @@ class NotFoundError(Exception):
 class TradingStore:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._sf = session_factory
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[AsyncSession]:
+        """
+        Open one session/transaction that callers can pass into the
+        `*_in_session` variants below (and into PositionStore's, since both
+        stores share the same session_factory in every DI wiring path) to
+        make several writes atomic together -- e.g. FillHandler.handle's
+        order-status + position + PnL-aggregate triad (trading-platform#91)
+        and eod_square_off's locked re-read + apply (trading-platform#96).
+        """
+        async with self._sf() as session:
+            async with session.begin():
+                yield session
 
     async def save_signal(self, event: ValidatedOrderEvent) -> Signal:
         signal = Signal(
@@ -67,17 +83,31 @@ class TradingStore:
         """
         async with self._sf() as session:
             async with session.begin():
-                result = await session.execute(
-                    select(Order).where(Order.kite_order_id == kite_order_id).with_for_update()
+                return await self.update_order_status_in_session(
+                    session, kite_order_id, status, avg_price
                 )
-                order = result.scalar_one_or_none()
-                if order is None:
-                    raise NotFoundError(f"Order not found: {kite_order_id!r}")
-                if order.status == OrderStatus.FILLED.value:
-                    return False
-                order.status = status.value
-                order.avg_price = Decimal(str(avg_price))
-                return True
+
+    async def update_order_status_in_session(
+        self,
+        session: AsyncSession,
+        kite_order_id: str,
+        status: OrderStatus,
+        avg_price: float = 0,
+    ) -> bool:
+        """Same as update_order_status, but runs inside a caller-supplied,
+        already-open transaction (see `transaction()`) instead of opening its
+        own -- so it can commit atomically alongside other writes."""
+        result = await session.execute(
+            select(Order).where(Order.kite_order_id == kite_order_id).with_for_update()
+        )
+        order = result.scalar_one_or_none()
+        if order is None:
+            raise NotFoundError(f"Order not found: {kite_order_id!r}")
+        if order.status == OrderStatus.FILLED.value:
+            return False
+        order.status = status.value
+        order.avg_price = Decimal(str(avg_price))
+        return True
 
     async def get_unresolved_tagged_orders(self) -> list[tuple[Order, Signal]]:
         """
@@ -166,27 +196,41 @@ class TradingStore:
         restart) from what's already durably persisted, with no separate queue
         storage of its own.
         """
+        async with self._sf() as session:
+            return await self.get_filled_fills_in_session(
+                session, for_date, symbol, exclude_kite_order_id
+            )
+
+    async def get_filled_fills_in_session(
+        self,
+        session: AsyncSession,
+        for_date: date,
+        symbol: str,
+        exclude_kite_order_id: str | None = None,
+    ) -> list[tuple[str, int, float]]:
+        """Same as get_filled_fills, but runs on a caller-supplied session --
+        used by PositionAccountant.apply_fill so this read stays on the same
+        connection as the fill's writes rather than opening a second,
+        interleaved session mid-transaction (trading-platform#91)."""
         start = datetime(for_date.year, for_date.month, for_date.day, tzinfo=UTC)
         end = datetime(for_date.year, for_date.month, for_date.day, 23, 59, 59, tzinfo=UTC)
-        async with self._sf() as session:
-            query = (
-                select(Order, Signal)
-                .join(Signal, Order.signal_id == Signal.id)
-                .where(
-                    Order.status == OrderStatus.FILLED.value,
-                    Signal.symbol == symbol,
-                    Order.created_at >= start,
-                    Order.created_at <= end,
-                )
-                .order_by(Order.created_at.asc())
+        query = (
+            select(Order, Signal)
+            .join(Signal, Order.signal_id == Signal.id)
+            .where(
+                Order.status == OrderStatus.FILLED.value,
+                Signal.symbol == symbol,
+                Order.created_at >= start,
+                Order.created_at <= end,
             )
-            if exclude_kite_order_id is not None:
-                query = query.where(Order.kite_order_id != exclude_kite_order_id)
-            result = await session.execute(query)
-            return [
-                (signal.side, order.qty, float(order.avg_price))
-                for order, signal in result.all()
-            ]
+            .order_by(Order.created_at.asc())
+        )
+        if exclude_kite_order_id is not None:
+            query = query.where(Order.kite_order_id != exclude_kite_order_id)
+        result = await session.execute(query)
+        return [
+            (signal.side, order.qty, float(order.avg_price)) for order, signal in result.all()
+        ]
 
     async def increment_pnl_aggregate(
         self, for_date: date, delta: float, algo_name: str = "ALL", symbol: str = "ALL"
@@ -202,31 +246,45 @@ class TradingStore:
         """
         async with self._sf() as session:
             async with session.begin():
-                result = await session.execute(
-                    select(StrategyAggregate)
-                    .where(
-                        StrategyAggregate.metric == _PNL_METRIC,
-                        StrategyAggregate.for_date == for_date,
-                        StrategyAggregate.algo_name == algo_name,
-                        StrategyAggregate.symbol == symbol,
-                    )
-                    .with_for_update()
+                await self.increment_pnl_aggregate_in_session(
+                    session, for_date, delta, algo_name, symbol
                 )
-                row = result.scalar_one_or_none()
-                if row is None:
-                    session.add(
-                        StrategyAggregate(
-                            metric=_PNL_METRIC,
-                            for_date=for_date,
-                            algo_name=algo_name,
-                            symbol=symbol,
-                            value=Decimal(str(delta)),
-                            updated_at=datetime.now(UTC),
-                        )
-                    )
-                else:
-                    row.value = row.value + Decimal(str(delta))
-                    row.updated_at = datetime.now(UTC)
+
+    async def increment_pnl_aggregate_in_session(
+        self,
+        session: AsyncSession,
+        for_date: date,
+        delta: float,
+        algo_name: str = "ALL",
+        symbol: str = "ALL",
+    ) -> None:
+        """Same as increment_pnl_aggregate, but runs inside a caller-supplied,
+        already-open transaction instead of opening its own."""
+        result = await session.execute(
+            select(StrategyAggregate)
+            .where(
+                StrategyAggregate.metric == _PNL_METRIC,
+                StrategyAggregate.for_date == for_date,
+                StrategyAggregate.algo_name == algo_name,
+                StrategyAggregate.symbol == symbol,
+            )
+            .with_for_update()
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            session.add(
+                StrategyAggregate(
+                    metric=_PNL_METRIC,
+                    for_date=for_date,
+                    algo_name=algo_name,
+                    symbol=symbol,
+                    value=Decimal(str(delta)),
+                    updated_at=datetime.now(UTC),
+                )
+            )
+        else:
+            row.value = row.value + Decimal(str(delta))
+            row.updated_at = datetime.now(UTC)
 
     async def get_pnl_aggregate(
         self, for_date: date, algo_name: str = "ALL", symbol: str = "ALL"
@@ -321,37 +379,49 @@ class PositionStore:
     ) -> None:
         async with self._sf() as session:
             async with session.begin():
-                result = await session.execute(
-                    select(Position)
-                    .where(
-                        Position.symbol == symbol,
-                        Position.instrument_type == instrument_type,
-                    )
-                    .with_for_update()
+                await self.update_position_in_session(session, fill, side, symbol, instrument_type)
+
+    async def update_position_in_session(
+        self,
+        session: AsyncSession,
+        fill: FillEvent,
+        side: Side,
+        symbol: str,
+        instrument_type: str,
+    ) -> None:
+        """Same as update_position, but runs inside a caller-supplied,
+        already-open transaction instead of opening its own."""
+        result = await session.execute(
+            select(Position)
+            .where(
+                Position.symbol == symbol,
+                Position.instrument_type == instrument_type,
+            )
+            .with_for_update()
+        )
+        position = result.scalar_one_or_none()
+        current = (
+            PositionState(net_qty=position.net_qty, avg_price=position.avg_price)
+            if position is not None
+            else None
+        )
+        new_state = PositionLedger.apply_fill(
+            current=current,
+            fill_qty=fill.filled_qty,
+            fill_price=Decimal(str(fill.avg_price)),
+            side=side,
+        )
+        if position is None:
+            session.add(
+                Position(
+                    symbol=symbol,
+                    instrument_type=instrument_type,
+                    net_qty=new_state.net_qty,
+                    avg_price=new_state.avg_price,
+                    updated_at=datetime.now(UTC),
                 )
-                position = result.scalar_one_or_none()
-                current = (
-                    PositionState(net_qty=position.net_qty, avg_price=position.avg_price)
-                    if position is not None
-                    else None
-                )
-                new_state = PositionLedger.apply_fill(
-                    current=current,
-                    fill_qty=fill.filled_qty,
-                    fill_price=Decimal(str(fill.avg_price)),
-                    side=side,
-                )
-                if position is None:
-                    session.add(
-                        Position(
-                            symbol=symbol,
-                            instrument_type=instrument_type,
-                            net_qty=new_state.net_qty,
-                            avg_price=new_state.avg_price,
-                            updated_at=datetime.now(UTC),
-                        )
-                    )
-                else:
-                    position.net_qty = new_state.net_qty
-                    position.avg_price = new_state.avg_price
-                    position.updated_at = datetime.now(UTC)
+            )
+        else:
+            position.net_qty = new_state.net_qty
+            position.avg_price = new_state.avg_price
+            position.updated_at = datetime.now(UTC)
