@@ -31,13 +31,17 @@ def _make_fill(
     )
 
 
+_UTC_ZONE = ZoneInfo("UTC")
+
+
 class _FixedClock(Clock):
-    def __init__(self, dt: datetime) -> None:
+    def __init__(self, dt: datetime, tz: ZoneInfo = _UTC_ZONE) -> None:
         self._dt = dt
+        self._tz = tz
 
     @property
     def tz(self) -> ZoneInfo:
-        return ZoneInfo("UTC")
+        return self._tz
 
     def now(self) -> datetime:
         return self._dt
@@ -91,6 +95,36 @@ async def test_apply_fill_opening_buy_realizes_zero_pnl() -> None:
     await accountant.apply_fill(fill, Side.BUY, "INFY", "EQUITY")
 
     mock_trading.increment_pnl_aggregate.assert_awaited_once_with(fixed_date, pytest.approx(0.0))
+
+
+async def test_apply_fill_uses_ist_calendar_day_not_utc(
+) -> None:
+    """trading-platform#90: apply_fill's for_date key must be the IST calendar day
+    (clock.today()), not the UTC calendar day (clock.now().date()) -- these differ
+    for any timestamp between 00:00 and 05:30 IST, which is still 'yesterday' in UTC.
+    A regression here would silently attribute realized P&L to the wrong trading day
+    in the aggregate DailyLossGate reads from."""
+    mock_position = MagicMock(spec=AbstractPositionStore)
+    mock_position.update_position = AsyncMock()
+    mock_trading = _make_trading()
+
+    # 2025-01-07 01:00 IST == 2025-01-06 19:30 UTC -- same instant, different calendar day.
+    clock = _FixedClock(
+        datetime(2025, 1, 6, 19, 30, tzinfo=UTC), tz=ZoneInfo("Asia/Kolkata")
+    )
+    assert clock.now().date() == date(2025, 1, 6)
+    assert clock.today() == date(2025, 1, 7)
+
+    accountant = PositionAccountant(
+        position=mock_position, trading=mock_trading, factory=_make_factory(), clock=clock
+    )
+
+    fill = _make_fill(avg_price=150.0, qty=10)
+    await accountant.apply_fill(fill, Side.BUY, "INFY", "EQUITY")
+
+    mock_trading.increment_pnl_aggregate.assert_awaited_once_with(
+        date(2025, 1, 7), pytest.approx(0.0)
+    )
 
 
 async def test_apply_fill_opening_sell_realizes_zero_pnl() -> None:

@@ -115,7 +115,7 @@ class RiskFilter(AbstractRegistry):
     async def _build_context(self, event: SignalEvent) -> RiskContext:
         now = self._clock.now()
         now_local = self._clock.now_tz().time()
-        today = now.date()
+        today = self._clock.today()
         realized_pnl = await self._trading.get_pnl_aggregate(today)  # type: ignore[attr-defined]
         position = None
         if event.signal_type == SignalType.ENTRY:

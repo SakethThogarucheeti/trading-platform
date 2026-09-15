@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -15,6 +16,7 @@ from trading_risk_sdk.gates.time_cutoff import TimeCutoffGate
 from trading_risk_sdk.sizer import calculate_quantity
 
 from trading.app.database import build_session_factory, init_db
+from trading.core.clock import SYSTEM_CLOCK, Clock
 from trading.core.models import Position
 from trading.core.schemas import (
     InstrumentType,
@@ -32,7 +34,29 @@ from trading.tick_ingest.service.ingestor import CircuitBreaker
 from trading.tick_ingest.storage.store import AuditStore
 
 NOW = datetime.now(UTC)
-TODAY = NOW.date()
+# _build_context keys get_pnl_aggregate off clock.today() (the IST calendar day,
+# per trading-platform#90) when no clock is injected, RiskFilter defaults to
+# SYSTEM_CLOCK -- so tests that pre-seed a "today" aggregate via TODAY must use
+# the same clock's today(), not a bare UTC .date(), or the two can genuinely
+# disagree depending on wall-clock time (any run between 18:30-23:59 UTC, which
+# is already the next IST calendar day).
+TODAY = SYSTEM_CLOCK.today()
+
+
+_UTC_ZONE = ZoneInfo("UTC")
+
+
+class _FixedClock(Clock):
+    def __init__(self, dt: datetime, tz: ZoneInfo = _UTC_ZONE) -> None:
+        self._dt = dt
+        self._tz = tz
+
+    @property
+    def tz(self) -> ZoneInfo:
+        return self._tz
+
+    def now(self) -> datetime:
+        return self._dt
 
 # ---------------------------------------------------------------------------
 # Sizer tests
@@ -108,6 +132,7 @@ def make_registry(
     circuit: CircuitBreaker | None = None,
     config: RiskConfig | None = None,
     daily_loss_enabled: bool = True,
+    clock: Clock | None = None,
 ) -> tuple[RiskFilter, TradingStore]:
     sf = build_session_factory(engine)
     cb = circuit or CircuitBreaker()
@@ -124,6 +149,7 @@ def make_registry(
         audit=AuditStore(sf),
         position=PositionStore(sf),
         circuit=cb,
+        clock=clock,
     )
     return rf, trading
 
@@ -233,6 +259,28 @@ async def test_daily_loss_gate_disabled_always_passes(engine: AsyncEngine) -> No
     await trading.increment_pnl_aggregate(TODAY, -100_000.0 * 100)
     result = await reg.handle(make_signal())
     assert result is not None
+
+
+async def test_daily_loss_gate_uses_ist_calendar_day_not_utc(engine: AsyncEngine) -> None:
+    """trading-platform#90: _build_context must key get_pnl_aggregate off
+    clock.today() (IST calendar day), not clock.now().date() (UTC calendar day) --
+    these differ for any timestamp between 00:00 and 05:30 IST. A regression here
+    would look up the wrong day's aggregate and silently let DailyLossGate see 0.0
+    instead of the day's real realized loss."""
+    # 2025-01-07 01:00 IST == 2025-01-06 19:30 UTC -- same instant, different calendar day.
+    clock = _FixedClock(datetime(2025, 1, 6, 19, 30, tzinfo=UTC), tz=ZoneInfo("Asia/Kolkata"))
+    assert clock.now().date() == date(2025, 1, 6)
+    ist_today = date(2025, 1, 7)
+    assert clock.today() == ist_today
+
+    reg, trading = make_registry(engine, config=make_config(equity=100_000.0), clock=clock)
+    # Seed the loss under the IST calendar day. If _build_context still read
+    # clock.now().date() (UTC), it would look up 2025-01-06 and see 0.0 instead.
+    await trading.increment_pnl_aggregate(ist_today, -1000.0 * 10)
+
+    result = await reg.handle(make_signal())
+
+    assert result is None
 
 
 # ---------------------------------------------------------------------------

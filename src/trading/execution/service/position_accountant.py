@@ -46,7 +46,7 @@ class PositionAccountant:
         instrument_type: str,
     ) -> None:
         await self._position.update_position(fill, side, symbol, instrument_type)
-        today = self._clock.now().date()
+        today = self._clock.today()
         long_queue, short_queue = await self._get_queues(symbol, today, fill.kite_order_id)
 
         if side == Side.BUY:
