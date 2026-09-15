@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from datetime import time
 
 from pydantic import BaseModel, Field
@@ -13,6 +13,7 @@ from trading.app.tasks import fire
 from trading.core.clock import Clock, SystemClock
 from trading.core.messaging import AbstractCircuitBreaker, AbstractRegistry
 from trading.core.schemas import SignalType
+from trading.monitoring.api.interfaces import AbstractFailedDispatchStore
 from trading.risk.api.interfaces import (
     AbstractAuditStore,
     AbstractPositionStore,
@@ -63,6 +64,7 @@ class RiskFilter(AbstractRegistry):
         sizer: RiskSizer | None = None,
         equity_provider: Callable[[], float] | None = None,
         circuit: AbstractCircuitBreaker | None = None,
+        failed_dispatch: AbstractFailedDispatchStore | None = None,
     ) -> None:
         self._config = config
         self._gates = gates
@@ -73,6 +75,7 @@ class RiskFilter(AbstractRegistry):
         self._sizer: RiskSizer = sizer or VolatilitySizer()
         self._equity_provider = equity_provider
         self._circuit = circuit
+        self._failed_dispatch = failed_dispatch
 
     @property
     def config(self) -> RiskConfig:
@@ -163,5 +166,28 @@ class RiskFilter(AbstractRegistry):
                 step=step, symbol=event.symbol, tick_log_id=event.tick_log_id,
                 context=context, algo_name=event.algo_name, signal_id=event.signal_id,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("RiskFilter: decision log failed for signal %s", event.signal_id)
+            if self._failed_dispatch is not None:
+                try:
+                    await self._failed_dispatch.record(
+                        site="decision_log",
+                        payload={
+                            "step": step,
+                            "symbol": event.symbol,
+                            "tick_log_id": event.tick_log_id,
+                            "algo_name": event.algo_name,
+                            "signal_id": str(event.signal_id) if event.signal_id else None,
+                            "context": (
+                                asdict(context)
+                                if is_dataclass(context) and not isinstance(context, type)
+                                else None
+                            ),
+                        },
+                        error=str(exc),
+                    )
+                except Exception:
+                    logger.exception(
+                        "RiskFilter: failed to persist failed-dispatch record for signal %s",
+                        event.signal_id,
+                    )

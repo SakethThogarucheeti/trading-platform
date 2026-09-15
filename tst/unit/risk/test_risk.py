@@ -472,6 +472,51 @@ async def test_log_decision_skips_when_tick_log_id_zero(engine: AsyncEngine) -> 
     await reg._log_decision("SIGNAL_ACCEPTED", sig, {"qty": 10})  # should not write to DB
 
 
+async def test_log_decision_failure_persists_to_failed_dispatch(engine: AsyncEngine) -> None:
+    """trading-platform#94: a failed decision-log write must be persisted via
+    failed_dispatch for later reconciliation, not just logged and dropped."""
+    from typing import Any
+
+    from trading.risk.api.interfaces import AbstractAuditStore
+    from trading.risk.service.filter import SignalAcceptedContext
+
+    class _FailDecisionAuditStore(AbstractAuditStore):
+        async def log_tick(self, event, symbol):
+            return 1
+
+        async def log_decision(self, **kwargs):
+            raise RuntimeError("decision log DB down")
+
+        async def log_audit(self, module, level, message):
+            pass
+
+    class _FakeFailedDispatchStore:
+        def __init__(self) -> None:
+            self.records: list[dict[str, Any]] = []
+
+        async def record(self, site: str, payload: dict[str, object], error: str) -> None:
+            self.records.append({"site": site, "payload": payload, "error": error})
+
+    failed_dispatch = _FakeFailedDispatchStore()
+    reg, _ = make_registry(engine)
+    reg._audit = _FailDecisionAuditStore()  # type: ignore[attr-defined]
+    reg._failed_dispatch = failed_dispatch  # type: ignore[attr-defined]
+
+    sig = make_signal(tick_log_id=7)
+    context = SignalAcceptedContext(qty=5, order_type="MARKET")
+    await reg._log_decision("SIGNAL_ACCEPTED", sig, context)
+
+    assert len(failed_dispatch.records) == 1
+    record = failed_dispatch.records[0]
+    assert record["site"] == "decision_log"
+    assert record["payload"]["step"] == "SIGNAL_ACCEPTED"
+    assert record["payload"]["symbol"] == sig.symbol
+    assert record["payload"]["tick_log_id"] == 7
+    assert record["payload"]["signal_id"] == str(sig.signal_id)
+    assert record["payload"]["context"] == {"qty": 5, "order_type": "MARKET"}
+    assert record["error"]
+
+
 async def test_reject_direct_covers_audit_log_path(engine: AsyncEngine) -> None:
     """Calling _reject directly covers the audit log write path (lines 178-179)."""
     reg, factory = make_registry(engine)

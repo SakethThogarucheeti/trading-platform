@@ -351,8 +351,17 @@ class SignalGenerator(AbstractRegistry):
                 self._config.algo_name, instance.state_dict(self._config.warmup_candles)
             )
         except Exception:
-            logger.warning(
-                "SignalGenerator: state upsert failed for %s", self._config.algo_name, exc_info=True
+            # Alert-only (trading-platform#94, Option B): unlike decision-log
+            # writes and paper-fill postbacks, a dropped algo_state upsert
+            # isn't unrecoverable -- RollingStateCacher's own DB-warmup
+            # fallback rebuilds this state at restart, so this only needs to
+            # be loud enough for a human to notice an elevated failure rate,
+            # not persisted for individual replay.
+            logger.error(
+                "ALERT SignalGenerator: state upsert failed for %s (self-heals via DB "
+                "warmup at restart, no action needed unless this repeats)",
+                self._config.algo_name,
+                exc_info=True,
             )
 
     async def _log_signal(self, event: SignalEvent, algo_name: str) -> None:

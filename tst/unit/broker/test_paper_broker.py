@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 import polars as pl
@@ -78,9 +79,18 @@ class _FakeBroker(Broker):
 _POSTBACK_URL = "http://localhost:8081/api/postback"
 
 
+class _FakeFailedDispatchStore:
+    def __init__(self) -> None:
+        self.records: list[dict[str, Any]] = []
+
+    async def record(self, site: str, payload: dict[str, object], error: str) -> None:
+        self.records.append({"site": site, "payload": payload, "error": error})
+
+
 def _make_paper_broker(
     prices: dict[str, float] | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
+    failed_dispatch: _FakeFailedDispatchStore | None = None,
 ) -> PaperBroker:
     ps = PriceStore()
     for sym, price in (prices or {}).items():
@@ -89,7 +99,14 @@ def _make_paper_broker(
     # fill_delay_secs=0: the real default defers the postback to a background
     # task (see paper_broker.py) so it can't race OrderExecutor's own DB
     # write; tests instead await `_flush_background_tasks` to observe it.
-    return PaperBroker(_FakeBroker(), price_store=ps, postback_url=_POSTBACK_URL, http_client=client, fill_delay_secs=0)
+    return PaperBroker(
+        _FakeBroker(),
+        price_store=ps,
+        postback_url=_POSTBACK_URL,
+        http_client=client,
+        fill_delay_secs=0,
+        failed_dispatch=failed_dispatch,
+    )
 
 
 async def _flush_background_tasks() -> None:
@@ -235,6 +252,38 @@ async def test_paper_broker_logs_postback_http_error_without_raising() -> None:
     assert order_id.startswith("PAPER_")
 
     await _flush_background_tasks()
+
+
+async def test_paper_broker_persists_failed_dispatch_on_postback_error() -> None:
+    """
+    A failed simulated postback must be persisted via failed_dispatch so it
+    can be replayed later (trading-platform#94) -- otherwise the fill is
+    silently lost with only a log line.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"detail": "unavailable"})
+
+    failed_dispatch = _FakeFailedDispatchStore()
+    pb = _make_paper_broker(
+        prices={"INFY": 1500.0},
+        transport=httpx.MockTransport(handler),
+        failed_dispatch=failed_dispatch,
+    )
+    order_id = await pb.place_order(
+        "INFY", Side.BUY, 10, OrderType.MARKET, instrument_type="EQUITY", tick_log_id=42
+    )
+    await _flush_background_tasks()
+
+    assert len(failed_dispatch.records) == 1
+    record = failed_dispatch.records[0]
+    assert record["site"] == "paper_fill_postback"
+    assert record["payload"]["order_id"] == order_id
+    assert record["payload"]["symbol"] == "INFY"
+    assert record["payload"]["side"] == Side.BUY.value
+    assert record["payload"]["qty"] == 10
+    assert record["payload"]["instrument_type"] == "EQUITY"
+    assert record["payload"]["tick_log_id"] == 42
+    assert record["error"]
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ from trading.core.messaging import AbstractCircuitBreaker
 from trading.core.schemas import InstrumentType
 from trading.execution.api import ExecConfig, FillHandler, OrderExecutor, PositionAccountant
 from trading.execution.storage.store import PositionStore, TradingStore
+from trading.monitoring.api.interfaces import AbstractFailedDispatchStore
 from trading.risk.service.filter import RiskConfig, RiskFilter
 from trading.storage.cache import CacherFactory
 from trading.strategy.api import AlgoInstance, AlgoRunConfig, SignalGenerator
@@ -34,6 +35,7 @@ class SharedAlgoDeps:
     polars_store: PolarsStore
     settings: Settings
     factory: CacherFactory
+    failed_dispatch: AbstractFailedDispatchStore | None = None
 
 
 class AlgoPipelineFactory:
@@ -122,6 +124,7 @@ class AlgoPipelineFactory:
             audit=s.audit,
             position=position_store,
             circuit=circuit,
+            failed_dispatch=s.failed_dispatch,
         )
 
         accountant = PositionAccountant(position_store, s.trading, s.factory)

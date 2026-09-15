@@ -10,6 +10,7 @@ from trading.broker.service.paper_broker import AbstractPriceStore, PaperBroker
 from trading.broker.service.zerodha.broker import ZerodhaBroker
 from trading.broker.service.zerodha.kite_client import KiteClient
 from trading.config.settings import Settings
+from trading.monitoring.api.interfaces import AbstractFailedDispatchStore
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,11 @@ class BrokerDeps:
     broker_stream: BrokerStream
 
 
-def build_broker(settings: Settings, price_store: AbstractPriceStore) -> BrokerDeps:
+def build_broker(
+    settings: Settings,
+    price_store: AbstractPriceStore,
+    failed_dispatch: AbstractFailedDispatchStore | None = None,
+) -> BrokerDeps:
     kite_client = KiteClient(settings.zerodha_api_key)
 
     real_broker = ZerodhaBroker(kite_client, order_timeout_secs=settings.order_timeout_secs)
@@ -34,7 +39,11 @@ def build_broker(settings: Settings, price_store: AbstractPriceStore) -> BrokerD
         postback_url = f"http://{settings.dashboard_host}:{settings.dashboard_port}/api/postback"
         http_client = httpx.AsyncClient()
         broker = PaperBroker(
-            real_broker, price_store, postback_url=postback_url, http_client=http_client
+            real_broker,
+            price_store,
+            postback_url=postback_url,
+            http_client=http_client,
+            failed_dispatch=failed_dispatch,
         )
     else:
         broker = real_broker

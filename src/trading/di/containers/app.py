@@ -34,7 +34,7 @@ async def build_ingestor_app(settings: Settings | None = None) -> AsyncIterator[
     settings = settings or get_settings()
     infra = await build_infra(settings)
     try:
-        broker = build_broker(infra.settings, infra.price_store)
+        broker = build_broker(infra.settings, infra.price_store, infra.failed_dispatch_store)
         components = await build_components(infra, broker)
         yield IngestorApp(infra=infra, broker=broker, components=components)
     finally:

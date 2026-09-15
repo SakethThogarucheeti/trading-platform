@@ -31,6 +31,7 @@ from trading.di.providers.algo_pipeline import AlgoPipelineFactory, SharedAlgoDe
 from trading.execution.api import OrderExecutor
 from trading.execution.service.order_reconciler import OrderReconciler
 from trading.execution.storage.store import PositionStore, TradingStore
+from trading.monitoring.api.interfaces import AbstractFailedDispatchStore
 from trading.monitoring.service.heartbeat import HeartbeatMonitor
 from trading.monitoring.service.scheduler import Scheduler
 from trading.monitoring.storage.store import HeartbeatStore
@@ -166,6 +167,7 @@ class RuntimeDeps:
     sf: async_sessionmaker[AsyncSession]
     circuit: AbstractCircuitBreaker
     cacher_factory: CacherFactory
+    failed_dispatch: AbstractFailedDispatchStore
 
 
 class _RuntimeAssembler:
@@ -235,6 +237,7 @@ class _RuntimeAssembler:
             polars_store=polars_store,
             settings=deps.settings,
             factory=deps.cacher_factory,
+            failed_dispatch=deps.failed_dispatch,
         ))
 
         for algo in algo_configs:
@@ -403,6 +406,7 @@ async def build_components(infra: Infra, broker: BrokerDeps) -> Components:
         sf=infra.session_factory,
         circuit=circuit_breaker,
         cacher_factory=infra.cacher_factory,
+        failed_dispatch=infra.failed_dispatch_store,
     )
     runtime = await assembler.build_runtime(runtime_deps)
 

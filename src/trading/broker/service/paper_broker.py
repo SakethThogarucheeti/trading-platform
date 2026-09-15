@@ -34,6 +34,7 @@ import polars as pl
 from trading.app.tasks import fire
 from trading.broker.service.broker import Broker
 from trading.core.schemas import OrderType, Side
+from trading.monitoring.api.interfaces import AbstractFailedDispatchStore
 
 _DEFAULT_SLIPPAGE_PCT = 0.05 / 100  # 0.05% per leg — overridden by settings
 
@@ -112,12 +113,14 @@ class PaperBroker(Broker):
         postback_url: str,
         http_client: httpx.AsyncClient,
         fill_delay_secs: float = _SIMULATED_FILL_DELAY_SECS,
+        failed_dispatch: AbstractFailedDispatchStore | None = None,
     ) -> None:
         self._real = real_broker
         self._price_store = price_store
         self._postback_url = postback_url
         self._http_client = http_client
         self._fill_delay_secs = fill_delay_secs
+        self._failed_dispatch = failed_dispatch
 
     def get_instruments(self) -> pl.DataFrame:
         return self._real.get_instruments()
@@ -157,11 +160,49 @@ class PaperBroker(Broker):
         )
         fire(
             self._simulate_fill(order_id, symbol, side, qty, instrument_type, tick_log_id),
-            on_error=lambda exc: logger.error(
-                "PaperBroker: simulated fill failed for %s — %s", order_id, exc
+            on_error=lambda exc: self._on_simulate_fill_failed(
+                exc, order_id, symbol, side, qty, instrument_type, tick_log_id
             ),
         )
         return order_id
+
+    def _on_simulate_fill_failed(
+        self,
+        exc: BaseException,
+        order_id: str,
+        symbol: str,
+        side: Side,
+        qty: int,
+        instrument_type: str,
+        tick_log_id: int,
+    ) -> None:
+        # A dropped postback means the paper broker believes a fill happened
+        # but the accounting system never sees it -- no fallback recovers this
+        # on its own, so persist enough to replay the postback later
+        # (trading-platform#94). fire() invokes on_error synchronously from a
+        # task done-callback, still on the running loop, so scheduling this as
+        # its own fire-and-forget task is safe here.
+        logger.error("PaperBroker: simulated fill failed for %s — %s", order_id, exc)
+        if self._failed_dispatch is not None:
+            fire(
+                self._failed_dispatch.record(
+                    site="paper_fill_postback",
+                    payload={
+                        "order_id": order_id,
+                        "symbol": symbol,
+                        "side": side.value,
+                        "qty": qty,
+                        "instrument_type": instrument_type,
+                        "tick_log_id": tick_log_id,
+                    },
+                    error=str(exc),
+                ),
+                on_error=lambda persist_exc: logger.error(
+                    "PaperBroker: failed to persist failed-dispatch record for %s — %s",
+                    order_id,
+                    persist_exc,
+                ),
+            )
 
     async def _simulate_fill(
         self,

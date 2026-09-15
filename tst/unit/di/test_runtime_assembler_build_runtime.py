@@ -80,6 +80,7 @@ def _deps(settings: Settings, instruments: list[Instrument], **overrides: object
         "sf": _mock_sf(instruments),
         "circuit": MagicMock(name="circuit"),
         "cacher_factory": MagicMock(name="cacher_factory"),
+        "failed_dispatch": MagicMock(name="failed_dispatch"),
     }
     defaults.update(overrides)
     return RuntimeDeps(**defaults)  # type: ignore[arg-type]

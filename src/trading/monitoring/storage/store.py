@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from trading.monitoring.storage.models import Heartbeat
+from trading.monitoring.storage.models import FailedDispatch, Heartbeat
 
 
 class HeartbeatStore:
@@ -50,3 +50,23 @@ class HeartbeatStore:
             if last_seen < cutoff:
                 stale.append(hb.module)
         return stale
+
+
+class FailedDispatchStore:
+    """Persists a failed_dispatches row for a background dispatch that failed
+    with no other recovery path -- see FailedDispatch's docstring."""
+
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._sf = session_factory
+
+    async def record(self, site: str, payload: dict[str, object], error: str) -> None:
+        async with self._sf() as session:
+            async with session.begin():
+                session.add(
+                    FailedDispatch(
+                        site=site,
+                        payload=payload,
+                        error=error,
+                        created_at=datetime.now(UTC),
+                    )
+                )

@@ -10,7 +10,7 @@ from trading.candles.storage.store import CandleDataStore, InstrumentStore
 from trading.config.settings import Settings
 from trading.core.clock import Clock, SystemClock
 from trading.execution.storage.store import PositionStore, TradingStore
-from trading.monitoring.storage.store import HeartbeatStore
+from trading.monitoring.storage.store import FailedDispatchStore, HeartbeatStore
 from trading.storage.cache import CacherFactory, ValueCache
 from trading.storage.cache.postgres_backend import PostgresKVCache
 from trading.strategy.storage.store import ChartStore, ConfigStore
@@ -31,6 +31,7 @@ class Infra:
     position_store: PositionStore
     audit_store: AuditStore
     heartbeat_store: HeartbeatStore
+    failed_dispatch_store: FailedDispatchStore
     config_store: ConfigStore
     chart_store: ChartStore
     price_store: PriceStore
@@ -64,6 +65,7 @@ async def build_infra(settings: Settings, engine: AsyncEngine | None = None) -> 
         position_store=PositionStore(session_factory),
         audit_store=AuditStore(session_factory),
         heartbeat_store=HeartbeatStore(session_factory),
+        failed_dispatch_store=FailedDispatchStore(session_factory),
         config_store=ConfigStore(session_factory),
         chart_store=ChartStore(session_factory),
         price_store=PriceStore(slippage_pct=settings.paper_slippage_pct / 100),

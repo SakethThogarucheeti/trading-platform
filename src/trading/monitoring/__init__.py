@@ -1,3 +1,8 @@
-from trading.monitoring.api import AbstractHeartbeatStore, HeartbeatMonitor, Scheduler
+from trading.monitoring.api import (
+    AbstractFailedDispatchStore,
+    AbstractHeartbeatStore,
+    HeartbeatMonitor,
+    Scheduler,
+)
 
-__all__ = ["HeartbeatMonitor", "Scheduler", "AbstractHeartbeatStore"]
+__all__ = ["HeartbeatMonitor", "Scheduler", "AbstractHeartbeatStore", "AbstractFailedDispatchStore"]
