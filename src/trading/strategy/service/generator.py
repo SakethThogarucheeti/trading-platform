@@ -235,7 +235,7 @@ class SignalGenerator(AbstractRegistry):
         return instance
 
     def _persist_signal_side_effects(self, instance: AlgoInstance, candle: CandleEvent) -> None:
-        """Fire-and-forget rolling-state save + algo-state upsert — runs every candle, signal or not."""
+        """Fire-and-forget rolling-state save + algo-state upsert — runs every candle."""
         rolling = instance.strategy.rolling_state()
         if rolling:
             fire(

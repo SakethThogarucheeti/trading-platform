@@ -11,7 +11,7 @@ import pytest
 from anyio import create_task_group, sleep
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from trading.app.database import build_session_factory, init_db
+from trading.app.database import init_db
 from trading.candles.service.aggregator import CandleAggregator, CandleAggregatorComponent
 from trading.candles.service.bar_accumulator import SymbolConfig
 from trading.candles.service.historical import HistoricalDataResult, HistoricalDataService
@@ -92,8 +92,6 @@ async def engine() -> AsyncEngine:  # type: ignore[misc]
 
 
 async def test_candle_aggregator_starts_and_reaches_running(engine: AsyncEngine) -> None:
-    sf = build_session_factory(engine)
-
     from trading.app.database import get_session
 
     async with get_session(engine) as s:
