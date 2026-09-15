@@ -91,7 +91,7 @@ def create_reports_router(
 
         async def _produce() -> str:
             from trading.reports.engine import fetch_report_data
-            data = await fetch_report_data(start, end, session_factory)
+            data = await fetch_report_data(start, end, session_factory, clock)
             return data.model_dump_json()
 
         return await cached_json_response(

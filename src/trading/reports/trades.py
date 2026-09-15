@@ -12,11 +12,14 @@ one place.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from trading.core.clock import Clock
+from trading.core.fifo import match_against
 from trading.core.models import Order, Signal
 from trading.core.schemas import OrderStatus
 from trading.reports.pnl import DEFAULT_COSTS, TradeCosts
@@ -52,43 +55,90 @@ class PnlSummary:
     net: float
 
 
-def _signed_gross(side: str, qty: int, avg_price: float) -> float:
-    sign = 1.0 if side == "SELL" else -1.0
-    return sign * avg_price * qty
+def _local_day_start_utc(clock: Clock, when: datetime) -> datetime:
+    """Start of the local trading-calendar day containing `when`, as UTC."""
+    if when == datetime.min.replace(tzinfo=UTC):
+        return when  # SimulatedClock before first advance() -- avoid tz-conversion overflow
+    local = when.astimezone(clock.tz)
+    return datetime(local.year, local.month, local.day, tzinfo=clock.tz).astimezone(UTC)
 
 
 async def fetch_filled_trades(
     session_factory: async_sessionmaker[AsyncSession],
     start: datetime,
     end: datetime,
+    clock: Clock,
     algo_name: str = "",
     costs: TradeCosts = DEFAULT_COSTS,
 ) -> list[FilledTrade]:
     """
     Return all FILLED orders in [start, end] with full signal context and P&L per leg.
 
-    Optional ``algo_name`` filter narrows results to one algo.
+    ``gross`` is each order's FIFO-matched realized P&L (trading-platform#89),
+    not signed cash flow: an opening fill (one that extends a position)
+    contributes 0 to ``gross``; a closing fill carries the profit/loss
+    matched against the opposing fills it closed out. Matching is per
+    symbol, mirroring the granularity `PositionAccountant` actually tracks
+    positions at (one net position per symbol, not per algo) -- if two
+    algos trade the same symbol, which one's fill gets "credited" with
+    closing the position is inherent to FIFO-by-symbol accounting and
+    matches live reality, not an artifact of this reporting fix.
+
+    FIFO state is seeded from fills since the start of the local trading day
+    containing `start`, not from `start` itself, so a closing fill just
+    inside the window still matches correctly against an opening fill from
+    earlier the same day -- seeded fills before `start` are used only to
+    prime the queues and are not included in the returned list. This bound
+    is safe (not approximate) because this is an intraday-only bot with a
+    daily EOD square-off (#96): positions are flat at every local-day
+    boundary, so no fill on one trading day can ever need to match against
+    a fill from an earlier day.
+
+    Optional ``algo_name`` filter narrows the *returned* results to one algo,
+    but does not narrow FIFO seeding -- a closing fill from a filtered-out
+    algo must still drain the shared per-symbol queue correctly.
     """
+    fetch_start = _local_day_start_utc(clock, start)
     async with session_factory() as session:
-        conditions = [
-            Order.status == OrderStatus.FILLED.value,
-            Order.created_at >= start,
-            Order.created_at <= end,
-        ]
-        if algo_name:
-            conditions.append(Signal.algo_name == algo_name)
         result = await session.execute(
             select(Order, Signal)
             .join(Signal, Order.signal_id == Signal.id)
-            .where(*conditions)
+            .where(
+                Order.status == OrderStatus.FILLED.value,
+                Order.created_at >= fetch_start,
+                Order.created_at <= end,
+            )
             .order_by(Order.created_at)
         )
         rows = result.all()
 
+    queues: dict[str, tuple[list[tuple[int, Decimal]], list[tuple[int, Decimal]]]] = {}
     trades: list[FilledTrade] = []
     for order, signal in rows:
         price = float(order.avg_price)
-        gross = _signed_gross(signal.side, order.qty, price)
+        price_dec: Decimal = order.avg_price
+        long_queue, short_queue = queues.setdefault(signal.symbol, ([], []))
+        if signal.side == "BUY":
+            matched, remaining = match_against(short_queue, order.qty, price_dec, sign=-1)
+            if remaining > 0:
+                long_queue.append((remaining, price_dec))
+        else:
+            matched, remaining = match_against(long_queue, order.qty, price_dec, sign=1)
+            if remaining > 0:
+                short_queue.append((remaining, price_dec))
+
+        created_at = order.created_at
+        if created_at.tzinfo is None:
+            # sqlite (used by tests) doesn't round-trip tzinfo through
+            # DateTime(timezone=True) the way Postgres does -- values are
+            # always stored/read as UTC, so a naive read means UTC.
+            created_at = created_at.replace(tzinfo=UTC)
+        if created_at < start:
+            continue  # seeding-only fill: primes FIFO state, not part of the requested window
+        if algo_name and signal.algo_name != algo_name:
+            continue
+
+        gross = float(matched)
         cost = costs.cost_for_fill(signal.side, order.qty, price)
         trades.append(
             FilledTrade(

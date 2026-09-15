@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from trading.core.clock import SystemClock
 from trading.reports.engine import fetch_report_data
 from trading.reports.fetch import AlgoConfigSnapshot, NiftyBenchmark
 from trading.reports.trades import FilledTrade
@@ -15,6 +16,7 @@ from trading.reports.trades import FilledTrade
 NOW = datetime.now(UTC)
 START = NOW - timedelta(hours=1)
 END = NOW + timedelta(hours=1)
+CLOCK = SystemClock()
 
 
 def _make_session_factory():
@@ -66,7 +68,7 @@ def _patches(trades=None, decisions=None, heartbeats=None, algo_configs=None, ni
 async def test_fetch_report_data_empty_returns_zeros():
     sf = _make_session_factory()
     with _patches():
-        result = await fetch_report_data(START, END, sf)
+        result = await fetch_report_data(START, END, sf, CLOCK)
 
     funnel = result.signal_funnel
     assert funnel.signals_generated == 0
@@ -98,7 +100,7 @@ async def test_fetch_report_data_signal_funnel_counts():
 
     sf = _make_session_factory()
     with _patches(decisions=decisions):
-        result = await fetch_report_data(START, END, sf)
+        result = await fetch_report_data(START, END, sf, CLOCK)
 
     funnel = result.signal_funnel
     assert funnel.signals_generated == 2
@@ -117,7 +119,7 @@ async def test_fetch_report_data_order_funnel():
 
     sf = _make_session_factory()
     with _patches(decisions=decisions, trades=trades):
-        result = await fetch_report_data(START, END, sf)
+        result = await fetch_report_data(START, END, sf, CLOCK)
 
     order_funnel = result.order_funnel
     assert order_funnel.placed == 2
@@ -132,7 +134,7 @@ async def test_fetch_report_data_trades_by_symbol():
 
     sf = _make_session_factory()
     with _patches(trades=[buy, sell]):
-        result = await fetch_report_data(START, END, sf)
+        result = await fetch_report_data(START, END, sf, CLOCK)
 
     trades_by_sym = result.trades_by_symbol
     assert len(trades_by_sym) == 1
@@ -155,7 +157,7 @@ async def test_fetch_report_data_heartbeat_system_health():
 
     sf = _make_session_factory()
     with _patches(heartbeats=[fresh_hb, stale_hb]):
-        result = await fetch_report_data(START, END, sf)
+        result = await fetch_report_data(START, END, sf, CLOCK)
 
     health = {h.module: h for h in result.system_health}
     assert health["kite_ingestor"].stale is False
@@ -170,7 +172,7 @@ async def test_fetch_report_data_heartbeat_naive_datetime_handled():
 
     sf = _make_session_factory()
     with _patches(heartbeats=[hb]):
-        result = await fetch_report_data(START, END, sf)
+        result = await fetch_report_data(START, END, sf, CLOCK)
 
     assert len(result.system_health) == 1
     assert result.system_health[0].stale is True
@@ -183,7 +185,7 @@ async def test_fetch_report_data_with_nifty_benchmark():
 
     sf = _make_session_factory()
     with _patches(algo_configs=[algo_cfg], nifty=nifty):
-        result = await fetch_report_data(START, END, sf)
+        result = await fetch_report_data(START, END, sf, CLOCK)
 
     b = result.benchmark
     assert b is not None
@@ -198,7 +200,7 @@ async def test_fetch_report_data_rejection_with_malformed_context():
 
     sf = _make_session_factory()
     with _patches(decisions=decisions):
-        result = await fetch_report_data(START, END, sf)
+        result = await fetch_report_data(START, END, sf, CLOCK)
 
     assert result.signal_funnel.rejection_reasons.get("UNKNOWN", 0) >= 1
 

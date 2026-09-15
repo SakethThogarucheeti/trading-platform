@@ -394,27 +394,41 @@ async def test_pnl_with_algo_name_filter():
 
 @pytest.mark.asyncio
 async def test_pnl_with_signal_data_computes_summary():
-    """P&L endpoint sums gross/net across filled orders."""
+    """P&L endpoint sums gross/net across filled orders.
+
+    `gross` is FIFO-realized P&L (trading-platform#89), not signed cash flow:
+    the opening BUY leg contributes 0, the closing SELL leg carries the
+    matched profit."""
     from decimal import Decimal
 
-    order = MagicMock()
-    order.avg_price = Decimal("1500")
-    order.qty = 10
-    order.created_at = datetime(2025, 1, 6, 9, 30, tzinfo=UTC)
+    order_buy = MagicMock()
+    order_buy.avg_price = Decimal("1400")
+    order_buy.qty = 10
+    order_buy.created_at = datetime(2025, 1, 6, 9, 15, tzinfo=UTC)
 
-    signal = MagicMock()
-    signal.side = "SELL"
-    signal.symbol = "INFY"
-    signal.signal_type = "ENTRY"
+    signal_buy = MagicMock()
+    signal_buy.side = "BUY"
+    signal_buy.symbol = "INFY"
+    signal_buy.signal_type = "ENTRY"
 
-    sf = _mock_sf(all_return=[(order, signal)])
+    order_sell = MagicMock()
+    order_sell.avg_price = Decimal("1500")
+    order_sell.qty = 10
+    order_sell.created_at = datetime(2025, 1, 6, 9, 30, tzinfo=UTC)
+
+    signal_sell = MagicMock()
+    signal_sell.side = "SELL"
+    signal_sell.symbol = "INFY"
+    signal_sell.signal_type = "EXIT"
+
+    sf = _mock_sf(all_return=[(order_buy, signal_buy), (order_sell, signal_sell)])
     with patch("trading.reports.fetch.fetch_nifty_benchmark", new=AsyncMock(return_value=None)):
         async with await _client(sf) as client:
             resp = await client.get("/api/pnl")
     assert resp.status_code == 200
     data = resp.json()
-    # SELL 10 @ 1500 = +15000 gross
-    assert data["summary"]["gross"] == pytest.approx(15000.0)
+    # BUY 10 @ 1400 (opens, 0 realized) then SELL 10 @ 1500 (closes, realized = 10*(1500-1400))
+    assert data["summary"]["gross"] == pytest.approx(1000.0)
     assert data["summary"]["net"] < data["summary"]["gross"]  # costs deducted
 
 
@@ -434,37 +448,68 @@ async def test_pnl_by_algo_empty():
 
 @pytest.mark.asyncio
 async def test_pnl_by_algo_groups_by_algo_name():
+    """`gross` is FIFO-realized P&L (#89); each algo trades its own symbol
+    here so its round-trip's realized P&L is unambiguous."""
     from decimal import Decimal
 
-    order_a = MagicMock()
-    order_a.avg_price = Decimal("1000")
-    order_a.qty = 5
-    order_a.created_at = datetime(2025, 1, 6, 9, 30, tzinfo=UTC)
+    order_a_open = MagicMock()
+    order_a_open.avg_price = Decimal("900")
+    order_a_open.qty = 5
+    order_a_open.created_at = datetime(2025, 1, 6, 9, 15, tzinfo=UTC)
 
-    signal_a = MagicMock()
-    signal_a.side = "SELL"
-    signal_a.algo_name = "algo_a"
+    signal_a_open = MagicMock()
+    signal_a_open.side = "BUY"
+    signal_a_open.symbol = "INFY"
+    signal_a_open.algo_name = "algo_a"
 
-    order_b = MagicMock()
-    order_b.avg_price = Decimal("2000")
-    order_b.qty = 3
-    order_b.created_at = datetime(2025, 1, 6, 10, 0, tzinfo=UTC)
+    order_a_close = MagicMock()
+    order_a_close.avg_price = Decimal("1000")
+    order_a_close.qty = 5
+    order_a_close.created_at = datetime(2025, 1, 6, 9, 30, tzinfo=UTC)
 
-    signal_b = MagicMock()
-    signal_b.side = "BUY"
-    signal_b.algo_name = "algo_b"
+    signal_a_close = MagicMock()
+    signal_a_close.side = "SELL"
+    signal_a_close.symbol = "INFY"
+    signal_a_close.algo_name = "algo_a"
 
-    sf = _mock_sf(all_return=[(order_a, signal_a), (order_b, signal_b)])
+    order_b_open = MagicMock()
+    order_b_open.avg_price = Decimal("2000")
+    order_b_open.qty = 3
+    order_b_open.created_at = datetime(2025, 1, 6, 9, 15, tzinfo=UTC)
+
+    signal_b_open = MagicMock()
+    signal_b_open.side = "BUY"
+    signal_b_open.symbol = "TCS"
+    signal_b_open.algo_name = "algo_b"
+
+    order_b_close = MagicMock()
+    order_b_close.avg_price = Decimal("2050")
+    order_b_close.qty = 3
+    order_b_close.created_at = datetime(2025, 1, 6, 10, 0, tzinfo=UTC)
+
+    signal_b_close = MagicMock()
+    signal_b_close.side = "SELL"
+    signal_b_close.symbol = "TCS"
+    signal_b_close.algo_name = "algo_b"
+
+    sf = _mock_sf(
+        all_return=[
+            (order_a_open, signal_a_open),
+            (order_a_close, signal_a_close),
+            (order_b_open, signal_b_open),
+            (order_b_close, signal_b_close),
+        ]
+    )
     async with await _client(sf) as client:
         resp = await client.get("/api/pnl/by-algo")
     assert resp.status_code == 200
     data = resp.json()
     assert "algo_a" in data
     assert "algo_b" in data
-    # algo_a: SELL 5 @ 1000 = +5000 gross
-    assert data["algo_a"]["gross"] == pytest.approx(5000.0)
-    # algo_b: BUY 3 @ 2000 = -6000 gross
-    assert data["algo_b"]["gross"] == pytest.approx(-6000.0)
+    # algo_a: BUY 5 @ 900 (open) then SELL 5 @ 1000 (closes, realized = 5*100)
+    assert data["algo_a"]["gross"] == pytest.approx(500.0)
+    # algo_b: BUY 3 @ 2000 (open) then SELL 3 @ 2050 (closes, realized = 3*50)
+    assert data["algo_b"]["gross"] == pytest.approx(150.0)
 
 
 @pytest.mark.asyncio
@@ -494,22 +539,34 @@ async def test_pnl_by_algo_uses_cacher_factory_when_provided():
 async def test_pnl_by_algo_null_algo_name_grouped_as_default():
     from decimal import Decimal
 
-    order = MagicMock()
-    order.avg_price = Decimal("500")
-    order.qty = 2
-    order.created_at = datetime(2025, 1, 6, 9, 30, tzinfo=UTC)
+    order_open = MagicMock()
+    order_open.avg_price = Decimal("400")
+    order_open.qty = 2
+    order_open.created_at = datetime(2025, 1, 6, 9, 15, tzinfo=UTC)
 
-    signal = MagicMock()
-    signal.side = "SELL"
-    signal.algo_name = None  # no algo_name set
+    signal_open = MagicMock()
+    signal_open.side = "BUY"
+    signal_open.symbol = "INFY"
+    signal_open.algo_name = None  # no algo_name set
 
-    sf = _mock_sf(all_return=[(order, signal)])
+    order_close = MagicMock()
+    order_close.avg_price = Decimal("500")
+    order_close.qty = 2
+    order_close.created_at = datetime(2025, 1, 6, 9, 30, tzinfo=UTC)
+
+    signal_close = MagicMock()
+    signal_close.side = "SELL"
+    signal_close.symbol = "INFY"
+    signal_close.algo_name = None  # no algo_name set
+
+    sf = _mock_sf(all_return=[(order_open, signal_open), (order_close, signal_close)])
     async with await _client(sf) as client:
         resp = await client.get("/api/pnl/by-algo")
     assert resp.status_code == 200
     data = resp.json()
     assert "default" in data
-    assert data["default"]["gross"] == pytest.approx(1000.0)
+    # BUY 2 @ 400 (open) then SELL 2 @ 500 (closes, realized = 2*100)
+    assert data["default"]["gross"] == pytest.approx(200.0)
 
 
 # ---------------------------------------------------------------------------

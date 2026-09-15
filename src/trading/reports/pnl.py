@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from decimal import Decimal
 
 from trading.core.fifo import match_against
 from trading.core.models import Signal
@@ -80,36 +81,47 @@ def compute_pnl(
 
     results: dict[str, dict[str, float]] = {}
     for (strategy_id, symbol), trades in fills.items():
-        long_queue: list[tuple[int, float]] = []
-        short_queue: list[tuple[int, float]] = []
-        realized = 0.0
+        # FIFO matching itself runs in Decimal (trading-platform#92 — avoids
+        # accumulating float rounding error over many fills); the cost model
+        # below is float-only reporting-side arithmetic, unaffected by #92's
+        # scope (that fix was deliberately limited to the live accounting
+        # path plus the shared fifo.py primitive both sides call).
+        long_queue: list[tuple[int, Decimal]] = []
+        short_queue: list[tuple[int, Decimal]] = []
+        realized = Decimal(0)
         total_costs = 0.0
 
         for side, qty, price in trades:
             total_costs += costs.cost_for_fill(side, qty, price)
+            price_dec = Decimal(str(price))
 
             if side == "BUY":
-                matched_pnl, remaining = match_against(short_queue, qty, price, sign=-1)
+                matched_pnl, remaining = match_against(short_queue, qty, price_dec, sign=-1)
                 realized += matched_pnl
                 if remaining > 0:
-                    long_queue.append((remaining, price))
+                    long_queue.append((remaining, price_dec))
             else:  # SELL
-                matched_pnl, remaining = match_against(long_queue, qty, price, sign=1)
+                matched_pnl, remaining = match_against(long_queue, qty, price_dec, sign=1)
                 realized += matched_pnl
                 if remaining > 0:
-                    short_queue.append((remaining, price))
+                    short_queue.append((remaining, price_dec))
 
+        realized_f = float(realized)
         open_qty = sum(q for q, _ in long_queue) - sum(q for q, _ in short_queue)
         if long_queue:
-            open_avg = sum(q * p for q, p in long_queue) / sum(q for q, _ in long_queue)
+            open_avg = float(
+                sum(q * p for q, p in long_queue) / sum(q for q, _ in long_queue)
+            )
         elif short_queue:
-            open_avg = sum(q * p for q, p in short_queue) / sum(q for q, _ in short_queue)
+            open_avg = float(
+                sum(q * p for q, p in short_queue) / sum(q for q, _ in short_queue)
+            )
         else:
             open_avg = 0.0
         results[f"{strategy_id}::{symbol}"] = {
-            "realized": realized,
+            "realized": realized_f,
             "total_costs": total_costs,
-            "net_realized": realized - total_costs,
+            "net_realized": realized_f - total_costs,
             "open_qty": float(open_qty),
             "open_avg": open_avg,
         }

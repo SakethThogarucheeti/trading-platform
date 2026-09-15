@@ -27,7 +27,7 @@ def create_pnl_router(
 
             today = today_start(clock)
             trades = await fetch_filled_trades(
-                session_factory, start=today, end=clock.now(), algo_name=algo_name
+                session_factory, start=today, end=clock.now(), clock=clock, algo_name=algo_name
             )
 
             async with session_factory() as session:
@@ -77,7 +77,9 @@ def create_pnl_router(
             from trading.reports.trades import fetch_filled_trades, summarize_by_algo
 
             today = today_start(clock)
-            trades = await fetch_filled_trades(session_factory, start=today, end=clock.now())
+            trades = await fetch_filled_trades(
+                session_factory, start=today, end=clock.now(), clock=clock
+            )
             by_algo = summarize_by_algo(trades)
             return json.dumps({
                 name: {

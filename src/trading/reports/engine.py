@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from trading.core.clock import Clock
 from trading.reports.fetch import (
     AlgoConfigSnapshot,
     fetch_algo_configs,
@@ -166,6 +167,7 @@ async def fetch_report_data(
     start: datetime,
     end: datetime,
     session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
 ) -> LiveReportData:
     """
     Fetch all live report data for [start, end) and return as a structured dict.
@@ -184,7 +186,7 @@ async def fetch_report_data(
         algo_configs = await fetch_algo_configs(session)
         nifty_benchmark = await fetch_nifty_benchmark(session, start, end)
 
-    trades = await fetch_filled_trades(session_factory, start=start, end=end)
+    trades = await fetch_filled_trades(session_factory, start=start, end=end, clock=clock)
 
     # Signal funnel (from decision log — not from signals table)
     step_counts: dict[str, int] = defaultdict(int)

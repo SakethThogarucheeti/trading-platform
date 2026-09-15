@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +18,7 @@ from trading.execution.api.schemas import FillEvent
 
 logger = logging.getLogger(__name__)
 
-_FifoQueues = tuple[list[tuple[int, float]], list[tuple[int, float]]]
+_FifoQueues = tuple[list[tuple[int, Decimal]], list[tuple[int, Decimal]]]
 
 
 class PositionAccountant:
@@ -64,16 +65,20 @@ class PositionAccountant:
             session, symbol, today, fill.kite_order_id
         )
 
+        # `FillEvent.avg_price` is a `float` (trading-types#... pinned schema,
+        # out of scope here) -- convert once at this boundary via `str()` (no
+        # binary-float artifact) so every FIFO-matching arithmetic op below is
+        # exact Decimal, not float (trading-platform#92).
+        price = Decimal(str(fill.avg_price))
+
         if side == Side.BUY:
-            realized, remaining = match_against(
-                short_queue, fill.filled_qty, fill.avg_price, sign=-1
-            )
+            realized, remaining = match_against(short_queue, fill.filled_qty, price, sign=-1)
             if remaining > 0:
-                long_queue.append((remaining, fill.avg_price))
+                long_queue.append((remaining, price))
         else:
-            realized, remaining = match_against(long_queue, fill.filled_qty, fill.avg_price, sign=1)
+            realized, remaining = match_against(long_queue, fill.filled_qty, price, sign=1)
             if remaining > 0:
-                short_queue.append((remaining, fill.avg_price))
+                short_queue.append((remaining, price))
         self._queues[symbol] = (today, (long_queue, short_queue))
 
         await self._trading.increment_pnl_aggregate_in_session(session, today, realized)
@@ -89,8 +94,8 @@ class PositionAccountant:
         if cached is not None and cached[0] == today:
             return cached[1]
 
-        long_queue: list[tuple[int, float]] = []
-        short_queue: list[tuple[int, float]] = []
+        long_queue: list[tuple[int, Decimal]] = []
+        short_queue: list[tuple[int, Decimal]] = []
         fills = await self._trading.get_filled_fills_in_session(
             session, today, symbol, exclude_kite_order_id=current_kite_order_id
         )
