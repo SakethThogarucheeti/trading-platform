@@ -137,7 +137,16 @@ class ZerodhaBroker(Broker):
             from anyio import fail_after, to_thread
 
             with fail_after(self._order_timeout_secs):
-                order_id = await to_thread.run_sync(_place)
+                # abandon_on_cancel=True (default is False) -- anyio shields a
+                # to_thread.run_sync() call from cancellation by default, which
+                # silently swallows fail_after's deadline entirely rather than
+                # raising TimeoutError (trading-platform#85, confirmed against
+                # the pinned anyio version). This does NOT kill the underlying
+                # OS thread -- it keeps running against Kite in the background
+                # even after we raise below -- which is exactly the
+                # "UNKNOWN, may be live" case OrderReconciler (#31) exists to
+                # reconcile.
+                order_id = await to_thread.run_sync(_place, abandon_on_cancel=True)
         except TimeoutError as err:
             raise RuntimeError(
                 f"ZerodhaBroker: place_order timed out after {self._order_timeout_secs}s "

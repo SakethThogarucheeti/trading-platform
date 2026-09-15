@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import time
 from unittest.mock import MagicMock
+
+import pytest
 
 from trading.broker.service.zerodha.broker import ZerodhaBroker
 from trading.broker.service.zerodha.kite_client import KiteClient
@@ -60,6 +63,29 @@ async def test_place_order_returns_kite_order_id() -> None:
     )
 
     assert result == "KITE_XYZ"
+
+
+async def test_place_order_raises_timeout_error_when_kite_call_hangs() -> None:
+    """trading-platform#85: to_thread.run_sync's default abandon_on_cancel=False
+    shields the blocking Kite call from fail_after's cancellation entirely,
+    silently swallowing order_timeout_secs. A real deadline (short enough to
+    keep this test fast) must still raise RuntimeError, not block for the
+    full duration of the slow call."""
+    def _slow_place_order(**kwargs: object) -> str:
+        time.sleep(1.0)
+        return "SHOULD_NOT_RETURN"
+
+    kite_client = MagicMock(spec=KiteClient)
+    kite_client.place_order.side_effect = _slow_place_order
+    broker = ZerodhaBroker(kite_client, order_timeout_secs=0.05)
+
+    start = time.monotonic()
+    with pytest.raises(RuntimeError, match="timed out"):
+        await broker.place_order(
+            symbol="INFY", side=Side.BUY, qty=1, order_type=OrderType.MARKET, client_tag="t1"
+        )
+    elapsed = time.monotonic() - start
+    assert elapsed < 0.5, f"should time out near order_timeout_secs, took {elapsed:.3f}s"
 
 
 def test_kite_client_orders_delegates_to_underlying_kite() -> None:
