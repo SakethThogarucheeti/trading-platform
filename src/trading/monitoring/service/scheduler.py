@@ -20,6 +20,7 @@ class Scheduler:
         on_sync: Any | None = None,
         on_position_reset: Any | None = None,
         on_order_reconcile: Any | None = None,
+        on_stop_loss_check: Any | None = None,
     ) -> None:
         self._settings = settings
         self._on_market_open = on_market_open
@@ -28,6 +29,7 @@ class Scheduler:
         self._on_sync = on_sync
         self._on_position_reset = on_position_reset
         self._on_order_reconcile = on_order_reconcile
+        self._on_stop_loss_check = on_stop_loss_check
         self._scheduler: AsyncIOScheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
         self._register_jobs()
 
@@ -56,6 +58,13 @@ class Scheduler:
                 trigger="interval",
                 minutes=self._settings.order_reconcile_interval_mins,
                 id="order_reconcile",
+            )
+        if self._on_stop_loss_check:
+            self._scheduler.add_job(  # type: ignore
+                self._on_stop_loss_check,
+                trigger="interval",
+                seconds=self._settings.stop_loss_check_interval_secs,
+                id="stop_loss_check",
             )
 
     def get_job_ids(self) -> list[str]:

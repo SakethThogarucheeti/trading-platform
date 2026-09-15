@@ -74,6 +74,24 @@ def test_order_reconcile_registered_on_interval_trigger() -> None:
     assert job.trigger.interval.total_seconds() == expected_secs  # type: ignore[attr-defined]
 
 
+def test_stop_loss_check_registered_on_interval_trigger() -> None:
+    async def noop() -> None:
+        pass
+
+    scheduler = make_scheduler(on_stop_loss_check=noop)
+    ids = scheduler.get_job_ids()
+    assert "stop_loss_check" in ids
+    job = scheduler._scheduler.get_job("stop_loss_check")  # type: ignore[attr-defined]
+    assert job is not None
+    expected_secs = make_settings().stop_loss_check_interval_secs
+    assert job.trigger.interval.total_seconds() == expected_secs  # type: ignore[attr-defined]
+
+
+def test_stop_loss_check_not_registered_when_no_callback() -> None:
+    scheduler = make_scheduler()
+    assert "stop_loss_check" not in scheduler.get_job_ids()
+
+
 # ---------------------------------------------------------------------------
 # Start/stop lifecycle
 # ---------------------------------------------------------------------------
