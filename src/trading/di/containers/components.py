@@ -333,12 +333,27 @@ def _scheduler(
         reconciler = OrderReconciler(trading, kite_client, order_executor)
         on_order_reconcile = reconciler.reconcile_once
 
+    on_stop_loss_check = None
+    if order_executor is not None:
+        # Unlike the two branches above, this runs in BOTH paper and live
+        # mode -- it routes through OrderExecutor.handle (trading-platform#65),
+        # which calls Broker.place_order regardless of which Broker impl is
+        # wired in, so it protects real capital in live mode and still
+        # exercises the same path against PaperBroker in paper mode.
+        from trading.execution.service.stop_loss_monitor import check_stop_losses
+
+        async def stop_loss_check() -> None:
+            await check_stop_losses(trading, order_executor, price_store, clock)
+
+        on_stop_loss_check = stop_loss_check
+
     return Scheduler(
         settings,
         on_market_open=runtime.start,
         on_market_close=runtime.stop,
         on_position_reset=on_position_reset,
         on_order_reconcile=on_order_reconcile,
+        on_stop_loss_check=on_stop_loss_check,
     )
 
 
