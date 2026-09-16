@@ -201,6 +201,23 @@ class TradingStore:
                 session, for_date, symbol, exclude_kite_order_id
             )
 
+    async def get_order_algo_name_in_session(
+        self, session: AsyncSession, kite_order_id: str
+    ) -> str | None:
+        """
+        The denormalized ``algo_name`` off the Order row identified by
+        *kite_order_id* (trading-platform#83) -- lets FillHandler recover the
+        owning algo without a cross-module join between this module's and
+        strategy.storage.models's independent DeclarativeBase registries
+        (see trading-platform#35). Returns None if the order has none (e.g.
+        a test-only/manually-built event, or a row from before this column
+        existed) -- callers apply their own non-null sentinel.
+        """
+        result = await session.execute(
+            select(Order.algo_name).where(Order.kite_order_id == kite_order_id)
+        )
+        return result.scalar_one_or_none()
+
     async def get_filled_fills_in_session(
         self,
         session: AsyncSession,
@@ -347,9 +364,44 @@ class PositionStore:
         self._sf = session_factory
 
     async def get_position(self, symbol: str, instrument_type: str) -> Position | None:
+        """
+        The blended (symbol, instrument_type) exposure, aggregated across
+        every algo's own row (trading-platform#83 widened the PK to include
+        algo_name, so a single ``session.get()`` composite-key lookup no
+        longer identifies one row). Used by call sites -- e.g. RiskFilter's
+        no-algo_name fallback -- that intentionally want the shared blended
+        view rather than one algo's own exposure (see ``get_algo_position``).
+
+        net_qty sums directly; avg_price is weighted by each row's
+        ``abs(net_qty)``, matching the weighted-average convention already
+        used elsewhere in this codebase. Returns a transient (unpersisted)
+        Position, not one of the underlying rows.
+        """
         async with self._sf() as session:
-            return await session.get(
-                Position, {"symbol": symbol, "instrument_type": instrument_type}
+            result = await session.execute(
+                select(Position).where(
+                    Position.symbol == symbol,
+                    Position.instrument_type == instrument_type,
+                )
+            )
+            rows = list(result.scalars().all())
+            if not rows:
+                return None
+            total_qty = sum(row.net_qty for row in rows)
+            weight = sum(abs(row.net_qty) for row in rows)
+            avg_price = (
+                sum(row.avg_price * abs(row.net_qty) for row in rows) / weight
+                if weight > 0
+                else rows[0].avg_price
+            )
+            latest_updated_at = max(row.updated_at for row in rows)
+            return Position(
+                symbol=symbol,
+                instrument_type=instrument_type,
+                algo_name="ALL",
+                net_qty=total_qty,
+                avg_price=avg_price,
+                updated_at=latest_updated_at,
             )
 
     async def get_algo_position(
@@ -387,11 +439,13 @@ class PositionStore:
             return state
 
     async def update_position(
-        self, fill: FillEvent, side: Side, symbol: str, instrument_type: str
+        self, fill: FillEvent, side: Side, symbol: str, instrument_type: str, algo_name: str
     ) -> None:
         async with self._sf() as session:
             async with session.begin():
-                await self.update_position_in_session(session, fill, side, symbol, instrument_type)
+                await self.update_position_in_session(
+                    session, fill, side, symbol, instrument_type, algo_name
+                )
 
     async def update_position_in_session(
         self,
@@ -400,6 +454,7 @@ class PositionStore:
         side: Side,
         symbol: str,
         instrument_type: str,
+        algo_name: str,
     ) -> None:
         """Same as update_position, but runs inside a caller-supplied,
         already-open transaction instead of opening its own."""
@@ -408,6 +463,7 @@ class PositionStore:
             .where(
                 Position.symbol == symbol,
                 Position.instrument_type == instrument_type,
+                Position.algo_name == algo_name,
             )
             .with_for_update()
         )
@@ -428,6 +484,7 @@ class PositionStore:
                 Position(
                     symbol=symbol,
                     instrument_type=instrument_type,
+                    algo_name=algo_name,
                     net_qty=new_state.net_qty,
                     avg_price=new_state.avg_price,
                     updated_at=datetime.now(UTC),

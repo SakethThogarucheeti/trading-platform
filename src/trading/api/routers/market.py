@@ -56,7 +56,7 @@ def create_market_router(
             result = await session.execute(
                 select(Position)
                 .where(Position.updated_at >= today_start(clock))
-                .order_by(Position.symbol)
+                .order_by(Position.symbol, Position.algo_name)
             )
             positions = result.scalars().all()
 
@@ -65,6 +65,7 @@ def create_market_router(
                 {
                     "symbol": p.symbol,
                     "instrument_type": p.instrument_type,
+                    "algo_name": p.algo_name,
                     "net_qty": p.net_qty,
                     "avg_price": float(p.avg_price),
                     "updated_at": p.updated_at.isoformat() if p.updated_at else None,

@@ -94,6 +94,7 @@ async def test_positions_with_data():
     pos = MagicMock()
     pos.symbol = "INFY"
     pos.instrument_type = "EQUITY"
+    pos.algo_name = "algo1"
     pos.net_qty = 10
     pos.avg_price = 1500.0
     pos.updated_at = datetime(2025, 1, 6, 9, 30, tzinfo=UTC)
@@ -104,6 +105,7 @@ async def test_positions_with_data():
     assert resp.status_code == 200
     data = resp.json()
     assert data[0]["symbol"] == "INFY"
+    assert data[0]["algo_name"] == "algo1"
     assert data[0]["net_qty"] == 10
 
 

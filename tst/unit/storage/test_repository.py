@@ -274,7 +274,7 @@ async def test_get_position_missing_returns_none(position_store: PositionStore) 
 
 async def test_update_position_creates_on_first_buy(position_store: PositionStore) -> None:
     fill = make_fill(avg_price=100.0, filled_qty=10)
-    await position_store.update_position(fill, Side.BUY, "INFY", "EQUITY")
+    await position_store.update_position(fill, Side.BUY, "INFY", "EQUITY", "algo1")
     pos = await position_store.get_position("INFY", "EQUITY")
     assert pos is not None
     assert pos.net_qty == 10
@@ -284,8 +284,8 @@ async def test_update_position_creates_on_first_buy(position_store: PositionStor
 async def test_update_position_adds_to_existing_long(position_store: PositionStore) -> None:
     fill1 = make_fill(avg_price=100.0, filled_qty=10)
     fill2 = make_fill(avg_price=110.0, filled_qty=10)
-    await position_store.update_position(fill1, Side.BUY, "TCS", "EQUITY")
-    await position_store.update_position(fill2, Side.BUY, "TCS", "EQUITY")
+    await position_store.update_position(fill1, Side.BUY, "TCS", "EQUITY", "algo1")
+    await position_store.update_position(fill2, Side.BUY, "TCS", "EQUITY", "algo1")
     pos = await position_store.get_position("TCS", "EQUITY")
     assert pos is not None
     assert pos.net_qty == 20
@@ -295,8 +295,8 @@ async def test_update_position_adds_to_existing_long(position_store: PositionSto
 async def test_update_position_sell_reduces_qty(position_store: PositionStore) -> None:
     fill_buy = make_fill(avg_price=100.0, filled_qty=10)
     fill_sell = make_fill(avg_price=120.0, filled_qty=10)
-    await position_store.update_position(fill_buy, Side.BUY, "RELIANCE", "EQUITY")
-    await position_store.update_position(fill_sell, Side.SELL, "RELIANCE", "EQUITY")
+    await position_store.update_position(fill_buy, Side.BUY, "RELIANCE", "EQUITY", "algo1")
+    await position_store.update_position(fill_sell, Side.SELL, "RELIANCE", "EQUITY", "algo1")
     pos = await position_store.get_position("RELIANCE", "EQUITY")
     assert pos is not None
     assert pos.net_qty == 0
@@ -306,8 +306,8 @@ async def test_update_position_sell_goes_short(position_store: PositionStore) ->
     """Selling more than owned (futures short) produces negative net_qty."""
     fill_buy = make_fill(avg_price=100.0, filled_qty=10)
     fill_sell = make_fill(avg_price=90.0, filled_qty=15)
-    await position_store.update_position(fill_buy, Side.BUY, "NIFTY", "FUTURES")
-    await position_store.update_position(fill_sell, Side.SELL, "NIFTY", "FUTURES")
+    await position_store.update_position(fill_buy, Side.BUY, "NIFTY", "FUTURES", "algo1")
+    await position_store.update_position(fill_sell, Side.SELL, "NIFTY", "FUTURES", "algo1")
     pos = await position_store.get_position("NIFTY", "FUTURES")
     assert pos is not None
     assert pos.net_qty == -5
@@ -317,13 +317,54 @@ async def test_update_position_sell_goes_short(position_store: PositionStore) ->
 async def test_position_composite_pk_independent(position_store: PositionStore) -> None:
     """INFY EQUITY and INFY FUTURES are tracked independently."""
     fill = make_fill(avg_price=1500.0, filled_qty=5)
-    await position_store.update_position(fill, Side.BUY, "INFY", "EQUITY")
+    await position_store.update_position(fill, Side.BUY, "INFY", "EQUITY", "algo1")
     fill2 = make_fill(avg_price=1510.0, filled_qty=75)
-    await position_store.update_position(fill2, Side.BUY, "INFY", "FUTURES")
+    await position_store.update_position(fill2, Side.BUY, "INFY", "FUTURES", "algo1")
     eq = await position_store.get_position("INFY", "EQUITY")
     fut = await position_store.get_position("INFY", "FUTURES")
     assert eq is not None and eq.net_qty == 5
     assert fut is not None and fut.net_qty == 75
+
+
+async def test_position_pk_independent_per_algo(
+    position_store: PositionStore, engine: AsyncEngine
+) -> None:
+    """trading-platform#83: two algos trading the same (symbol, instrument_type)
+    get independent rows, not a shared blended one."""
+    from sqlalchemy import select
+
+    from trading.execution.storage.models import Position
+
+    fill_a = make_fill(avg_price=100.0, filled_qty=10)
+    fill_b = make_fill(avg_price=200.0, filled_qty=4)
+    await position_store.update_position(fill_a, Side.BUY, "WIPRO", "EQUITY", "momentum")
+    await position_store.update_position(fill_b, Side.SELL, "WIPRO", "EQUITY", "mean_reversion")
+
+    async with get_session(engine) as s:
+        result = await s.execute(
+            select(Position).where(Position.symbol == "WIPRO", Position.instrument_type == "EQUITY")
+        )
+        rows = {row.algo_name: row for row in result.scalars().all()}
+
+    assert set(rows) == {"momentum", "mean_reversion"}
+    assert rows["momentum"].net_qty == 10
+    assert rows["mean_reversion"].net_qty == -4
+
+
+async def test_get_position_aggregates_across_algo_rows(position_store: PositionStore) -> None:
+    """The blended (no-algo_name) get_position aggregates every algo's own row
+    (trading-platform#83 widened the PK so a single composite-key lookup no
+    longer identifies one row): net_qty sums, avg_price is weighted by each
+    row's abs(net_qty)."""
+    fill_a = make_fill(avg_price=100.0, filled_qty=10)
+    fill_b = make_fill(avg_price=200.0, filled_qty=10)
+    await position_store.update_position(fill_a, Side.BUY, "WIPRO", "EQUITY", "momentum")
+    await position_store.update_position(fill_b, Side.BUY, "WIPRO", "EQUITY", "mean_reversion")
+
+    blended = await position_store.get_position("WIPRO", "EQUITY")
+    assert blended is not None
+    assert blended.net_qty == 20
+    assert float(blended.avg_price) == pytest.approx(150.0)
 
 
 # ---------------------------------------------------------------------------

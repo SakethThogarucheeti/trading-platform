@@ -200,6 +200,46 @@ async def test_valid_order_persisted_as_placed(engine: AsyncEngine) -> None:
     assert order.status == OrderStatus.PLACED.value
 
 
+async def test_order_algo_name_denormalized_from_event(engine: AsyncEngine) -> None:
+    """trading-platform#83: Order.algo_name is set from the event at creation
+    time so FillHandler can recover it without a cross-module join."""
+    broker = MockBroker(order_id="KITE_201")
+    reg = make_registry(engine, broker)
+
+    sig_id = uuid4()
+    await _insert_signal(engine, sig_id)
+    await reg.handle(make_validated(signal_id=sig_id, algo_name="momentum"))
+
+    async with get_session(engine) as s:
+        from sqlalchemy import select
+
+        result = await s.execute(select(Order).where(Order.kite_order_id == "KITE_201"))
+        order = result.scalars().first()
+
+    assert order is not None
+    assert order.algo_name == "momentum"
+
+
+async def test_order_algo_name_none_when_event_has_none(engine: AsyncEngine) -> None:
+    """A test-only/manually-built event with no algo_name leaves Order.algo_name
+    None -- FillHandler is responsible for the UNKNOWN sentinel, not this layer."""
+    broker = MockBroker(order_id="KITE_202")
+    reg = make_registry(engine, broker)
+
+    sig_id = uuid4()
+    await _insert_signal(engine, sig_id)
+    await reg.handle(make_validated(signal_id=sig_id))
+
+    async with get_session(engine) as s:
+        from sqlalchemy import select
+
+        result = await s.execute(select(Order).where(Order.kite_order_id == "KITE_202"))
+        order = result.scalars().first()
+
+    assert order is not None
+    assert order.algo_name is None
+
+
 async def test_duplicate_signal_id_not_re_placed(engine: AsyncEngine) -> None:
     broker = MockBroker()
     reg = make_registry(engine, broker)

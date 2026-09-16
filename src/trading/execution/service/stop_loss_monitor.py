@@ -112,15 +112,18 @@ async def check_stop_losses(
     """Scan all open positions once and route a synthetic EXIT for any breach."""
     async with trading.transaction() as session:
         result = await session.execute(select(Position).where(Position.net_qty != 0))
-        candidates = [(pos.symbol, pos.instrument_type) for pos in result.scalars().all()]
+        candidates = [
+            (pos.symbol, pos.instrument_type, pos.algo_name) for pos in result.scalars().all()
+        ]
 
-    for symbol, instrument_type in candidates:
+    for symbol, instrument_type, algo_name in candidates:
         async with trading.transaction() as session:
             result = await session.execute(
                 select(Position)
                 .where(
                     Position.symbol == symbol,
                     Position.instrument_type == instrument_type,
+                    Position.algo_name == algo_name,
                 )
                 .with_for_update()
             )
@@ -162,7 +165,11 @@ async def check_stop_losses(
             tick_log_id=0,
             timestamp=clock.now(),
             strategy_id=STOP_LOSS_MONITOR_NAME,
-            algo_name=STOP_LOSS_MONITOR_NAME,
+            # The position's own owning algo, not the STOP_LOSS_MONITOR_NAME
+            # sentinel (trading-platform#83) -- this exit's economic
+            # attribution belongs to whichever algo held the position;
+            # strategy_id keeps identifying the signal as monitor-generated.
+            algo_name=algo_name,
             signal_type=SignalType.EXIT,
             stop_distance=0.0,
         )

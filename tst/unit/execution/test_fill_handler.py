@@ -22,6 +22,7 @@ _FAKE_SESSION = MagicMock(name="fake_session")
 def _make_trading_mock() -> MagicMock:
     mock_trading = MagicMock(spec=AbstractTradingStore)
     mock_trading.update_order_status_in_session = AsyncMock()
+    mock_trading.get_order_algo_name_in_session = AsyncMock(return_value="algo1")
 
     @asynccontextmanager
     async def _transaction():
@@ -100,6 +101,7 @@ async def test_fill_calls_accountant_apply_fill() -> None:
     assert call_args[0][2] == Side.BUY
     assert call_args[0][3] == "INFY"
     assert call_args[0][4] == "EQUITY"
+    assert call_args[0][5] == "algo1"
 
 
 async def test_fill_unknown_order_returns_early() -> None:
@@ -185,6 +187,30 @@ async def test_fill_returns_true_when_applied() -> None:
     )
 
     assert applied is True
+
+
+async def test_fill_uses_unknown_sentinel_when_order_has_no_algo_name() -> None:
+    """trading-platform#83: a test-only/manually-built order with no denormalized
+    algo_name must not pass None into apply_fill (positions.algo_name is a NOT
+    NULL PK column) -- falls back to the UNKNOWN_ALGO_NAME sentinel."""
+    from trading.execution.service.fill_handler import UNKNOWN_ALGO_NAME
+
+    mock_trading = _make_trading_mock()
+    mock_trading.get_order_algo_name_in_session = AsyncMock(return_value=None)
+    mock_accountant = MagicMock(spec=PositionAccountant)
+    mock_accountant.apply_fill = AsyncMock()
+
+    handler = FillHandler(trading=mock_trading, accountant=mock_accountant)
+    await handler.handle(
+        kite_order_id="KITE_NOALGO",
+        avg_price=100.0,
+        filled_qty=5,
+        symbol="INFY",
+        instrument_type="EQUITY",
+        side="BUY",
+    )
+
+    assert mock_accountant.apply_fill.call_args[0][5] == UNKNOWN_ALGO_NAME
 
 
 async def test_fill_returns_false_and_skips_accountant_when_already_filled() -> None:

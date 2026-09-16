@@ -83,10 +83,10 @@ async def test_apply_fill_calls_update_position() -> None:
 
     fill = _make_fill()
     await accountant.apply_fill(
-        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY")
+        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY", "algo1")
 
     mock_position.update_position_in_session.assert_called_once_with(
-        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY"
+        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY", "algo1"
     )
 
 
@@ -106,7 +106,7 @@ async def test_apply_fill_opening_buy_realizes_zero_pnl() -> None:
 
     fill = _make_fill(avg_price=150.0, qty=10)
     await accountant.apply_fill(
-        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY")
+        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY", "algo1")
 
     mock_trading.increment_pnl_aggregate_in_session.assert_awaited_once_with(
         _FAKE_SESSION,fixed_date, pytest.approx(0.0))
@@ -136,7 +136,7 @@ async def test_apply_fill_uses_ist_calendar_day_not_utc(
 
     fill = _make_fill(avg_price=150.0, qty=10)
     await accountant.apply_fill(
-        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY")
+        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY", "algo1")
 
     mock_trading.increment_pnl_aggregate_in_session.assert_awaited_once_with(
         _FAKE_SESSION,
@@ -157,7 +157,7 @@ async def test_apply_fill_opening_sell_realizes_zero_pnl() -> None:
 
     fill = _make_fill(avg_price=100.0, qty=10)
     await accountant.apply_fill(
-        _FAKE_SESSION, fill, Side.SELL, "INFY", "EQUITY")
+        _FAKE_SESSION, fill, Side.SELL, "INFY", "EQUITY", "algo1")
 
     mock_trading.increment_pnl_aggregate_in_session.assert_awaited_once_with(
         _FAKE_SESSION,fixed_date, pytest.approx(0.0))
@@ -181,6 +181,7 @@ async def test_apply_fill_matches_fifo_on_close() -> None:
         Side.BUY,
         "INFY",
         "EQUITY",
+        "algo1",
     )
     await accountant.apply_fill(
         _FAKE_SESSION,
@@ -188,6 +189,7 @@ async def test_apply_fill_matches_fifo_on_close() -> None:
         Side.SELL,
         "INFY",
         "EQUITY",
+        "algo1",
     )
 
     assert mock_trading.increment_pnl_aggregate_in_session.await_args_list[0].args == (
@@ -220,6 +222,7 @@ async def test_apply_fill_partial_close_matches_only_closed_qty() -> None:
         Side.BUY,
         "INFY",
         "EQUITY",
+        "algo1",
     )
     await accountant.apply_fill(
         _FAKE_SESSION,
@@ -227,6 +230,7 @@ async def test_apply_fill_partial_close_matches_only_closed_qty() -> None:
         Side.SELL,
         "INFY",
         "EQUITY",
+        "algo1",
     )
 
     assert mock_trading.increment_pnl_aggregate_in_session.await_args_list[1].args == (
@@ -253,7 +257,7 @@ async def test_apply_fill_hydrates_queue_from_persisted_fills() -> None:
 
     fill = _make_fill(avg_price=150.0, qty=10, kite_order_id="KITE_CLOSE")
     await accountant.apply_fill(
-        _FAKE_SESSION, fill, Side.SELL, "INFY", "EQUITY")
+        _FAKE_SESSION, fill, Side.SELL, "INFY", "EQUITY", "algo1")
 
     mock_trading.get_filled_fills_in_session.assert_awaited_once_with(
         _FAKE_SESSION, fixed_date, "INFY", exclude_kite_order_id="KITE_CLOSE"
@@ -282,6 +286,7 @@ async def test_apply_fill_does_not_rehydrate_once_symbol_is_cached() -> None:
         Side.BUY,
         "INFY",
         "EQUITY",
+        "algo1",
     )
     await accountant.apply_fill(
         _FAKE_SESSION,
@@ -289,6 +294,7 @@ async def test_apply_fill_does_not_rehydrate_once_symbol_is_cached() -> None:
         Side.BUY,
         "INFY",
         "EQUITY",
+        "algo1",
     )
 
     assert mock_trading.get_filled_fills_in_session.await_count == 1
@@ -310,12 +316,14 @@ async def test_apply_fill_symbols_are_tracked_independently() -> None:
         Side.BUY,
         "INFY",
         "EQUITY",
+        "algo1",
     )
     await accountant.apply_fill(
         _FAKE_SESSION, _make_fill(avg_price=200.0, qty=10, kite_order_id="KITE_TCS"),
         Side.SELL,
         "TCS",
         "EQUITY",
+        "algo1",
     )
 
     fixed_date = date(2025, 1, 6)
@@ -348,7 +356,7 @@ async def test_apply_fill_invalidates_api_cache() -> None:
 
     fill = _make_fill()
     await accountant.apply_fill(
-        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY")
+        _FAKE_SESSION, fill, Side.BUY, "INFY", "EQUITY", "algo1")
 
     mock_api.invalidate_pnl.assert_called_once_with(date(2025, 1, 6))
 
@@ -388,6 +396,6 @@ async def test_apply_fill_sequencing() -> None:
     )
 
     await accountant.apply_fill(
-        _FAKE_SESSION, _make_fill(), Side.BUY, "INFY", "EQUITY")
+        _FAKE_SESSION, _make_fill(), Side.BUY, "INFY", "EQUITY", "algo1")
 
     assert call_order == ["db", "pnl", "api"]
