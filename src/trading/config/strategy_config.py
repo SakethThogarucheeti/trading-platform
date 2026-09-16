@@ -34,7 +34,7 @@ _DEFAULT_PATH = _PROJECT_ROOT / "strategy_config.json"
 class StrategyParams:
     id: str
     params: dict[str, Any]
-    feature_engine_params: dict[str, Any] = field(default_factory=dict)  # type: ignore[assignment]
+    feature_engine_params: dict[str, Any] = field(default_factory=dict[str, Any])
 
 
 @dataclass

@@ -119,7 +119,7 @@ class Settings(BaseSettings):
     # When empty, a single default algo is assembled from all DB instruments
     # using default_equity as its capital.
     # ------------------------------------------------------------------ #
-    algos: list[AlgoSettings] = Field(default_factory=list)  # type: ignore[assignment]
+    algos: list[AlgoSettings] = []
     default_equity: float = Field(default=10_000.0, gt=0)
 
     # ------------------------------------------------------------------ #
