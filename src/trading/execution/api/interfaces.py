@@ -85,6 +85,10 @@ class AbstractTradingStore(Protocol):
         exclude_kite_order_id: str | None = None,
     ) -> list[tuple[str, int, Decimal]]: ...
 
+    async def get_order_algo_name_in_session(
+        self, session: AsyncSession, kite_order_id: str
+    ) -> str | None: ...
+
     def transaction(self) -> AbstractAsyncContextManager[AsyncSession]: ...
 
 
@@ -92,7 +96,7 @@ class AbstractPositionStore(Protocol):
     async def get_position(self, symbol: str, instrument_type: str) -> object | None: ...
 
     async def update_position(
-        self, fill: FillEvent, side: Side, symbol: str, instrument_type: str
+        self, fill: FillEvent, side: Side, symbol: str, instrument_type: str, algo_name: str
     ) -> None: ...
 
     async def update_position_in_session(
@@ -102,6 +106,7 @@ class AbstractPositionStore(Protocol):
         side: Side,
         symbol: str,
         instrument_type: str,
+        algo_name: str,
     ) -> None: ...
 
 

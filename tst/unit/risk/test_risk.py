@@ -297,6 +297,7 @@ async def test_entry_with_existing_position_rejected(engine: AsyncEngine) -> Non
             Position(
                 symbol="INFY",
                 instrument_type="EQUITY",
+                algo_name="some_algo",
                 net_qty=10,
                 avg_price=Decimal("1500"),
                 updated_at=NOW,
@@ -317,6 +318,7 @@ async def test_exit_with_existing_position_passes(engine: AsyncEngine) -> None:
             Position(
                 symbol="INFY",
                 instrument_type="EQUITY",
+                algo_name="some_algo",
                 net_qty=10,
                 avg_price=Decimal("1500"),
                 updated_at=NOW,
@@ -801,7 +803,14 @@ async def test_duplicate_position_gate_rejects_same_direction() -> None:
     from trading.core.models import Position
 
     gate = DuplicatePositionGate()
-    pos = Position(symbol="INFY", instrument_type="EQUITY", net_qty=10, avg_price=Decimal("100"), updated_at=NOW)
+    pos = Position(
+        symbol="INFY",
+        instrument_type="EQUITY",
+        algo_name="some_algo",
+        net_qty=10,
+        avg_price=Decimal("100"),
+        updated_at=NOW,
+    )
     ctx = RiskContext(
         now=datetime(2024, 1, 1, 10, 0, tzinfo=UTC),
         now_local=time(10, 0),

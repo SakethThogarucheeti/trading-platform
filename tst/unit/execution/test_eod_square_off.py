@@ -21,10 +21,17 @@ from trading.execution.service.eod_square_off import (
 from trading.execution.service.position_accountant import PositionAccountant
 
 
-def _make_position(symbol: str, instrument_type: str, net_qty: int, avg_price: float) -> MagicMock:
+def _make_position(
+    symbol: str,
+    instrument_type: str,
+    net_qty: int,
+    avg_price: float,
+    algo_name: str = "momentum",
+) -> MagicMock:
     pos = MagicMock()
     pos.symbol = symbol
     pos.instrument_type = instrument_type
+    pos.algo_name = algo_name
     pos.net_qty = net_qty
     pos.avg_price = Decimal(str(avg_price))
     return pos
@@ -92,24 +99,28 @@ async def test_long_position_squared_off_with_sell_and_full_audit_trail() -> Non
 
     await square_off_open_positions(trading, accountant, price_store, _make_clock(NOW))
 
-    # Signal recorded with the sentinel algo/strategy name, not silently dropped or
-    # misattributed to a real algo (e.g. via a null algo_name defaulting elsewhere).
+    # Signal recorded with strategy_id identifying it as scheduler-generated,
+    # but algo_name attributed to the position's own owning algo
+    # (trading-platform#83) -- not silently dropped or misattributed to the
+    # EOD sentinel, which would break per-algo PnL/cost-basis attribution.
     trading.save_signal.assert_called_once()
     event = trading.save_signal.call_args[0][0]
-    assert event.algo_name == EOD_SQUARE_OFF_NAME
+    assert event.algo_name == "momentum"
     assert event.strategy_id == EOD_SQUARE_OFF_NAME
     assert event.signal_type == SignalType.EXIT
     assert event.side == Side.SELL
     assert event.quantity == 3
     assert event.symbol == "INFY"
 
-    # Order recorded FILLED at the current market price, linked to that signal.
+    # Order recorded FILLED at the current market price, linked to that signal,
+    # denormalized with the same owning algo as the position (#83).
     trading.save_order.assert_called_once()
     order = trading.save_order.call_args[0][0]
     assert order.signal_id == event.signal_id
     assert order.qty == 3
     assert order.avg_price == Decimal("1129.4")
     assert order.status == "FILLED"
+    assert order.algo_name == "momentum"
 
     # Position update goes through the accountant (updates position, PnL cache,
     # and invalidates the PnL cache) rather than a bare position_store call.
@@ -120,6 +131,7 @@ async def test_long_position_squared_off_with_sell_and_full_audit_trail() -> Non
     assert accountant.apply_fill.call_args[0][2] == Side.SELL
     assert accountant.apply_fill.call_args[0][3] == "INFY"
     assert accountant.apply_fill.call_args[0][4] == "EQUITY"
+    assert accountant.apply_fill.call_args[0][5] == "momentum"
 
 
 async def test_short_position_squared_off_with_buy() -> None:
@@ -187,3 +199,27 @@ async def test_kite_order_id_disambiguates_by_instrument_type() -> None:
 
     order_ids = {call.args[0].kite_order_id for call in trading.save_order.call_args_list}
     assert len(order_ids) == 2
+
+
+async def test_kite_order_id_disambiguates_by_algo_name() -> None:
+    """Two algo-owned positions in the same (symbol, instrument_type)
+    (trading-platform#83's widened PK) must not collide on the unique
+    kite_order_id column either."""
+    positions = [
+        _make_position("INFY", "EQUITY", net_qty=3, avg_price=1133.0, algo_name="momentum"),
+        _make_position(
+            "INFY", "EQUITY", net_qty=2, avg_price=1140.0, algo_name="mean_reversion"
+        ),
+    ]
+    trading = _make_trading(positions)
+    accountant = MagicMock(spec=PositionAccountant)
+    accountant.apply_fill = AsyncMock()
+    price_store = MagicMock()
+    price_store.get.return_value = 1129.0
+
+    await square_off_open_positions(trading, accountant, price_store, _make_clock(NOW))
+
+    order_ids = {call.args[0].kite_order_id for call in trading.save_order.call_args_list}
+    assert len(order_ids) == 2
+    algo_names = {call.args[0].algo_name for call in trading.save_order.call_args_list}
+    assert algo_names == {"momentum", "mean_reversion"}

@@ -346,7 +346,7 @@ Every event that flows through the pipeline leaves a trace in Postgres:
 | `decision_logs` | `CandleAggregator`, `SignalGenerator`, `RiskFilter`  | Full audit trail — one row per pipeline step    |
 | `signals`       | `RiskFilter`                                         | Accepted signal parameters                      |
 | `orders`        | `OrderExecutor`                                      | Order lifecycle (PENDING → PLACED → FILLED)     |
-| `positions`     | `OrderExecutor` / `FillHandler`                      | Live net position per (symbol, instrument_type) |
+| `positions`     | `OrderExecutor` / `FillHandler`                      | Live net position per (symbol, instrument_type, algo_name) |
 | `heartbeats`    | `HeartbeatMonitor`                                   | Module liveness timestamps                      |
 | `audit_logs`    | `RiskFilter`, `OrderExecutor`, others                | Free-form operational events                    |
 

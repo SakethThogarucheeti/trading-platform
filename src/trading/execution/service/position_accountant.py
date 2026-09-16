@@ -48,6 +48,7 @@ class PositionAccountant:
         side: Side,
         symbol: str,
         instrument_type: str,
+        algo_name: str,
     ) -> None:
         """
         `session` must be an already-open transaction (from
@@ -56,9 +57,13 @@ class PositionAccountant:
         increment below must land atomically together with whatever else the
         caller is writing in the same transaction (trading-platform#91/#96),
         rather than as two independently-committed writes.
+
+        `algo_name` only scopes the per-algo `positions` row
+        (trading-platform#83) -- the FIFO PnL matching below stays
+        symbol-scoped, out of #83's scope.
         """
         await self._position.update_position_in_session(
-            session, fill, side, symbol, instrument_type
+            session, fill, side, symbol, instrument_type, algo_name
         )
         today = self._clock.today()
         long_queue, short_queue = await self._get_queues(

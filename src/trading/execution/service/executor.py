@@ -68,6 +68,11 @@ class OrderExecutor(AbstractRegistry):
             avg_price=Decimal("0"),
             created_at=self._clock.now(),
             client_tag=client_tag,
+            # Denormalized off the signal at creation time (trading-platform#83)
+            # so FillHandler can recover the owning algo without a cross-module
+            # join. None for test-only/manually-built events -- every real
+            # production signal has algo_name set.
+            algo_name=event.algo_name,
         )
 
         if not await self._insert_pending_order(order, event.signal_id):

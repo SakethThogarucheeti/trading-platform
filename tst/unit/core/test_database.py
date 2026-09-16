@@ -214,6 +214,7 @@ async def test_position_composite_pk_allows_same_symbol_different_type(
             Position(
                 symbol="INFY",
                 instrument_type="EQUITY",
+                algo_name="algo1",
                 net_qty=10,
                 avg_price=Decimal("1500"),
                 updated_at=NOW,
@@ -223,6 +224,7 @@ async def test_position_composite_pk_allows_same_symbol_different_type(
             Position(
                 symbol="INFY",
                 instrument_type="FUTURES",
+                algo_name="algo1",
                 net_qty=75,
                 avg_price=Decimal("1510"),
                 updated_at=NOW,
@@ -230,8 +232,12 @@ async def test_position_composite_pk_allows_same_symbol_different_type(
         )
 
     async with get_session(engine) as s:
-        eq = await s.get(Position, {"symbol": "INFY", "instrument_type": "EQUITY"})
-        fut = await s.get(Position, {"symbol": "INFY", "instrument_type": "FUTURES"})
+        eq = await s.get(
+            Position, {"symbol": "INFY", "instrument_type": "EQUITY", "algo_name": "algo1"}
+        )
+        fut = await s.get(
+            Position, {"symbol": "INFY", "instrument_type": "FUTURES", "algo_name": "algo1"}
+        )
         assert eq is not None and eq.net_qty == 10
         assert fut is not None and fut.net_qty == 75
 

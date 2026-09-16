@@ -53,15 +53,18 @@ async def square_off_open_positions(
     # applied would otherwise close a stale, wrong quantity (trading-platform#96).
     async with trading.transaction() as session:
         result = await session.execute(select(Position).where(Position.net_qty != 0))
-        candidates = [(pos.symbol, pos.instrument_type) for pos in result.scalars().all()]
+        candidates = [
+            (pos.symbol, pos.instrument_type, pos.algo_name) for pos in result.scalars().all()
+        ]
 
-    for symbol, instrument_type in candidates:
+    for symbol, instrument_type, algo_name in candidates:
         async with trading.transaction() as session:
             result = await session.execute(
                 select(Position)
                 .where(
                     Position.symbol == symbol,
                     Position.instrument_type == instrument_type,
+                    Position.algo_name == algo_name,
                 )
                 .with_for_update()
             )
@@ -76,8 +79,12 @@ async def square_off_open_positions(
             side = Side.SELL if pos.net_qty > 0 else Side.BUY
             qty = abs(pos.net_qty)
             now = clock.now()
+            # algo_name in the sentinel (trading-platform#83) avoids a
+            # unique-constraint collision across algos on the same
+            # symbol/instrument_type/day, now that they hold independent rows.
             kite_order_id = (
-                f"EOD_{pos.symbol}_{pos.instrument_type}_{clock.today().isoformat()}"
+                f"EOD_{pos.symbol}_{pos.instrument_type}_{pos.algo_name}_"
+                f"{clock.today().isoformat()}"
             )
 
             event = ValidatedOrderEvent(
@@ -90,7 +97,11 @@ async def square_off_open_positions(
                 tick_log_id=0,
                 timestamp=now,
                 strategy_id=EOD_SQUARE_OFF_NAME,
-                algo_name=EOD_SQUARE_OFF_NAME,
+                # The position's own owning algo, not the EOD_SQUARE_OFF_NAME
+                # sentinel (trading-platform#83) -- this exit's economic
+                # attribution belongs to whichever algo held the position;
+                # strategy_id keeps identifying the signal as scheduler-generated.
+                algo_name=pos.algo_name,
                 signal_type=SignalType.EXIT,
                 stop_distance=0.0,
             )
@@ -104,6 +115,7 @@ async def square_off_open_positions(
                     qty=qty,
                     avg_price=Decimal(str(last_price)),
                     created_at=now,
+                    algo_name=pos.algo_name,
                 )
             )
             fill = FillEvent(
@@ -112,7 +124,10 @@ async def square_off_open_positions(
                 filled_qty=qty,
                 timestamp=now,
             )
-            await accountant.apply_fill(session, fill, side, pos.symbol, pos.instrument_type)
+            await accountant.apply_fill(
+                session, fill, side, pos.symbol, pos.instrument_type, pos.algo_name
+            )
             logger.info(
-                "EOD square-off: %s %s x%d @ %.2f", side.value, pos.symbol, qty, last_price
+                "EOD square-off: %s %s x%d @ %.2f (algo=%s)",
+                side.value, pos.symbol, qty, last_price, pos.algo_name,
             )

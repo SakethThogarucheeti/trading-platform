@@ -11,6 +11,13 @@ from trading.execution.storage.store import NotFoundError
 
 logger = logging.getLogger(__name__)
 
+# Non-null sentinel for the positions table's algo_name PK column
+# (trading-platform#83) when the Order's own denormalized algo_name is None
+# -- e.g. a test-only/manually-built ValidatedOrderEvent. Every real
+# production signal has algo_name set (di/providers/algo_pipeline.py always
+# sets it), so this path is not expected to be hit in live trading.
+UNKNOWN_ALGO_NAME = "UNKNOWN"
+
 
 class FillHandler:
     """Processes fill notifications: marks order FILLED, applies fill to position."""
@@ -68,7 +75,13 @@ class FillHandler:
                         kite_order_id,
                     )
                     return False
-                await self._accountant.apply_fill(session, fill, fill_side, symbol, instrument_type)
+                algo_name = (
+                    await self._trading.get_order_algo_name_in_session(session, kite_order_id)
+                    or UNKNOWN_ALGO_NAME
+                )
+                await self._accountant.apply_fill(
+                    session, fill, fill_side, symbol, instrument_type, algo_name
+                )
         except NotFoundError as exc:
             logger.warning("FillHandler: fill for unknown order %s — %s", kite_order_id, exc)
             return False

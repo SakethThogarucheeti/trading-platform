@@ -45,12 +45,15 @@ def _clock() -> SimulatedClock:
     return clock
 
 
-async def _add_position(engine: AsyncEngine, symbol: str, net_qty: int, avg_price: str) -> None:
+async def _add_position(
+    engine: AsyncEngine, symbol: str, net_qty: int, avg_price: str, algo_name: str = "algo1"
+) -> None:
     async with get_session(engine) as s:
         s.add(
             Position(
                 symbol=symbol,
                 instrument_type="EQUITY",
+                algo_name=algo_name,
                 net_qty=net_qty,
                 avg_price=Decimal(avg_price),
                 updated_at=NOW,
@@ -164,7 +167,9 @@ async def test_long_position_breach_routes_exit_through_order_executor(
     assert event.symbol == "INFY"
     assert event.signal_type == SignalType.EXIT
     assert event.strategy_id == STOP_LOSS_MONITOR_NAME
-    assert event.algo_name == STOP_LOSS_MONITOR_NAME
+    # algo_name attributed to the position's own owning algo, not the
+    # monitor's sentinel (trading-platform#83) -- see _add_position's default.
+    assert event.algo_name == "algo1"
 
     # The synthetic exit signal was actually persisted (audit trail), not
     # just passed to the mock -- OrderExecutor.handle requires the Signal

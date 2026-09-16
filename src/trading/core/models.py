@@ -97,6 +97,12 @@ class Order(Base):
     # order id (trading-platform#31). Nullable: only orders placed after this
     # column existed have one.
     client_tag: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    # Denormalized off the originating Signal at Order-creation time
+    # (trading-platform#83) so FillHandler can recover the owning algo without
+    # a cross-module join between core.models and execution.storage.models's
+    # independent DeclarativeBase registries (see trading-platform#35).
+    # Nullable: only orders placed after this column existed have one.
+    algo_name: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
 
     signal: Mapped[Signal] = relationship("Signal", back_populates="orders")
 
@@ -104,9 +110,13 @@ class Order(Base):
 class Position(Base):
     __tablename__ = "positions"
 
-    # Composite PK: (INFY, EQUITY) and (INFY, FUTURES) can coexist
+    # Composite PK: (INFY, EQUITY, momentum) and (INFY, EQUITY, mean_reversion)
+    # can coexist as independent rows (trading-platform#83) -- algo_name is
+    # never NULL (Postgres disallows NULL in a composite PK column); callers
+    # without a real algo_name use the "UNKNOWN" sentinel.
     symbol: Mapped[str] = mapped_column(String, primary_key=True)
     instrument_type: Mapped[str] = mapped_column(String, primary_key=True)
+    algo_name: Mapped[str] = mapped_column(String, primary_key=True)
     net_qty: Mapped[int] = mapped_column(default=0)
     avg_price: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
