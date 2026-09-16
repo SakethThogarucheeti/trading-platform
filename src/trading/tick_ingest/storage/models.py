@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, DateTime, Numeric, String, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from trading.core.db_registry import shared_registry
+
+if TYPE_CHECKING:
+    from trading.strategy.storage.models import DecisionLog
 
 
 class Base(DeclarativeBase):
-    pass
+    registry = shared_registry
+    metadata = shared_registry.metadata
 
 
 class TickLog(Base):
@@ -29,4 +36,8 @@ class TickLog(Base):
     volume: Mapped[int] = mapped_column(BigInteger)
     received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    decisions: Mapped[list[DecisionLog]] = relationship(
+        "DecisionLog", back_populates="tick", cascade="all, delete-orphan"
     )

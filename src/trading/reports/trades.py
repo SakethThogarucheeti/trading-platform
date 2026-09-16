@@ -20,9 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.core.clock import Clock
 from trading.core.fifo import match_against
-from trading.core.models import Order, Signal
 from trading.core.schemas import OrderStatus
+from trading.execution.storage.models import Order
 from trading.reports.pnl import DEFAULT_COSTS, TradeCosts
+from trading.strategy.storage.models import Signal
 
 
 @dataclass

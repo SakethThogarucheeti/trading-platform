@@ -10,11 +10,11 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from trading.core.clock import Clock, SystemClock
 from trading.core.messaging import AbstractRegistry
-from trading.core.models import Order
 from trading.core.schemas import OrderStatus
 from trading.execution.api.interfaces import AbstractTradingStore, Broker
 from trading.execution.service.fill_handler import FillHandler
 from trading.execution.service.idempotency import is_duplicate
+from trading.execution.storage.models import Order
 from trading.risk.api.schemas import ValidatedOrderEvent
 
 logger = logging.getLogger(__name__)

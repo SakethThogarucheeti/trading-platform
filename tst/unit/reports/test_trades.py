@@ -20,8 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from trading.app.database import build_session_factory, get_session, init_db
 from trading.core.clock import SimulatedClock
-from trading.core.models import Order, Signal
+from trading.execution.storage.models import Order
 from trading.reports.trades import fetch_filled_trades, summarize, summarize_by_algo
+from trading.strategy.storage.models import Signal
 
 IST_MIDNIGHT_UTC = datetime(2025, 1, 5, 18, 30, tzinfo=UTC)  # 2025-01-06 00:00 IST
 

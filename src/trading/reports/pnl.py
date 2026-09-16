@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from trading.core.fifo import match_against
-from trading.core.models import Signal
 from trading.core.schemas import OrderStatus
+from trading.strategy.storage.models import Signal
 
 
 @dataclass(frozen=True)

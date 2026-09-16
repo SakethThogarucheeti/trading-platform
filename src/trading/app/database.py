@@ -10,27 +10,19 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from trading.broker.storage.models import Base as BrokerBase
-from trading.candles.storage.models import Base as CandlesBase
-from trading.core.models import Base as CoreBase  # transitional: audit_logs + legacy tables
-from trading.execution.storage.models import Base as ExecutionBase
-from trading.monitoring.storage.models import Base as MonitoringBase
-from trading.risk.storage.models import Base as RiskBase
-from trading.storage.cache.models import Base as CacheBase
-from trading.strategy.storage.models import Base as StrategyBase
-from trading.tick_ingest.storage.models import Base as TickIngestBase
-
-_ALL_BASES = [
-    CoreBase,        # audit_logs and any remaining un-migrated tables
-    BrokerBase,
-    TickIngestBase,
-    CandlesBase,
-    StrategyBase,
-    RiskBase,
-    ExecutionBase,
-    MonitoringBase,
-    CacheBase,
-]
+# Importing every per-module models module (for side effects) is what registers
+# each module's model classes -- including the classes some cross-module
+# relationships reference by string -- against the one shared registry
+# (trading-platform#35/#103) before init_db()/drop_db() below act on its metadata.
+import trading.broker.storage.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+import trading.candles.storage.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+import trading.execution.storage.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+import trading.monitoring.storage.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+import trading.risk.storage.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+import trading.storage.cache.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+import trading.strategy.storage.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+import trading.tick_ingest.storage.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+from trading.core.db_registry import shared_registry
 
 
 def build_engine(url: str) -> AsyncEngine:
@@ -67,12 +59,10 @@ async def init_db(engine: AsyncEngine) -> None:
     Only used in tests and development. Production uses Alembic migrations.
     """
     async with engine.begin() as conn:
-        for base in _ALL_BASES:
-            await conn.run_sync(base.metadata.create_all)
+        await conn.run_sync(shared_registry.metadata.create_all)
 
 
 async def drop_db(engine: AsyncEngine) -> None:
     """Drop all tables across all modules. Tests only."""
     async with engine.begin() as conn:
-        for base in reversed(_ALL_BASES):
-            await conn.run_sync(base.metadata.drop_all)
+        await conn.run_sync(shared_registry.metadata.drop_all)

@@ -6,9 +6,12 @@ from decimal import Decimal
 from sqlalchemy import BigInteger, DateTime, Index, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from trading.core.db_registry import shared_registry
+
 
 class Base(DeclarativeBase):
-    pass
+    registry = shared_registry
+    metadata = shared_registry.metadata
 
 
 class Candle(Base):

@@ -5,9 +5,12 @@ from datetime import datetime
 from sqlalchemy import DateTime, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from trading.core.db_registry import shared_registry
+
 
 class Base(DeclarativeBase):
-    pass
+    registry = shared_registry
+    metadata = shared_registry.metadata
 
 
 class BrokerToken(Base):

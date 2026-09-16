@@ -8,18 +8,20 @@ from typing import Any
 from dotenv import load_dotenv
 from sqlalchemy import pool
 
+# Import every module's models (for side effects) so Alembic autogenerate sees the
+# full schema -- every per-module Base shares one registry/MetaData
+# (trading-platform#35/#103), so this registers all model classes against the same
+# shared_registry.metadata used below as target_metadata.
+import trading.broker.storage.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+import trading.candles.storage.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+import trading.execution.storage.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+import trading.monitoring.storage.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+import trading.risk.storage.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+import trading.storage.cache.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+import trading.strategy.storage.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
+import trading.tick_ingest.storage.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from alembic import context
-
-# Import every module's Base so Alembic autogenerate sees the full schema.
-from trading.broker.storage.models import Base as BrokerBase
-from trading.candles.storage.models import Base as CandlesBase
-from trading.core.models import Base as CoreBase  # transitional: audit_logs
-from trading.execution.storage.models import Base as ExecutionBase
-from trading.monitoring.storage.models import Base as MonitoringBase
-from trading.risk.storage.models import Base as RiskBase
-from trading.storage.cache.models import Base as CacheBase
-from trading.strategy.storage.models import Base as StrategyBase
-from trading.tick_ingest.storage.models import Base as TickIngestBase
+from trading.core.db_registry import shared_registry
 
 # Load .env from the project root (one level above the alembic/ directory).
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -29,17 +31,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = [
-    CoreBase.metadata,
-    BrokerBase.metadata,
-    TickIngestBase.metadata,
-    CandlesBase.metadata,
-    StrategyBase.metadata,
-    RiskBase.metadata,
-    ExecutionBase.metadata,
-    MonitoringBase.metadata,
-    CacheBase.metadata,
-]
+target_metadata = shared_registry.metadata
 
 
 def _get_url() -> str:

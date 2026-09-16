@@ -48,7 +48,7 @@ class AuditStore:
         signal_id: UUID | None = None,
         session_id: str | None = None,
     ) -> None:
-        from trading.core.models import DecisionLog
+        from trading.strategy.storage.models import DecisionLog
 
         async with self._sf() as session:
             async with session.begin():
@@ -65,7 +65,7 @@ class AuditStore:
                 )
 
     async def log_audit(self, module: str, level: str, message: str) -> None:
-        from trading.core.models import AuditLog
+        from trading.monitoring.storage.models import AuditLog
 
         async with self._sf() as session:
             async with session.begin():

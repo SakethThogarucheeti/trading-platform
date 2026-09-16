@@ -1,4 +1,4 @@
-"""Tests for core/models.py and core/database.py"""
+"""Tests for the per-module storage models and core/database.py"""
 
 from __future__ import annotations
 
@@ -12,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 
 from trading.app.database import build_engine, drop_db, get_session, init_db
 from trading.candles.storage.models import Instrument
-from trading.core.models import AuditLog, Order, Position, Signal
+from trading.execution.storage.models import Order, Position
+from trading.monitoring.storage.models import AuditLog
+from trading.strategy.storage.models import Signal
 
 NOW = datetime.now(UTC)
 

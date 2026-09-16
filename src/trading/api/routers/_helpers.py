@@ -8,8 +8,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.sql.elements import ColumnElement
 
 from trading.core.clock import Clock
-from trading.core.models import DecisionLog
 from trading.storage.cache import CacherFactory
+from trading.strategy.storage.models import DecisionLog
 
 
 def session_filter(model: type[DecisionLog], session_id: str) -> ColumnElement[bool]:
