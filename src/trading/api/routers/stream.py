@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.requests import Request
 
 from trading.core.clock import Clock
-from trading.core.models import DecisionLog
+from trading.strategy.storage.models import DecisionLog
 
 from ._helpers import decision_log_base_conditions
 

@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from trading.core.models import Order
+from trading.execution.storage.models import Order
 
 
 async def is_duplicate(signal_id: UUID, session: AsyncSession) -> bool:

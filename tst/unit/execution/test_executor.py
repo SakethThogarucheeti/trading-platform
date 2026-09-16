@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from trading.app.database import build_session_factory, get_session, init_db
 from trading.broker.api import Broker
 from trading.core.clock import SYSTEM_CLOCK
-from trading.core.models import Order, Signal
 from trading.core.schemas import (
     InstrumentType,
     OrderStatus,
@@ -24,8 +23,10 @@ from trading.execution.service.executor import ExecConfig, OrderExecutor
 from trading.execution.service.fill_handler import FillHandler
 from trading.execution.service.idempotency import is_duplicate
 from trading.execution.service.position_accountant import PositionAccountant
+from trading.execution.storage.models import Order
 from trading.execution.storage.store import PositionStore, TradingStore
 from trading.storage.cache import CacherFactory, ValueCache
+from trading.strategy.storage.models import Signal
 
 NOW = datetime.now(UTC)
 

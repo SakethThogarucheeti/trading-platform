@@ -9,9 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trading.candles.storage.models import Candle
 from trading.core.clock import Clock
-from trading.core.models import DecisionLog
 from trading.execution.storage.models import Position
 from trading.monitoring.storage.models import Heartbeat
+from trading.strategy.storage.models import DecisionLog
 from trading.tick_ingest.storage.models import TickLog
 
 from ._helpers import decision_log_base_conditions, today_start

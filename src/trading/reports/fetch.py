@@ -11,7 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from trading.core.models import AlgoConfig, AuditLog, Candle, DecisionLog, Heartbeat, Signal
+from trading.candles.storage.models import Candle
+from trading.monitoring.storage.models import AuditLog, Heartbeat
+from trading.strategy.storage.models import AlgoConfig, DecisionLog, Signal
 
 logger = logging.getLogger(__name__)
 

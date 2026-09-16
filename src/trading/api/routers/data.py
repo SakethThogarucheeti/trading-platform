@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from trading.candles.api import HistoricalDataService
 from trading.candles.storage.models import Instrument
 from trading.core.clock import Clock
-from trading.core.models import DecisionLog
+from trading.strategy.storage.models import DecisionLog
 
 from ._helpers import parse_utc_datetime, today_start
 

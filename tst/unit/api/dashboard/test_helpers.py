@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from trading.api.routers._helpers import decision_log_base_conditions
 from trading.core.clock import SimulatedClock
-from trading.core.models import DecisionLog
+from trading.strategy.storage.models import DecisionLog
 
 _NOW = datetime(2026, 1, 6, 9, 30, tzinfo=UTC)
 

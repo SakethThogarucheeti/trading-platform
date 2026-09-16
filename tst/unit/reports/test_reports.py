@@ -12,13 +12,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from trading.app.database import build_session_factory, get_session, init_db
-from trading.core.models import (
-    AlgoConfig,
-    AlgoState,
-    Heartbeat,
-    Signal,
-)
 from trading.core.schemas import OrderStatus
+from trading.monitoring.storage.models import Heartbeat
 from trading.reports.fetch import (
     AlgoConfigSnapshot,
     NiftyBenchmark,
@@ -38,6 +33,7 @@ from trading.reports.render import (
     section,
     subsection,
 )
+from trading.strategy.storage.models import AlgoConfig, AlgoState, Signal
 
 NOW = datetime.now(UTC)
 START = NOW - timedelta(hours=1)
@@ -570,7 +566,7 @@ async def test_fetch_nifty_benchmark_returns_none_when_open_is_zero(engine: Asyn
     """Covers line 91: fetch_nifty_benchmark returns None when open_price == 0."""
     from decimal import Decimal
 
-    from trading.core.models import Candle
+    from trading.candles.storage.models import Candle
     from trading.reports.fetch import fetch_nifty_benchmark
 
     ts = NOW - timedelta(minutes=5)
@@ -599,7 +595,7 @@ async def test_fetch_nifty_benchmark_returns_dict_when_candles_exist(engine: Asy
     """Covers lines 84-93: fetch_nifty_benchmark returns open/close/pct_return dict."""
     from decimal import Decimal
 
-    from trading.core.models import Candle
+    from trading.candles.storage.models import Candle
     from trading.reports.fetch import fetch_nifty_benchmark
 
     ts1 = NOW - timedelta(minutes=10)

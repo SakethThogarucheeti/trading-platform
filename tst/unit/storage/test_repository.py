@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from trading.app.database import build_session_factory, get_session, init_db
 from trading.candles.storage.models import Instrument
 from trading.candles.storage.store import InstrumentStore
-from trading.core.models import Order, Signal
 from trading.core.schemas import (
     FillEvent,
     InstrumentType,
@@ -22,8 +21,10 @@ from trading.core.schemas import (
     SignalEvent,
     SignalType,
 )
+from trading.execution.storage.models import Order
 from trading.execution.storage.store import NotFoundError, PositionStore, TradingStore
 from trading.monitoring.storage.store import HeartbeatStore
+from trading.strategy.storage.models import Signal
 from trading.strategy.storage.store import ChartStore, ConfigStore
 from trading.tick_ingest.storage.store import AuditStore
 
@@ -430,7 +431,7 @@ async def test_get_daily_realized_pnl_sums_filled_orders(
 async def test_update_heartbeat_creates_entry(engine: AsyncEngine, heartbeat_store: HeartbeatStore) -> None:
     await heartbeat_store.update_heartbeat("ingestor")
     async with get_session(engine) as s:
-        from trading.core.models import Heartbeat
+        from trading.monitoring.storage.models import Heartbeat
         hb = await s.get(Heartbeat, "ingestor")
     assert hb is not None
 
@@ -441,7 +442,7 @@ async def test_update_heartbeat_upserts(engine: AsyncEngine, heartbeat_store: He
     async with get_session(engine) as s:
         from sqlalchemy import func, select
 
-        from trading.core.models import Heartbeat
+        from trading.monitoring.storage.models import Heartbeat
         count = await s.execute(select(func.count()).where(Heartbeat.module == "candle_aggregator"))
     assert count.scalar() == 1  # only one row, not two
 
@@ -455,7 +456,7 @@ async def test_get_stale_modules_empty_when_fresh(heartbeat_store: HeartbeatStor
 async def test_get_stale_modules_detects_old_heartbeat(
     engine: AsyncEngine, heartbeat_store: HeartbeatStore
 ) -> None:
-    from trading.core.models import Heartbeat
+    from trading.monitoring.storage.models import Heartbeat
     old_ts = datetime.now(UTC) - timedelta(seconds=120)
     async with get_session(engine) as s:
         s.add(Heartbeat(module="zombie", last_seen=old_ts))
@@ -474,7 +475,7 @@ async def test_log_audit_appends(engine: AsyncEngine, audit_store: AuditStore) -
     async with get_session(engine) as s:
         from sqlalchemy import select
 
-        from trading.core.models import AuditLog
+        from trading.monitoring.storage.models import AuditLog
         result = await s.execute(select(AuditLog))
         logs = result.scalars().all()
     assert len(logs) == 2
@@ -495,7 +496,7 @@ async def test_log_audit_never_raises_on_repeated_calls(audit_store: AuditStore)
 
 
 async def test_seed_algo_config_creates_new(engine: AsyncEngine, config_store: ConfigStore) -> None:
-    from trading.core.models import AlgoConfig as AlgoConfigModel
+    from trading.strategy.storage.models import AlgoConfig as AlgoConfigModel
 
     await config_store.seed_algo_config(
         name="test_algo",
@@ -518,7 +519,7 @@ async def test_seed_algo_config_syncs_existing(engine: AsyncEngine, config_store
     can change between restarts; the DB row must reflect the current config,
     not whatever was true the first time this algo's row was created.
     """
-    from trading.core.models import AlgoConfig as AlgoConfigModel
+    from trading.strategy.storage.models import AlgoConfig as AlgoConfigModel
 
     await config_store.seed_algo_config(
         name="dup_algo",
@@ -548,7 +549,7 @@ async def test_upsert_algo_state_insert_then_update(
     engine: AsyncEngine, config_store: ConfigStore
 ) -> None:
     """First call inserts; second call updates the existing row."""
-    from trading.core.models import AlgoState as AlgoStateModel
+    from trading.strategy.storage.models import AlgoState as AlgoStateModel
 
     await config_store.upsert_algo_state("my:INFY", {"bars_seen": 1})
     async with get_session(engine) as s:
@@ -652,8 +653,8 @@ async def test_candle_store_save_empty_rows_is_noop(engine: AsyncEngine) -> None
 
 
 async def test_get_algo_configs_with_state(engine: AsyncEngine, config_store: ConfigStore) -> None:
-    from trading.core.models import AlgoConfig as AlgoConfigModel
-    from trading.core.models import AlgoState as AlgoStateModel
+    from trading.strategy.storage.models import AlgoConfig as AlgoConfigModel
+    from trading.strategy.storage.models import AlgoState as AlgoStateModel
 
     async with get_session(engine) as s:
         s.add(

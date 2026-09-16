@@ -2,14 +2,27 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import Date, DateTime, Numeric, String, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from trading.core.db_registry import shared_registry
+
+if TYPE_CHECKING:
+    from trading.strategy.storage.models import Signal
+
+# Order.signal/Signal.orders below are string-based relationships resolved lazily
+# against the shared registry -- they require trading.strategy.storage.models to
+# have been imported by the time SQLAlchemy configures mappers (first DB use).
+# trading.app.database imports every per-module Base at module load, which is the
+# one chokepoint all real DB access already goes through.
 
 
 class Base(DeclarativeBase):
-    pass
+    registry = shared_registry
+    metadata = shared_registry.metadata
 
 
 class Order(Base):
@@ -17,14 +30,7 @@ class Order(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
     kite_order_id: Mapped[str] = mapped_column(String, unique=True, index=True)
-    # NOTE: no ForeignKey("signals.id") here even though core.models.Order has one and the
-    # live DB constraint exists (orders_signal_id_fkey) -- `signals` lives under
-    # strategy.storage.models's own independent DeclarativeBase/metadata, and a string-based
-    # ForeignKey can only resolve against a table registered in *this* module's own metadata.
-    # Adding it raises NoReferencedTableError at mapper-configure time (confirmed via
-    # tst/unit/execution/test_executor.py). Closing this for real needs the shared-registry
-    # work scoped to #35's Option 1, not this freeze-the-drift pass. See trading-platform#35.
-    signal_id: Mapped[UUID] = mapped_column(index=True)
+    signal_id: Mapped[UUID] = mapped_column(ForeignKey("signals.id"), index=True)
     status: Mapped[str] = mapped_column(String)
     qty: Mapped[int]
     avg_price: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=0)
@@ -40,6 +46,8 @@ class Order(Base):
     # independent DeclarativeBase registries (see trading-platform#35).
     # Nullable: only orders placed after this column existed have one.
     algo_name: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+
+    signal: Mapped[Signal] = relationship("Signal", back_populates="orders")
 
 
 class Position(Base):

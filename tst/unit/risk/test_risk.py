@@ -17,7 +17,6 @@ from trading_risk_sdk.sizer import calculate_quantity
 
 from trading.app.database import build_session_factory, init_db
 from trading.core.clock import SYSTEM_CLOCK, Clock
-from trading.core.models import Position
 from trading.core.schemas import (
     InstrumentType,
     OrderStatus,
@@ -26,7 +25,7 @@ from trading.core.schemas import (
     SignalType,
     ValidatedOrderEvent,
 )
-from trading.execution.storage.models import Order
+from trading.execution.storage.models import Order, Position
 from trading.execution.storage.store import PositionStore, TradingStore
 from trading.risk.service.filter import RiskConfig, RiskFilter
 from trading.strategy.storage.models import Signal
@@ -447,7 +446,7 @@ async def test_rejected_signal_logged_to_audit(engine: AsyncEngine) -> None:
     from sqlalchemy import select
 
     from trading.app.database import get_session
-    from trading.core.models import AuditLog
+    from trading.monitoring.storage.models import AuditLog
 
     config = make_config(intraday_cutoff_hour=0, intraday_cutoff_minute=0)
     reg, factory = make_registry(engine, config=config)
@@ -675,7 +674,7 @@ async def test_log_decision_writes_when_tick_log_id_positive(engine: AsyncEngine
     from sqlalchemy import select
 
     from trading.app.database import get_session
-    from trading.core.models import DecisionLog
+    from trading.strategy.storage.models import DecisionLog
 
     reg, factory = make_registry(engine)
     sig = make_signal(tick_log_id=99, algo_name="rsi_mean_reversion")
@@ -800,7 +799,7 @@ async def test_duplicate_position_gate_rejects_same_direction() -> None:
     from trading_risk_sdk.gates.duplicate_position import DuplicatePositionGate
     from trading_risk_sdk.policy import RiskContext
 
-    from trading.core.models import Position
+    from trading.execution.storage.models import Position
 
     gate = DuplicatePositionGate()
     pos = Position(
